@@ -51,6 +51,8 @@ struct ProfileItems {
     global_merge: ChainItem,
     global_script: ChainItem,
     profile_name: String,
+    // FORK: multi-profile merge conflicts (empty when not in merged mode)
+    merge_conflicts: Vec<multi_merge::ConflictEntry>,
 }
 
 impl Default for ProfileItems {
@@ -86,6 +88,7 @@ impl Default for ProfileItems {
                 uid: "Script".into(),
                 data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
             },
+            merge_conflicts: vec![],
         }
     }
 }
@@ -148,7 +151,55 @@ async fn collect_profile_items() -> ProfileItems {
     let profiles_arc = profiles.latest_arc();
     drop(profiles);
 
-    let current = profiles_arc.current_mapping().await.unwrap_or_default();
+    // FORK: multi-profile merge — load and merge all profiles in the merged list
+    let multi_merge_result: Option<(Mapping, Vec<multi_merge::ConflictEntry>)> =
+        if let Some(merged_uids) = profiles_arc.merged.as_deref() {
+            if !merged_uids.is_empty() {
+                let items = profiles_arc.items.as_deref().unwrap_or(&[]);
+                let mut configs: Vec<Mapping> = Vec::new();
+                let mut names: Vec<std::string::String> = Vec::new();
+                for uid in merged_uids {
+                    if let Some(item) = items.iter().find(|i| i.uid.as_deref() == Some(uid.as_str())) {
+                        if let Some(file) = item.file.as_ref() {
+                            let path = match dirs::app_profiles_dir() {
+                                Ok(d) => d.join(file.as_str()),
+                                Err(_) => continue,
+                            };
+                            match crate::utils::help::read_mapping(&path).await {
+                                Ok(mapping) => {
+                                    let display_name = item
+                                        .name
+                                        .as_deref()
+                                        .unwrap_or(uid.as_str())
+                                        .to_owned();
+                                    configs.push(mapping);
+                                    names.push(display_name);
+                                }
+                                Err(err) => {
+                                    logging!(warn, Type::Config, "multi-merge: failed to load profile {uid}: {err}");
+                                }
+                            }
+                        }
+                    }
+                }
+                if configs.is_empty() {
+                    None
+                } else {
+                    let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+                    Some(multi_merge::multi_profile_merge(&configs, &name_refs))
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+    let current = if let Some((ref merged_config, _)) = multi_merge_result {
+        merged_config.clone()
+    } else {
+        profiles_arc.current_mapping().await.unwrap_or_default()
+    };
 
     let current_profile_uid = match profiles_arc.get_current() {
         Some(uid) => uid,
@@ -296,6 +347,8 @@ async fn collect_profile_items() -> ProfileItems {
         merge_item,
         script_item,
         rules_item,
+        // FORK: carry conflicts forward to enhance() for storage in chain_logs
+        merge_conflicts: multi_merge_result.map(|(_, c)| c).unwrap_or_default(),
         proxies_item,
         groups_item,
         global_merge,
@@ -620,12 +673,14 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     let global_merge = profile.global_merge;
     let global_script = profile.global_script;
     let profile_name = profile.profile_name;
+    // FORK: multi-merge conflicts stored in chain_logs under "MultiMerge"
+    let multi_merge_conflicts = profile.merge_conflicts;
 
     // process globals
     let (config, exists_keys, result_map) = process_global_items(config, global_merge, global_script, &profile_name);
 
     // process profile-specific items
-    let (config, exists_keys, result_map) = process_profile_items(
+    let (config, exists_keys, mut result_map) = process_profile_items(
         config,
         exists_keys,
         result_map,
@@ -663,6 +718,20 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
 
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
+
+    // FORK: store multi-merge conflicts in chain_logs so they are accessible from IRuntime
+    if !multi_merge_conflicts.is_empty() {
+        let entries: ResultLog = multi_merge_conflicts
+            .into_iter()
+            .map(|c| {
+                (
+                    c.field.into(),
+                    format!("name={};source={};reason={}", c.name, c.source, c.reason).into(),
+                )
+            })
+            .collect();
+        result_map.insert("MultiMerge".into(), entries);
+    }
 
     (config, exists_keys_set, result_map)
 }

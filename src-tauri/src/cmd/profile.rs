@@ -282,6 +282,7 @@ async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
     logging!(info, Type::Cmd, "尝试恢复到之前的配置: {}", prev_profile);
     let restore_profiles = IProfiles {
         current: Some(prev_profile.to_owned()),
+        merged: None,
         items: None,
     };
     Config::profiles()
@@ -404,6 +405,7 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
 
     let profiles = IProfiles {
         current: Some(profile_index),
+        merged: None,
         items: None,
     };
     patch_profiles_config(profiles).await
