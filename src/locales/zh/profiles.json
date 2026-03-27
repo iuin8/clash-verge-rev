@@ -47,6 +47,16 @@
     },
     "title": "订阅"
   },
+  "merge": {
+    "activate": "合并激活",
+    "activated": "订阅已合并激活",
+    "clear": "清除合并",
+    "conflicts": {
+      "title": "合并冲突",
+      "badge": "显示合并冲突",
+      "empty": "无冲突"
+    }
+  },
   "components": {
     "card": {
       "labels": {

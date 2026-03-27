@@ -253,6 +253,16 @@ export interface TranslationResources {
           }
         }
       }
+      merge: {
+        activate: string
+        activated: string
+        clear: string
+        conflicts: {
+          badge: string
+          empty: string
+          title: string
+        }
+      }
       modals: {
         confirmDelete: {
           message: string
