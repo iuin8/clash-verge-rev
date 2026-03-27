@@ -167,11 +167,7 @@ async fn collect_profile_items() -> ProfileItems {
                             };
                             match crate::utils::help::read_mapping(&path).await {
                                 Ok(mapping) => {
-                                    let display_name = item
-                                        .name
-                                        .as_deref()
-                                        .unwrap_or(uid.as_str())
-                                        .to_owned();
+                                    let display_name = item.name.as_deref().unwrap_or(uid.as_str()).to_owned();
                                     configs.push(mapping);
                                     names.push(display_name);
                                 }
@@ -646,7 +642,12 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
 /// Enhance mode
 /// 返回最终订阅、该订阅包含的键、和script执行的结果
 // FORK: returns (config, exists_keys, chain_logs, merge_conflicts)
-pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>, Vec<multi_merge::ConflictEntry>) {
+pub async fn enhance() -> (
+    Mapping,
+    HashSet<String>,
+    HashMap<String, ResultLog>,
+    Vec<multi_merge::ConflictEntry>,
+) {
     // gather config values
     let cfg_vals = get_config_values().await;
     let ConfigValues {

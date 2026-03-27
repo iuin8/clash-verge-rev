@@ -12,10 +12,7 @@ pub struct ConflictEntry {
 /// Merge an ordered list of YAML configs.
 /// Only proxies/proxy-groups/rules are taken from supplementary profiles.
 /// All other top-level keys come from primary (index 0).
-pub fn multi_profile_merge(
-    configs: &[Mapping],
-    names: &[&str],
-) -> (Mapping, Vec<ConflictEntry>) {
+pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec<ConflictEntry>) {
     if configs.is_empty() {
         return (Mapping::new(), vec![]);
     }
@@ -95,10 +92,7 @@ pub fn multi_profile_merge(
                     } else {
                         // Group exists: merge its member list
                         if let Some(existing) = base_seq.iter_mut().find(|eg| {
-                            eg.as_mapping()
-                                .and_then(|m| m.get("name"))
-                                .and_then(|v| v.as_str())
-                                == Some(gname)
+                            eg.as_mapping().and_then(|m| m.get("name")).and_then(|v| v.as_str()) == Some(gname)
                         }) {
                             if let Some(ex_map) = existing.as_mapping_mut() {
                                 let supp_members: Vec<Value> = g
@@ -112,10 +106,8 @@ pub fn multi_profile_merge(
                                     .entry(Value::String("proxies".into()))
                                     .or_insert_with(|| Value::Sequence(vec![]));
                                 if let Value::Sequence(ex_seq) = ex_members {
-                                    let existing_members: Vec<String> = ex_seq
-                                        .iter()
-                                        .filter_map(|v| v.as_str().map(String::from))
-                                        .collect();
+                                    let existing_members: Vec<String> =
+                                        ex_seq.iter().filter_map(|v| v.as_str().map(String::from)).collect();
                                     let mut members_to_prepend: Vec<Value> = vec![];
                                     for m in supp_members.iter() {
                                         let mname = m.as_str().unwrap_or("");
@@ -143,10 +135,8 @@ pub fn multi_profile_merge(
                 .entry(Value::String("rules".into()))
                 .or_insert_with(|| Value::Sequence(vec![]));
             if let Value::Sequence(base_seq) = base_rules {
-                let existing_rules: Vec<String> = base_seq
-                    .iter()
-                    .filter_map(|r| r.as_str().map(String::from))
-                    .collect();
+                let existing_rules: Vec<String> =
+                    base_seq.iter().filter_map(|r| r.as_str().map(String::from)).collect();
                 let mut rules_to_prepend: Vec<Value> = vec![];
                 for r in supp_rules.iter() {
                     let rstr = r.as_str().unwrap_or("");
