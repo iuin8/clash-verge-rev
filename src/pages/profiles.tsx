@@ -34,6 +34,8 @@ import useSWR, { mutate } from 'swr'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BasePage, BaseStyledTextField, DialogRef } from '@/components/base'
+import { ConflictViewer } from '@/components/profile/conflict-viewer'
+import { MergeOrderBar } from '@/components/profile/merge-order-bar'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
@@ -44,14 +46,17 @@ import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { useListen } from '@/hooks/use-listen'
 import { useProfiles } from '@/hooks/use-profiles'
 import {
+  clearMergedProfiles,
   createProfile,
   deleteProfile,
   enhanceProfiles,
   getProfiles,
   //restartCore,
+  getMergeConflicts,
   getRuntimeLogs,
   importProfile,
   reorderProfile,
+  setMergedProfiles,
   updateProfile,
 } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
@@ -107,6 +112,10 @@ const ProfilePage = () => {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
     () => new Set(),
   )
+
+  // FORK: Multi-profile merge state
+  const [conflictViewerOpen, setConflictViewerOpen] = useState(false)
+  const [conflicts, setConflicts] = useState<ConflictEntry[]>([])
 
   // 防止重复切换
   const switchingProfileRef = useRef<string | null>(null)
@@ -727,6 +736,16 @@ const ProfilePage = () => {
     }
   })
 
+  // FORK: Load conflicts on mount/refresh when merged mode is active
+  const mergedUids = profiles?.merged ?? []
+  useEffect(() => {
+    if (mergedUids.length >= 2) {
+      getMergeConflicts()
+        .then(setConflicts)
+        .catch(() => {})
+    }
+  }, [mergedUids.length])
+
   const mode = useThemeMode()
   const isLight = mode === 'light'
   const dividercolor = isLight
@@ -894,6 +913,25 @@ const ProfilePage = () => {
               >
                 <DeleteRounded />
               </IconButton>
+              {/* FORK: Merge activate button */}
+              <Button
+                size="small"
+                variant="contained"
+                disabled={selectedProfiles.size < 2}
+                onClick={async () => {
+                  try {
+                    const uids = Array.from(selectedProfiles)
+                    await setMergedProfiles(uids)
+                    const c = await getMergeConflicts()
+                    setConflicts(c)
+                    toggleBatchMode()
+                  } catch (err: any) {
+                    showNotice.error(err)
+                  }
+                }}
+              >
+                {t('profiles.merge.activate')}
+              </Button>
               <Button size="small" variant="outlined" onClick={toggleBatchMode}>
                 {t('profiles.page.batch.actions.done')}
               </Button>
@@ -993,6 +1031,25 @@ const ProfilePage = () => {
             overflowY: 'auto',
           }}
         >
+          {/* FORK: Merge order bar — shown when 2+ profiles are merged */}
+          {mergedUids.length >= 2 && (
+            <MergeOrderBar
+              mergedUids={mergedUids}
+              profiles={profileItems}
+              conflictCount={conflicts.length}
+              onReorder={async (newUids) => {
+                await setMergedProfiles(newUids)
+                await mutateProfiles()
+              }}
+              onClear={async () => {
+                await clearMergedProfiles()
+                await mutateProfiles()
+                setConflicts([])
+              }}
+              onShowConflicts={() => setConflictViewerOpen(true)}
+            />
+          )}
+
           <Box sx={{ mb: 1.5 }}>
             <Grid container spacing={{ xs: 1, lg: 1 }}>
               <SortableContext
@@ -1077,6 +1134,12 @@ const ProfilePage = () => {
         }}
       />
       <ConfigViewer ref={configRef} />
+      {/* FORK: Conflict viewer dialog for multi-profile merge */}
+      <ConflictViewer
+        open={conflictViewerOpen}
+        conflicts={conflicts}
+        onClose={() => setConflictViewerOpen(false)}
+      />
     </BasePage>
   )
 }
