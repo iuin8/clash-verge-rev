@@ -4,5 +4,5 @@
 
 ```bash
 # 触发 GitHub action 自动发布新包
-TAG=v2.4.7.1004 && git tag $TAG && git push origin $TAG
+TAG=v2.4.7.1005 && git tag $TAG && git push origin $TAG
 ```
