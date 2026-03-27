@@ -1,6 +1,7 @@
 mod chain;
 pub mod field;
 mod merge;
+pub mod multi_merge;
 mod script;
 pub mod seq;
 mod tun;
