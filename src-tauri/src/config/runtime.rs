@@ -14,6 +14,8 @@ pub struct IRuntime {
     pub exists_keys: HashSet<String>,
     // TODO 或许可以用 FixMap 来存储以提升效率
     pub chain_logs: HashMap<String, Vec<(String, String)>>,
+    // FORK: conflict log from the last multi-profile merge
+    pub merge_conflicts: Vec<crate::enhance::multi_merge::ConflictEntry>,
 }
 
 impl IRuntime {

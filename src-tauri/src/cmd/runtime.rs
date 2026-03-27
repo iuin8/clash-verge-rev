@@ -91,6 +91,12 @@ pub async fn get_runtime_proxy_chain_config(proxy_chain_exit_node: String) -> Cm
     }
 }
 
+// FORK: return the conflict log from the last multi-profile merge
+#[tauri::command]
+pub async fn get_merge_conflicts() -> CmdResult<Vec<crate::enhance::multi_merge::ConflictEntry>> {
+    Ok(Config::runtime().await.latest_arc().merge_conflicts.clone())
+}
+
 /// 更新运行时链式代理配置
 #[tauri::command]
 pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<serde_yaml_ng::Value>) -> CmdResult<()> {

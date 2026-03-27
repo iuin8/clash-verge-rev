@@ -216,6 +216,9 @@ mod app_init {
             cmd::restore_webdav_backup,
             cmd::get_unlock_items,
             cmd::check_media_unlock,
+            cmd::set_merged_profiles,
+            cmd::clear_merged_profiles,
+            cmd::get_merge_conflicts,
         ]
     }
 }

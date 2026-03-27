@@ -645,7 +645,8 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
 
 /// Enhance mode
 /// 返回最终订阅、该订阅包含的键、和script执行的结果
-pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>) {
+// FORK: returns (config, exists_keys, chain_logs, merge_conflicts)
+pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>, Vec<multi_merge::ConflictEntry>) {
     // gather config values
     let cfg_vals = get_config_values().await;
     let ConfigValues {
@@ -720,6 +721,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     exists_keys_set.extend(exists_keys);
 
     // FORK: store multi-merge conflicts in chain_logs so they are accessible from IRuntime
+    // Also return them typed so config::generate() can populate IRuntime.merge_conflicts
+    let conflict_entries = multi_merge_conflicts.clone();
     if !multi_merge_conflicts.is_empty() {
         let entries: ResultLog = multi_merge_conflicts
             .into_iter()
@@ -733,7 +736,7 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         result_map.insert("MultiMerge".into(), entries);
     }
 
-    (config, exists_keys_set, result_map)
+    (config, exists_keys_set, result_map, conflict_entries)
 }
 
 #[allow(clippy::expect_used)]

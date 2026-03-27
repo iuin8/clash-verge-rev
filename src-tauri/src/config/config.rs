@@ -188,7 +188,7 @@ impl Config {
     }
 
     pub async fn generate() -> Result<()> {
-        let (mut config, exists_keys, logs) = enhance::enhance().await;
+        let (mut config, exists_keys, logs, conflicts) = enhance::enhance().await;
 
         sanitize_tunnels_proxy(&mut config);
 
@@ -197,6 +197,7 @@ impl Config {
                 config: Some(config),
                 exists_keys,
                 chain_logs: logs,
+                merge_conflicts: conflicts,
             }
         });
 

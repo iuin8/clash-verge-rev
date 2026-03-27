@@ -488,3 +488,48 @@ pub async fn get_next_update_time(uid: String) -> CmdResult<Option<i64>> {
     let next_time = timer.get_next_update_time(&uid).await;
     Ok(next_time)
 }
+
+// FORK: set the ordered list of profile UIDs to merge
+#[tauri::command]
+pub async fn set_merged_profiles(uids: Vec<std::string::String>) -> CmdResult {
+    let smart_uids: Vec<smartstring::alias::String> = uids.into_iter().map(|s| s.into()).collect();
+    Config::profiles()
+        .await
+        .with_data_modify(|mut profiles| async move {
+            profiles.patch_merged(Some(smart_uids));
+            profiles.save_file().await?;
+            Ok((profiles, ()))
+        })
+        .await
+        .stringify_err()?;
+    match feat::enhance_profiles().await {
+        Ok((true, _)) => {
+            handle::Handle::refresh_clash();
+            Ok(())
+        }
+        Ok((false, msg)) => Err(if msg.is_empty() { "enhance failed".into() } else { msg }),
+        Err(e) => Err(e.to_string().into()),
+    }
+}
+
+// FORK: clear the merged profile list (revert to single-profile mode)
+#[tauri::command]
+pub async fn clear_merged_profiles() -> CmdResult {
+    Config::profiles()
+        .await
+        .with_data_modify(|mut profiles| async move {
+            profiles.patch_merged(None);
+            profiles.save_file().await?;
+            Ok((profiles, ()))
+        })
+        .await
+        .stringify_err()?;
+    match feat::enhance_profiles().await {
+        Ok((true, _)) => {
+            handle::Handle::refresh_clash();
+            Ok(())
+        }
+        Ok((false, msg)) => Err(if msg.is_empty() { "enhance failed".into() } else { msg }),
+        Err(e) => Err(e.to_string().into()),
+    }
+}
