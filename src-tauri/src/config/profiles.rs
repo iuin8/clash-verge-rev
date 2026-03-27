@@ -17,6 +17,9 @@ pub struct IProfiles {
     /// same as PrfConfig.current
     pub current: Option<String>,
 
+    /// ordered uid list for multi-merge mode
+    pub merged: Option<Vec<String>>,
+
     /// profile list
     pub items: Option<Vec<PrfItem>>,
 }
@@ -94,6 +97,10 @@ impl IProfiles {
                 self.current = some_uid.cloned();
             }
         }
+    }
+
+    pub fn patch_merged(&mut self, uids: Option<Vec<String>>) {
+        self.merged = uids;
     }
 
     pub const fn get_current(&self) -> Option<&String> {
