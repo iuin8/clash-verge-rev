@@ -35,12 +35,15 @@ jobs:
 
           TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
           MAIN_COMMITS=$(git rev-list origin/main)
+          FA_COMMITS=$(git rev-list --remotes='origin/fa/v*' 2>/dev/null || true)
 
           if echo "$MAIN_COMMITS" | grep -q "$TAG_COMMIT"; then
             echo "✅ Tag $TAG_REF is from main branch"
+          elif echo "$FA_COMMITS" | grep -q "$TAG_COMMIT"; then
+            echo "✅ Tag $TAG_REF is from a fa/v* branch"
           else
-            echo "❌ Tag $TAG_REF is not from main branch"
-            echo "This release workflow only accepts tags from main branch."
+            echo "❌ Tag $TAG_REF is not from main branch or any fa/v* branch"
+            echo "This release workflow only accepts tags from main or fa/v* branches."
             exit 1
           fi
 
