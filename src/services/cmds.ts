@@ -563,3 +563,15 @@ export const isPortInUse = async (port: number) => {
     return false
   }
 }
+
+export async function setMergedProfiles(uids: string[]) {
+  return invoke<void>('set_merged_profiles', { uids })
+}
+
+export async function clearMergedProfiles() {
+  return invoke<void>('clear_merged_profiles')
+}
+
+export async function getMergeConflicts() {
+  return invoke<ConflictEntry[]>('get_merge_conflicts')
+}

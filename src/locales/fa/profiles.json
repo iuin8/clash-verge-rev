@@ -47,6 +47,16 @@
     },
     "title": "پروفایل‌ها"
   },
+  "merge": {
+    "activate": "Merge Activate",
+    "activated": "Profiles merged and activated",
+    "clear": "Clear merge",
+    "conflicts": {
+      "title": "Merge Conflicts",
+      "badge": "Show merge conflicts",
+      "empty": "No conflicts"
+    }
+  },
   "components": {
     "card": {
       "labels": {

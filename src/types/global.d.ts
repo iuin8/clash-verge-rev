@@ -296,9 +296,17 @@ interface IProfileOption {
   groups?: string
 }
 
+interface ConflictEntry {
+  field: string
+  name: string
+  source: string
+  reason: string
+}
+
 interface IProfilesConfig {
   current?: string
   items?: IProfileItem[]
+  merged?: string[]
 }
 
 interface IVergeTestItem {
