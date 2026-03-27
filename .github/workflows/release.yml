@@ -57,7 +57,7 @@ jobs:
 
           EXPECTED_TAG="v$PKG_VERSION"
 
-          if [[ "$TAG_REF" != "$EXPECTED_TAG" ]]; then
+          if [[ "$TAG_REF" != "$EXPECTED_TAG" && "$TAG_REF" != "$EXPECTED_TAG."* ]]; then
             echo "❌ Version mismatch:"
             echo "   Git tag       : $TAG_REF"
             echo "   package.json  : $EXPECTED_TAG"
