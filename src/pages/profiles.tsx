@@ -14,7 +14,6 @@ import {
   CheckBoxRounded,
   ClearRounded,
   ContentPasteRounded,
-  DeleteRounded,
   IndeterminateCheckBoxRounded,
   LocalFireDepartmentRounded,
   RefreshRounded,
@@ -698,6 +697,16 @@ const ProfilePage = () => {
     setSelectedProfiles(new Set(profileItems.map((item) => item.uid)))
   }
 
+  const onDoneMerge = useLockFn(async () => {
+    try {
+      await clearMergedProfiles()
+      await mutateProfiles()
+      setBatchMode(false)
+    } catch (err: any) {
+      showNotice.error(err)
+    }
+  })
+
   const clearAllSelections = () => {
     setSelectedProfiles(new Set())
   }
@@ -717,43 +726,6 @@ const ProfilePage = () => {
       return 'partial' // 部分选择
     }
   }
-
-  const deleteSelectedProfiles = useLockFn(async () => {
-    if (selectedProfiles.size === 0) return
-
-    try {
-      // Get all currently activating profiles
-      const currentActivating =
-        profiles.current && selectedProfiles.has(profiles.current)
-          ? [profiles.current]
-          : []
-
-      setActivatings((prev) => [...new Set([...prev, ...currentActivating])])
-
-      // Delete all selected profiles
-      for (const uid of selectedProfiles) {
-        await deleteProfile(uid)
-      }
-
-      await mutateProfiles()
-      await mutateLogs()
-
-      // If any deleted profile was current, enhance profiles
-      if (currentActivating.length > 0) {
-        await onEnhance(false)
-      }
-
-      // Clear selections and exit batch mode
-      setSelectedProfiles(new Set())
-      setBatchMode(false)
-
-      showNotice.success('profiles.page.feedback.notifications.batchDeleted')
-    } catch (err: any) {
-      showNotice.error(err)
-    } finally {
-      setActivatings([])
-    }
-  })
 
   // FORK: Load conflicts on mount/refresh when merged mode is active
   const mergedUids = profiles?.merged ?? []
@@ -933,15 +905,6 @@ const ProfilePage = () => {
                   <CheckBoxOutlineBlankRounded />
                 )}
               </IconButton>
-              <IconButton
-                size="small"
-                color="error"
-                title={t('profiles.page.batch.actions.delete')}
-                onClick={deleteSelectedProfiles}
-                disabled={selectedProfiles.size === 0}
-              >
-                <DeleteRounded />
-              </IconButton>
               {/* FORK: Merge activate button */}
               <Button
                 size="small"
@@ -953,7 +916,10 @@ const ProfilePage = () => {
                     await setMergedProfiles(uids)
                     const c = await getMergeConflicts()
                     setConflicts(c)
-                    toggleBatchMode()
+                    showNotice.success(
+                      'profiles.page.feedback.notifications.profileReactivated',
+                      1000,
+                    )
                   } catch (err: any) {
                     showNotice.error(err)
                   }
@@ -961,24 +927,9 @@ const ProfilePage = () => {
               >
                 {t('profiles.merge.activate')}
               </Button>
-              {/* Issue 1: Done is only shown when nothing is selected; clears merged state */}
-              {selectedProfiles.size === 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={async () => {
-                    try {
-                      await clearMergedProfiles()
-                      await mutateProfiles()
-                    } catch {
-                      // best-effort
-                    }
-                    setBatchMode(false)
-                  }}
-                >
-                  {t('profiles.page.batch.actions.done')}
-                </Button>
-              )}
+              <Button size="small" variant="outlined" onClick={onDoneMerge}>
+                {t('profiles.page.batch.actions.done')}
+              </Button>
               <Box
                 sx={{ flex: 1, textAlign: 'right', color: 'text.secondary' }}
               >

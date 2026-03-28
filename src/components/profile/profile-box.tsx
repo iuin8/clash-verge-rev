@@ -1,10 +1,13 @@
 import { alpha, Box, styled } from '@mui/material'
 
-export const ProfileBox = styled(Box)(({
+// FORK: isPrimary distinguishes the primary card in multi-merge mode with warning colour
+export const ProfileBox = styled(Box)<{ isPrimary?: boolean }>(({
   theme,
   'aria-selected': selected,
+  isPrimary,
 }) => {
-  const { mode, primary, text } = theme.palette
+  const { mode, primary, warning, text } = theme.palette
+  const accentColor = isPrimary && selected ? warning.main : primary.main
   const key = `${mode}-${!!selected}`
 
   const backgroundColor = mode === 'light' ? '#ffffff' : '#282A36'
@@ -16,31 +19,15 @@ export const ProfileBox = styled(Box)(({
     'dark-false': alpha(text.secondary, 0.65),
   }[key]!
 
-  const h2color = {
-    'light-true': primary.main,
-    'light-false': text.primary,
-    'dark-true': primary.main,
-    'dark-false': text.primary,
-  }[key]!
+  const h2color = selected ? accentColor : text.primary
 
-  const borderSelect = {
-    'light-true': {
-      borderLeft: `3px solid ${primary.main}`,
-      width: `calc(100% + 3px)`,
-      marginLeft: `-3px`,
-    },
-    'light-false': {
-      width: '100%',
-    },
-    'dark-true': {
-      borderLeft: `3px solid ${primary.main}`,
-      width: `calc(100% + 3px)`,
-      marginLeft: `-3px`,
-    },
-    'dark-false': {
-      width: '100%',
-    },
-  }[key]
+  const borderSelect = selected
+    ? {
+        borderLeft: `3px solid ${accentColor}`,
+        width: `calc(100% + 3px)`,
+        marginLeft: `-3px`,
+      }
+    : { width: '100%' }
 
   return {
     position: 'relative',

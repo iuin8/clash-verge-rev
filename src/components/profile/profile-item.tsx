@@ -640,11 +640,16 @@ export const ProfileItem = (props: Props) => {
     >
       <ProfileBox
         aria-selected={selected}
+        isPrimary={isPrimary}
         onClick={(e) => {
           // 如果正在激活中，阻止重复点击
           if (activating) {
             e.preventDefault()
             e.stopPropagation()
+            return
+          }
+          if (batchMode) {
+            onSelectionChange?.()
             return
           }
           onSelect(false)
