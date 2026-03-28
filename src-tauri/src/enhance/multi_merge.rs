@@ -93,8 +93,8 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
                         // Group exists: merge its member list
                         if let Some(existing) = base_seq.iter_mut().find(|eg| {
                             eg.as_mapping().and_then(|m| m.get("name")).and_then(|v| v.as_str()) == Some(gname)
-                        }) {
-                            if let Some(ex_map) = existing.as_mapping_mut() {
+                        })
+                            && let Some(ex_map) = existing.as_mapping_mut() {
                                 let supp_members: Vec<Value> = g
                                     .as_mapping()
                                     .and_then(|m| m.get("proxies"))
@@ -121,7 +121,6 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
                                 }
                             }
                         }
-                    }
                 }
                 for item in groups_to_prepend.into_iter().rev() {
                     base_seq.insert(0, item);
@@ -157,11 +156,12 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     fn mapping(yaml: &str) -> Mapping {
-        serde_yaml_ng::from_str(yaml).unwrap()
+        serde_yaml_ng::from_str(yaml).expect("test YAML is valid")
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn single_config_returned_as_is() {
         let cfg = mapping("proxies:\n  - name: px1\n    type: ss");
-        let (result, conflicts) = multi_profile_merge(&[cfg.clone()], &["primary"]);
+        let (result, conflicts) = multi_profile_merge(std::slice::from_ref(&cfg), &["primary"]);
         assert_eq!(result, cfg);
         assert!(conflicts.is_empty());
     }
@@ -221,6 +221,6 @@ mod tests {
         let supp = mapping("dns:\n  enable: false\nproxies:\n  - name: p2\n    type: vmess");
         let (result, _) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
         let dns = result.get("dns").unwrap().as_mapping().unwrap();
-        assert_eq!(dns.get("enable").unwrap().as_bool().unwrap(), true);
+        assert!(dns.get("enable").unwrap().as_bool().unwrap());
     }
 }

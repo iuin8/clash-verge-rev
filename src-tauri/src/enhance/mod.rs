@@ -159,8 +159,8 @@ async fn collect_profile_items() -> ProfileItems {
                 let mut configs: Vec<Mapping> = Vec::new();
                 let mut names: Vec<std::string::String> = Vec::new();
                 for uid in merged_uids {
-                    if let Some(item) = items.iter().find(|i| i.uid.as_deref() == Some(uid.as_str())) {
-                        if let Some(file) = item.file.as_ref() {
+                    if let Some(item) = items.iter().find(|i| i.uid.as_deref() == Some(uid.as_str()))
+                        && let Some(file) = item.file.as_ref() {
                             let path = match dirs::app_profiles_dir() {
                                 Ok(d) => d.join(file.as_str()),
                                 Err(_) => continue,
@@ -176,7 +176,6 @@ async fn collect_profile_items() -> ProfileItems {
                                 }
                             }
                         }
-                    }
                 }
                 if configs.is_empty() {
                     None
