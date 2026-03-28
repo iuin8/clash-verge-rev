@@ -7,6 +7,7 @@ import {
   CheckBoxOutlineBlankRounded,
 } from '@mui/icons-material'
 import {
+  Badge,
   Box,
   Typography,
   LinearProgress,
@@ -60,6 +61,9 @@ interface Props {
   batchMode?: boolean
   isSelected?: boolean
   onSelectionChange?: () => void
+  isPrimary?: boolean
+  conflictCount?: number
+  onShowConflicts?: () => void
 }
 
 export const ProfileItem = (props: Props) => {
@@ -75,6 +79,9 @@ export const ProfileItem = (props: Props) => {
     batchMode,
     isSelected,
     onSelectionChange,
+    isPrimary,
+    conflictCount,
+    onShowConflicts,
   } = props
   const {
     attributes,
@@ -714,16 +721,32 @@ export const ProfileItem = (props: Props) => {
               />
             </Box>
 
-            <Typography
-              width={batchMode ? 'calc(100% - 56px)' : 'calc(100% - 36px)'}
-              sx={{ fontSize: '18px', fontWeight: '600', lineHeight: '26px' }}
-              variant="h6"
-              component="h2"
-              noWrap
-              title={name}
+            <Badge
+              badgeContent={isPrimary && conflictCount ? conflictCount : 0}
+              color="warning"
+              max={99}
+              onClick={(e) => {
+                if (isPrimary && conflictCount && onShowConflicts) {
+                  e.stopPropagation()
+                  onShowConflicts()
+                }
+              }}
+              sx={{
+                width: batchMode ? 'calc(100% - 56px)' : 'calc(100% - 36px)',
+                cursor: isPrimary && conflictCount ? 'pointer' : 'inherit',
+              }}
             >
-              {name}
-            </Typography>
+              <Typography
+                width="100%"
+                sx={{ fontSize: '18px', fontWeight: '600', lineHeight: '26px' }}
+                variant="h6"
+                component="h2"
+                noWrap
+                title={name}
+              >
+                {name}
+              </Typography>
+            </Badge>
           </Box>
 
           {/* only if has url can it be updated */}

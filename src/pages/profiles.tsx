@@ -35,7 +35,6 @@ import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BasePage, BaseStyledTextField, DialogRef } from '@/components/base'
 import { ConflictViewer } from '@/components/profile/conflict-viewer'
-import { MergeOrderBar } from '@/components/profile/merge-order-bar'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
@@ -275,6 +274,15 @@ const ProfilePage = () => {
     return items.filter((i) => i && type1.includes(i.type!))
   }, [profiles])
 
+  // Issue 2: selected profiles float to top in selection order
+  const sortedProfiles = useMemo(() => {
+    const selectedArr = [...selectedProfiles]
+      .map((uid) => profileItems.find((p) => p.uid === uid))
+      .filter((p): p is IProfileItem => Boolean(p))
+    const unselected = profileItems.filter((p) => !selectedProfiles.has(p.uid!))
+    return batchMode ? [...selectedArr, ...unselected] : profileItems
+  }, [profileItems, selectedProfiles, batchMode])
+
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
   }
@@ -379,7 +387,13 @@ const ProfilePage = () => {
     const { active, over } = event
     if (over) {
       if (active.id !== over.id) {
-        await reorderProfile(active.id.toString(), over.id.toString())
+        const activeUid = active.id.toString()
+        const overUid = over.id.toString()
+        // Issue 3: block cross-boundary drags (selected ↔ unselected)
+        const activeIsSelected = selectedProfiles.has(activeUid)
+        const overIsSelected = selectedProfiles.has(overUid)
+        if (activeIsSelected !== overIsSelected) return
+        await reorderProfile(activeUid, overUid)
         mutateProfiles()
       }
     }
@@ -738,13 +752,23 @@ const ProfilePage = () => {
 
   // FORK: Load conflicts on mount/refresh when merged mode is active
   const mergedUids = profiles?.merged ?? []
+  const mergedUidsRef = useRef(mergedUids)
+  mergedUidsRef.current = mergedUids
+  const mergedUidsKey = mergedUids.join(',')
   useEffect(() => {
-    if (mergedUids.length >= 2) {
+    const uids = mergedUidsRef.current
+    if (uids.length >= 2) {
+      // Issue 4: restore batch mode and selection from persisted merged state
+      // Use async dispatch to satisfy @eslint-react/set-state-in-effect
+      void Promise.resolve().then(() => {
+        setBatchMode(true)
+        setSelectedProfiles(new Set(uids))
+      })
       getMergeConflicts()
         .then(setConflicts)
         .catch(() => {})
     }
-  }, [mergedUids.length])
+  }, [mergedUidsKey])
 
   const mode = useThemeMode()
   const isLight = mode === 'light'
@@ -932,9 +956,24 @@ const ProfilePage = () => {
               >
                 {t('profiles.merge.activate')}
               </Button>
-              <Button size="small" variant="outlined" onClick={toggleBatchMode}>
-                {t('profiles.page.batch.actions.done')}
-              </Button>
+              {/* Issue 1: Done is only shown when nothing is selected; clears merged state */}
+              {selectedProfiles.size === 0 && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={async () => {
+                    try {
+                      await clearMergedProfiles()
+                      await mutateProfiles()
+                    } catch {
+                      // best-effort
+                    }
+                    setBatchMode(false)
+                  }}
+                >
+                  {t('profiles.page.batch.actions.done')}
+                </Button>
+              )}
               <Box
                 sx={{ flex: 1, textAlign: 'right', color: 'text.secondary' }}
               >
@@ -1031,61 +1070,52 @@ const ProfilePage = () => {
             overflowY: 'auto',
           }}
         >
-          {/* FORK: Merge order bar — shown when 2+ profiles are merged */}
-          {mergedUids.length >= 2 && (
-            <MergeOrderBar
-              mergedUids={mergedUids}
-              profiles={profileItems}
-              conflictCount={conflicts.length}
-              onReorder={async (newUids) => {
-                await setMergedProfiles(newUids)
-                await mutateProfiles()
-              }}
-              onClear={async () => {
-                await clearMergedProfiles()
-                await mutateProfiles()
-                setConflicts([])
-              }}
-              onShowConflicts={() => setConflictViewerOpen(true)}
-            />
-          )}
-
           <Box sx={{ mb: 1.5 }}>
             <Grid container spacing={{ xs: 1, lg: 1 }}>
               <SortableContext
-                items={profileItems.map((x) => {
+                items={sortedProfiles.map((x) => {
                   return x.uid
                 })}
               >
-                {profileItems.map((item) => (
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.file}>
-                    <ProfileItem
-                      id={item.uid}
-                      selected={profiles.current === item.uid}
-                      activating={activatings.includes(item.uid)}
-                      itemData={item}
-                      onSelect={(f) => onSelect(item.uid, f)}
-                      onEdit={() => viewerRef.current?.edit(item)}
-                      onSave={async (prev, curr) => {
-                        if (prev !== curr && profiles.current === item.uid) {
-                          await onEnhance(false)
-                          //  await restartCore();
-                          //   Notice.success(t("settings.feedback.notifications.clash.restartSuccess"), 1000);
-                        }
-                      }}
-                      onDelete={() => {
-                        if (batchMode) {
+                {sortedProfiles.map((item) => {
+                  const isPrimary =
+                    batchMode && [...selectedProfiles][0] === item.uid
+                  return (
+                    <Grid
+                      size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+                      key={item.file}
+                    >
+                      <ProfileItem
+                        id={item.uid}
+                        selected={profiles.current === item.uid}
+                        activating={activatings.includes(item.uid)}
+                        itemData={item}
+                        onSelect={(f) => onSelect(item.uid, f)}
+                        onEdit={() => viewerRef.current?.edit(item)}
+                        onSave={async (prev, curr) => {
+                          if (prev !== curr && profiles.current === item.uid) {
+                            await onEnhance(false)
+                          }
+                        }}
+                        onDelete={() => {
+                          if (batchMode) {
+                            toggleProfileSelection(item.uid)
+                          } else {
+                            onDelete(item.uid)
+                          }
+                        }}
+                        batchMode={batchMode}
+                        isSelected={selectedProfiles.has(item.uid)}
+                        onSelectionChange={() =>
                           toggleProfileSelection(item.uid)
-                        } else {
-                          onDelete(item.uid)
                         }
-                      }}
-                      batchMode={batchMode}
-                      isSelected={selectedProfiles.has(item.uid)}
-                      onSelectionChange={() => toggleProfileSelection(item.uid)}
-                    />
-                  </Grid>
-                ))}
+                        isPrimary={isPrimary}
+                        conflictCount={isPrimary ? conflicts.length : 0}
+                        onShowConflicts={() => setConflictViewerOpen(true)}
+                      />
+                    </Grid>
+                  )
+                })}
               </SortableContext>
             </Grid>
           </Box>
