@@ -93,34 +93,34 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
                         // Group exists: merge its member list
                         if let Some(existing) = base_seq.iter_mut().find(|eg| {
                             eg.as_mapping().and_then(|m| m.get("name")).and_then(|v| v.as_str()) == Some(gname)
-                        })
-                            && let Some(ex_map) = existing.as_mapping_mut() {
-                                let supp_members: Vec<Value> = g
-                                    .as_mapping()
-                                    .and_then(|m| m.get("proxies"))
-                                    .and_then(|v| v.as_sequence())
-                                    .cloned()
-                                    .unwrap_or_default();
+                        }) && let Some(ex_map) = existing.as_mapping_mut()
+                        {
+                            let supp_members: Vec<Value> = g
+                                .as_mapping()
+                                .and_then(|m| m.get("proxies"))
+                                .and_then(|v| v.as_sequence())
+                                .cloned()
+                                .unwrap_or_default();
 
-                                let ex_members = ex_map
-                                    .entry(Value::String("proxies".into()))
-                                    .or_insert_with(|| Value::Sequence(vec![]));
-                                if let Value::Sequence(ex_seq) = ex_members {
-                                    let existing_members: Vec<String> =
-                                        ex_seq.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-                                    let mut members_to_prepend: Vec<Value> = vec![];
-                                    for m in supp_members.iter() {
-                                        let mname = m.as_str().unwrap_or("");
-                                        if !existing_members.contains(&mname.to_string()) {
-                                            members_to_prepend.push(m.clone());
-                                        }
+                            let ex_members = ex_map
+                                .entry(Value::String("proxies".into()))
+                                .or_insert_with(|| Value::Sequence(vec![]));
+                            if let Value::Sequence(ex_seq) = ex_members {
+                                let existing_members: Vec<String> =
+                                    ex_seq.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+                                let mut members_to_prepend: Vec<Value> = vec![];
+                                for m in supp_members.iter() {
+                                    let mname = m.as_str().unwrap_or("");
+                                    if !existing_members.contains(&mname.to_string()) {
+                                        members_to_prepend.push(m.clone());
                                     }
-                                    for item in members_to_prepend.into_iter().rev() {
-                                        ex_seq.insert(0, item);
-                                    }
+                                }
+                                for item in members_to_prepend.into_iter().rev() {
+                                    ex_seq.insert(0, item);
                                 }
                             }
                         }
+                    }
                 }
                 for item in groups_to_prepend.into_iter().rev() {
                     base_seq.insert(0, item);

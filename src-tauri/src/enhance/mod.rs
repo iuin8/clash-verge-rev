@@ -160,22 +160,23 @@ async fn collect_profile_items() -> ProfileItems {
                 let mut names: Vec<std::string::String> = Vec::new();
                 for uid in merged_uids {
                     if let Some(item) = items.iter().find(|i| i.uid.as_deref() == Some(uid.as_str()))
-                        && let Some(file) = item.file.as_ref() {
-                            let path = match dirs::app_profiles_dir() {
-                                Ok(d) => d.join(file.as_str()),
-                                Err(_) => continue,
-                            };
-                            match crate::utils::help::read_mapping(&path).await {
-                                Ok(mapping) => {
-                                    let display_name = item.name.as_deref().unwrap_or(uid.as_str()).to_owned();
-                                    configs.push(mapping);
-                                    names.push(display_name);
-                                }
-                                Err(err) => {
-                                    logging!(warn, Type::Config, "multi-merge: failed to load profile {uid}: {err}");
-                                }
+                        && let Some(file) = item.file.as_ref()
+                    {
+                        let path = match dirs::app_profiles_dir() {
+                            Ok(d) => d.join(file.as_str()),
+                            Err(_) => continue,
+                        };
+                        match crate::utils::help::read_mapping(&path).await {
+                            Ok(mapping) => {
+                                let display_name = item.name.as_deref().unwrap_or(uid.as_str()).to_owned();
+                                configs.push(mapping);
+                                names.push(display_name);
+                            }
+                            Err(err) => {
+                                logging!(warn, Type::Config, "multi-merge: failed to load profile {uid}: {err}");
                             }
                         }
+                    }
                 }
                 if configs.is_empty() {
                     None
