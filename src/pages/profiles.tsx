@@ -283,6 +283,11 @@ const ProfilePage = () => {
     return batchMode ? [...selectedArr, ...unselected] : profileItems
   }, [profileItems, selectedProfiles, batchMode])
 
+  const primaryUid =
+    batchMode && selectedProfiles.size > 0
+      ? (sortedProfiles.find((p) => selectedProfiles.has(p.uid!))?.uid ?? null)
+      : null
+
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
   }
@@ -766,7 +771,7 @@ const ProfilePage = () => {
       })
       getMergeConflicts()
         .then(setConflicts)
-        .catch(() => {})
+        .catch((e) => console.error('[merge] failed to load conflicts', e))
     }
   }, [mergedUidsKey])
 
@@ -1078,8 +1083,7 @@ const ProfilePage = () => {
                 })}
               >
                 {sortedProfiles.map((item) => {
-                  const isPrimary =
-                    batchMode && [...selectedProfiles][0] === item.uid
+                  const isPrimary = primaryUid === item.uid
                   return (
                     <Grid
                       size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
