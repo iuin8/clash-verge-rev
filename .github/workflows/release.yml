@@ -142,6 +142,8 @@ jobs:
   release:
     name: Release Build
     needs: [check_tag_version]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
