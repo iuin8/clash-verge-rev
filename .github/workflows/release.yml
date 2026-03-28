@@ -493,7 +493,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-update:
-    if: false # FORK: disabled, upstream updater endpoint not used
+    if: ${{ !contains(github.ref_name, '-rc') }}
     name: Release Update
     runs-on: ubuntu-latest
     needs: [update_tag]
