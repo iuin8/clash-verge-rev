@@ -1087,7 +1087,10 @@ const ProfilePage = () => {
                     >
                       <ProfileItem
                         id={item.uid}
-                        selected={profiles.current === item.uid}
+                        selected={
+                          profiles.current === item.uid ||
+                          (batchMode && selectedProfiles.has(item.uid!))
+                        }
                         activating={activatings.includes(item.uid)}
                         itemData={item}
                         onSelect={(f) => onSelect(item.uid, f)}
