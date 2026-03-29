@@ -1,11 +1,11 @@
 import { alpha, Box, styled } from '@mui/material'
 
 // FORK: isPrimary distinguishes the primary card in multi-merge mode with warning colour
-export const ProfileBox = styled(Box)<{ isPrimary?: boolean }>(({
-  theme,
-  'aria-selected': selected,
-  isPrimary,
-}) => {
+// FORK: isDragging adds visual feedback during drag operations
+export const ProfileBox = styled(Box)<{
+  isPrimary?: boolean
+  isDragging?: boolean
+}>(({ theme, 'aria-selected': selected, isPrimary, isDragging }) => {
   const { mode, primary, warning, text } = theme.palette
   const accentColor = isPrimary && selected ? warning.main : primary.main
   const key = `${mode}-${!!selected}`
@@ -41,5 +41,10 @@ export const ProfileBox = styled(Box)<{ isPrimary?: boolean }>(({
     borderRadius: '8px',
     color,
     '& h2': { color: h2color },
+    ...(isDragging && {
+      boxShadow: theme.shadows[8],
+      transform: 'scale(1.02)',
+      opacity: 0.9,
+    }),
   }
 })

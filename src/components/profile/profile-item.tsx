@@ -609,19 +609,17 @@ export const ProfileItem = (props: Props) => {
   return (
     <Box
       ref={setNodeRef}
-      {...attributes}
       sx={{
         position: 'relative',
-        transform: CSS.Transform.toString(
-          transform ? { ...transform, scaleX: 1, scaleY: 1 } : null,
-        ),
-        transition: isDragging ? 'none' : transition,
-        opacity: isDragging ? 0 : 1,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 'calc(infinity)' : undefined,
       }}
     >
       <ProfileBox
         aria-selected={selected}
         isPrimary={isPrimary}
+        isDragging={isDragging}
         onClick={(e) => {
           if (activating) {
             e.preventDefault()
@@ -668,12 +666,15 @@ export const ProfileItem = (props: Props) => {
               sx={{
                 display: 'flex',
                 margin: 'auto 0',
+                cursor: isDragging ? 'grabbing' : 'grab',
+                opacity: isDragging ? 0.5 : 1,
               }}
+              {...attributes}
               {...listeners}
             >
               <DragIndicatorRounded
                 sx={[
-                  { cursor: 'move', marginLeft: '-6px' },
+                  { cursor: 'inherit', marginLeft: '-6px' },
                   ({ palette: { text } }) => {
                     return { color: text.primary }
                   },

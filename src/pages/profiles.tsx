@@ -2,8 +2,6 @@ import {
   closestCenter,
   DndContext,
   DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -107,7 +105,6 @@ const ProfilePage = () => {
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
     () => new Set(),
   )
-  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [conflictViewerOpen, setConflictViewerOpen] = useState(false)
   const [conflicts, setConflicts] = useState<ConflictEntry[]>([])
 
@@ -285,10 +282,6 @@ const ProfilePage = () => {
   const primaryUid =
     selectedProfiles.size >= 2 ? (sortedProfiles[0]?.uid ?? null) : null
 
-  const draggingItem = draggingId
-    ? (profileItems.find((p) => p.uid === draggingId) ?? null)
-    : null
-
   const currentActivatings = profiles.current ? [profiles.current] : []
 
   const onImport = async () => {
@@ -387,12 +380,7 @@ const ProfilePage = () => {
     }
   }
 
-  const onDragStart = (event: DragStartEvent) => {
-    setDraggingId(event.active.id.toString())
-  }
-
   const onDragEnd = async (event: DragEndEvent) => {
-    setDraggingId(null)
     const { active, over } = event
     if (over && active.id !== over.id) {
       const activeUid = active.id.toString()
@@ -925,7 +913,6 @@ const ProfilePage = () => {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
         <Box
@@ -1005,20 +992,6 @@ const ProfilePage = () => {
             </Grid>
           </Box>
         </Box>
-        <DragOverlay dropAnimation={null}>
-          {draggingItem ? (
-            <ProfileItem
-              id={draggingItem.uid}
-              selected={selectedProfiles.has(draggingItem.uid!)}
-              activating={false}
-              itemData={draggingItem}
-              onSelect={() => {}}
-              onEdit={() => {}}
-              onDelete={() => {}}
-              onToggle={() => {}}
-            />
-          ) : null}
-        </DragOverlay>
       </DndContext>
 
       <ProfileViewer
