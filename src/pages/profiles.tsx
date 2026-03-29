@@ -2,7 +2,6 @@ import {
   closestCenter,
   DndContext,
   DragEndEvent,
-  DragOverlay,
   DragStartEvent,
   KeyboardSensor,
   PointerSensor,
@@ -307,14 +306,6 @@ const ProfilePage = () => {
   const primaryUid =
     selectedProfiles.size >= 2 ? (activeProfiles[0]?.uid ?? null) : null
 
-  const draggingItem = useMemo(
-    () =>
-      draggingId
-        ? (profileItems.find((p) => p.uid === draggingId) ?? null)
-        : null,
-    [draggingId, profileItems],
-  )
-
   const currentActivatings = profiles.current ? [profiles.current] : []
 
   const onImport = async () => {
@@ -414,7 +405,12 @@ const ProfilePage = () => {
   }
 
   const onDragStart = (event: DragStartEvent) => {
-    setDraggingId(event.active.id.toString())
+    const id = event.active.id.toString()
+    // Seed localActiveOrder on first drag so active zone never collapses to empty
+    setLocalActiveOrder((prev) =>
+      prev.length > 0 ? prev : activeProfiles.map((p) => p.uid!),
+    )
+    setDraggingId(id)
   }
 
   const onDragEnd = async (event: DragEndEvent) => {
@@ -1102,23 +1098,6 @@ const ProfilePage = () => {
             </Grid>
           </Box>
         </Box>
-        <DragOverlay>
-          {draggingItem && (
-            <ProfileItem
-              id={draggingItem.uid!}
-              selected={selectedProfiles.has(draggingItem.uid!)}
-              activating={false}
-              itemData={draggingItem}
-              onSelect={() => {}}
-              onEdit={() => {}}
-              onDelete={() => {}}
-              isPrimary={primaryUid === draggingItem.uid}
-              conflictCount={
-                primaryUid === draggingItem.uid ? conflicts.length : 0
-              }
-            />
-          )}
-        </DragOverlay>
       </DndContext>
 
       <ProfileViewer
