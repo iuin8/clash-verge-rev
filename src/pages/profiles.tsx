@@ -283,7 +283,7 @@ const ProfilePage = () => {
     // During drag: use localActiveOrder for snap-back-free reordering
     // Otherwise: derive from selectedProfiles, preserving any prior local order
     const baseOrder = draggingId
-      ? localActiveOrder
+      ? localActiveOrder.filter((uid) => selectedProfiles.has(uid))
       : (() => {
           const preserved = localActiveOrder.filter((uid) =>
             selectedProfiles.has(uid),
