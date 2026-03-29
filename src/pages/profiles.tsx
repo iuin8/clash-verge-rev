@@ -123,6 +123,9 @@ const ProfilePage = () => {
   // 待处理请求跟踪，取消排队的请求
   const pendingRequestRef = useRef<Promise<any> | null>(null)
 
+  // 防止 toggle 进行中 hydration effect 回写旧状态
+  const isTogglingRef = useRef(false)
+
   // 处理profile切换中断
   const handleProfileInterrupt = useCallback(
     (previousSwitching: string, newProfile: string) => {
@@ -680,6 +683,7 @@ const ProfilePage = () => {
       newSet.add(uid)
     }
     const prevSet = selectedProfiles
+    isTogglingRef.current = true
     setSelectedProfiles(newSet)
     try {
       if (newSet.size === 1) {
@@ -694,6 +698,8 @@ const ProfilePage = () => {
     } catch (err: any) {
       setSelectedProfiles(prevSet)
       showNotice.error(err)
+    } finally {
+      isTogglingRef.current = false
     }
   })
 
@@ -704,6 +710,7 @@ const ProfilePage = () => {
   )
   const currentUid = profiles?.current ?? ''
   useEffect(() => {
+    if (isTogglingRef.current) return
     const uids = mergedUidsKey ? mergedUidsKey.split(',') : []
     if (uids.length >= 2) {
       void Promise.resolve().then(() => {

@@ -608,6 +608,8 @@ export const ProfileItem = (props: Props) => {
 
   return (
     <Box
+      ref={setNodeRef}
+      {...attributes}
       sx={{
         position: 'relative',
         transform: CSS.Transform.toString(
@@ -663,12 +665,10 @@ export const ProfileItem = (props: Props) => {
         <Box position="relative">
           <Box sx={{ display: 'flex', justifyContent: 'start' }}>
             <Box
-              ref={setNodeRef}
               sx={{
                 display: 'flex',
                 margin: 'auto 0',
               }}
-              {...attributes}
               {...listeners}
             >
               <DragIndicatorRounded
