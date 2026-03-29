@@ -1,11 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import {
-  RefreshRounded,
-  DragIndicatorRounded,
-  CheckBoxRounded,
-  CheckBoxOutlineBlankRounded,
-} from '@mui/icons-material'
+import { RefreshRounded, DragIndicatorRounded } from '@mui/icons-material'
 import {
   Badge,
   Box,
@@ -58,9 +53,7 @@ interface Props {
   onEdit: () => void
   onSave?: (prev?: string, curr?: string) => void
   onDelete: () => void
-  batchMode?: boolean
-  isSelected?: boolean
-  onSelectionChange?: () => void
+  onToggle?: () => void
   isPrimary?: boolean
   conflictCount?: number
   onShowConflicts?: () => void
@@ -76,9 +69,7 @@ export const ProfileItem = (props: Props) => {
     onEdit,
     onSave,
     onDelete,
-    batchMode,
-    isSelected,
-    onSelectionChange,
+    onToggle,
     isPrimary,
     conflictCount,
     onShowConflicts,
@@ -490,14 +481,7 @@ export const ProfileItem = (props: Props) => {
       label: menuLabels.delete,
       handler: () => {
         setAnchorEl(null)
-        if (batchMode) {
-          // If in batch mode, just toggle selection instead of showing delete confirmation
-          if (onSelectionChange) {
-            onSelectionChange()
-          }
-        } else {
-          setConfirmOpen(true)
-        }
+        setConfirmOpen(true)
       },
       disabled: false,
     },
@@ -552,14 +536,7 @@ export const ProfileItem = (props: Props) => {
       label: menuLabels.delete,
       handler: () => {
         setAnchorEl(null)
-        if (batchMode) {
-          // If in batch mode, just toggle selection instead of showing delete confirmation
-          if (onSelectionChange) {
-            onSelectionChange()
-          }
-        } else {
-          setConfirmOpen(true)
-        }
+        setConfirmOpen(true)
       },
       disabled: false,
     },
@@ -633,26 +610,23 @@ export const ProfileItem = (props: Props) => {
     <Box
       sx={{
         position: 'relative',
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 'calc(infinity)' : undefined,
+        transform: CSS.Transform.toString(
+          transform ? { ...transform, scaleX: 1, scaleY: 1 } : null,
+        ),
+        transition: isDragging ? 'none' : transition,
+        opacity: isDragging ? 0 : 1,
       }}
     >
       <ProfileBox
         aria-selected={selected}
         isPrimary={isPrimary}
         onClick={(e) => {
-          // 如果正在激活中，阻止重复点击
           if (activating) {
             e.preventDefault()
             e.stopPropagation()
             return
           }
-          if (batchMode) {
-            onSelectionChange?.()
-            return
-          }
-          onSelect(false)
+          onToggle?.()
         }}
         onContextMenu={(event) => {
           const { clientX, clientY } = event
@@ -688,30 +662,11 @@ export const ProfileItem = (props: Props) => {
         )}
         <Box position="relative">
           <Box sx={{ display: 'flex', justifyContent: 'start' }}>
-            {batchMode && (
-              <IconButton
-                size="small"
-                sx={{ padding: '2px', marginRight: '4px', marginLeft: '-8px' }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (onSelectionChange) {
-                    onSelectionChange()
-                  }
-                }}
-              >
-                {isSelected ? (
-                  <CheckBoxRounded color="primary" />
-                ) : (
-                  <CheckBoxOutlineBlankRounded />
-                )}
-              </IconButton>
-            )}
             <Box
               ref={setNodeRef}
               sx={{
                 display: 'flex',
                 margin: 'auto 0',
-                ...(batchMode && { marginLeft: '-4px' }),
               }}
               {...attributes}
               {...listeners}
@@ -737,7 +692,7 @@ export const ProfileItem = (props: Props) => {
                 }
               }}
               sx={{
-                width: batchMode ? 'calc(100% - 56px)' : 'calc(100% - 36px)',
+                width: 'calc(100% - 36px)',
                 cursor: isPrimary && conflictCount ? 'pointer' : 'inherit',
               }}
             >

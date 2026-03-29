@@ -3,6 +3,7 @@ import {
   DndContext,
   DragEndEvent,
   DragOverlay,
+  DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -10,11 +11,8 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import {
-  CheckBoxOutlineBlankRounded,
-  CheckBoxRounded,
   ClearRounded,
   ContentPasteRounded,
-  IndeterminateCheckBoxRounded,
   LocalFireDepartmentRounded,
   RefreshRounded,
   TextSnippetOutlined,
@@ -105,13 +103,11 @@ const ProfilePage = () => {
   const [activatings, setActivatings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Batch selection states
-  const [batchMode, setBatchMode] = useState(false)
+  // FORK: Multi-profile merge state — selectedProfiles always mirrors active state
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
     () => new Set(),
   )
-
-  // FORK: Multi-profile merge state
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [conflictViewerOpen, setConflictViewerOpen] = useState(false)
   const [conflicts, setConflicts] = useState<ConflictEntry[]>([])
 
@@ -273,23 +269,24 @@ const ProfilePage = () => {
     return items.filter((i) => i && type1.includes(i.type!))
   }, [profiles])
 
-  // Issue 2: selected profiles float to top in selection order
+  // Float selected profiles to top when 2+ are active (merged mode)
   const sortedProfiles = useMemo(() => {
+    if (selectedProfiles.size < 2) return profileItems
     const selectedArr = [...selectedProfiles]
       .map((uid) => profileItems.find((p) => p.uid === uid))
       .filter((p): p is IProfileItem => Boolean(p))
     const unselected = profileItems.filter((p) => !selectedProfiles.has(p.uid!))
-    return batchMode ? [...selectedArr, ...unselected] : profileItems
-  }, [profileItems, selectedProfiles, batchMode])
+    return [...selectedArr, ...unselected]
+  }, [profileItems, selectedProfiles])
 
   const primaryUid =
-    batchMode && selectedProfiles.size > 0
-      ? (sortedProfiles.find((p) => selectedProfiles.has(p.uid!))?.uid ?? null)
-      : null
+    selectedProfiles.size >= 2 ? (sortedProfiles[0]?.uid ?? null) : null
 
-  const currentActivatings = () => {
-    return [...new Set([profiles.current ?? ''])].filter(Boolean)
-  }
+  const draggingItem = draggingId
+    ? (profileItems.find((p) => p.uid === draggingId) ?? null)
+    : null
+
+  const currentActivatings = profiles.current ? [profiles.current] : []
 
   const onImport = async () => {
     if (!url) return
@@ -387,19 +384,21 @@ const ProfilePage = () => {
     }
   }
 
+  const onDragStart = (event: DragStartEvent) => {
+    setDraggingId(event.active.id.toString())
+  }
+
   const onDragEnd = async (event: DragEndEvent) => {
+    setDraggingId(null)
     const { active, over } = event
-    if (over) {
-      if (active.id !== over.id) {
-        const activeUid = active.id.toString()
-        const overUid = over.id.toString()
-        // Issue 3: block cross-boundary drags (selected ↔ unselected)
-        const activeIsSelected = selectedProfiles.has(activeUid)
-        const overIsSelected = selectedProfiles.has(overUid)
-        if (activeIsSelected !== overIsSelected) return
-        await reorderProfile(activeUid, overUid)
-        mutateProfiles()
-      }
+    if (over && active.id !== over.id) {
+      const activeUid = active.id.toString()
+      const overUid = over.id.toString()
+      const activeIsSelected = selectedProfiles.has(activeUid)
+      const overIsSelected = selectedProfiles.has(overUid)
+      if (activeIsSelected !== overIsSelected) return
+      await reorderProfile(activeUid, overUid)
+      mutateProfiles()
     }
   }
 
@@ -597,7 +596,7 @@ const ProfilePage = () => {
       return
     }
 
-    const currentProfiles = currentActivatings()
+    const currentProfiles = currentActivatings
     setActivatings((prev) => [...new Set([...prev, ...currentProfiles])])
 
     try {
@@ -622,7 +621,7 @@ const ProfilePage = () => {
   const onDelete = useLockFn(async (uid: string) => {
     const current = profiles.current === uid
     try {
-      setActivatings([...(current ? currentActivatings() : []), uid])
+      setActivatings([...(current ? currentActivatings : []), uid])
       await deleteProfile(uid)
       mutateProfiles()
       mutateLogs()
@@ -672,80 +671,53 @@ const ProfilePage = () => {
     if (text) setUrl(text)
   }
 
-  // Batch selection functions
-  const toggleBatchMode = () => {
-    setBatchMode(!batchMode)
-    if (!batchMode) {
-      // Entering batch mode - clear previous selections
-      setSelectedProfiles(new Set())
+  const onToggleProfile = useLockFn(async (uid: string) => {
+    const newSet = new Set(selectedProfiles)
+    if (newSet.has(uid)) {
+      if (newSet.size <= 1) return // must keep at least 1 active
+      newSet.delete(uid)
+    } else {
+      newSet.add(uid)
     }
-  }
-
-  const toggleProfileSelection = (uid: string) => {
-    setSelectedProfiles((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(uid)) {
-        newSet.delete(uid)
-      } else {
-        newSet.add(uid)
-      }
-      return newSet
-    })
-  }
-
-  const selectAllProfiles = () => {
-    setSelectedProfiles(new Set(profileItems.map((item) => item.uid)))
-  }
-
-  const onDoneMerge = useLockFn(async () => {
+    const prevSet = selectedProfiles
+    setSelectedProfiles(newSet)
     try {
-      await clearMergedProfiles()
-      await mutateProfiles()
-      setBatchMode(false)
+      if (newSet.size === 1) {
+        const singleUid = [...newSet][0]
+        await patchProfiles({ current: singleUid })
+        await clearMergedProfiles()
+      } else {
+        await setMergedProfiles([...newSet])
+        const c = await getMergeConflicts()
+        setConflicts(c)
+      }
     } catch (err: any) {
+      setSelectedProfiles(prevSet)
       showNotice.error(err)
     }
   })
 
-  const clearAllSelections = () => {
-    setSelectedProfiles(new Set())
-  }
-
-  const isAllSelected = () => {
-    return (
-      profileItems.length > 0 && profileItems.length === selectedProfiles.size
-    )
-  }
-
-  const getSelectionState = () => {
-    if (selectedProfiles.size === 0) {
-      return 'none' // 无选择
-    } else if (selectedProfiles.size === profileItems.length) {
-      return 'all' // 全选
-    } else {
-      return 'partial' // 部分选择
-    }
-  }
-
-  // FORK: Load conflicts on mount/refresh when merged mode is active
-  const mergedUids = profiles?.merged ?? []
-  const mergedUidsRef = useRef(mergedUids)
-  mergedUidsRef.current = mergedUids
-  const mergedUidsKey = mergedUids.join(',')
+  // Hydrate selectedProfiles from persisted backend state
+  const mergedUidsKey = useMemo(
+    () => (profiles?.merged ?? []).join(','),
+    [profiles?.merged],
+  )
+  const currentUid = profiles?.current ?? ''
   useEffect(() => {
-    const uids = mergedUidsRef.current
+    const uids = mergedUidsKey ? mergedUidsKey.split(',') : []
     if (uids.length >= 2) {
-      // Issue 4: restore batch mode and selection from persisted merged state
-      // Use async dispatch to satisfy @eslint-react/set-state-in-effect
       void Promise.resolve().then(() => {
-        setBatchMode(true)
         setSelectedProfiles(new Set(uids))
       })
       getMergeConflicts()
         .then(setConflicts)
         .catch((e) => console.error('[merge] failed to load conflicts', e))
+    } else if (currentUid) {
+      void Promise.resolve().then(() => {
+        setSelectedProfiles(new Set([currentUid]))
+      })
     }
-  }, [mergedUidsKey])
+  }, [mergedUidsKey, currentUid])
 
   const mode = useThemeMode()
   const isLight = mode === 'light'
@@ -823,120 +795,50 @@ const ProfilePage = () => {
       contentStyle={{ height: '100%' }}
       header={
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {!batchMode ? (
-            <>
-              {/* Batch mode toggle button */}
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t('profiles.page.batch.title')}
-                onClick={toggleBatchMode}
-              >
-                <CheckBoxOutlineBlankRounded />
-              </IconButton>
+          <IconButton
+            size="small"
+            color="inherit"
+            title={t('profiles.page.actions.updateAll')}
+            onClick={onUpdateAll}
+          >
+            <RefreshRounded />
+          </IconButton>
 
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t('profiles.page.actions.updateAll')}
-                onClick={onUpdateAll}
-              >
-                <RefreshRounded />
-              </IconButton>
+          <IconButton
+            size="small"
+            color="inherit"
+            title={t('profiles.page.actions.viewRuntimeConfig')}
+            onClick={() => configRef.current?.open()}
+          >
+            <TextSnippetOutlined />
+          </IconButton>
 
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t('profiles.page.actions.viewRuntimeConfig')}
-                onClick={() => configRef.current?.open()}
-              >
-                <TextSnippetOutlined />
-              </IconButton>
+          <IconButton
+            size="small"
+            color="primary"
+            title={t('profiles.page.actions.reactivate')}
+            onClick={() => onEnhance(true)}
+          >
+            <LocalFireDepartmentRounded />
+          </IconButton>
 
-              <IconButton
-                size="small"
-                color="primary"
-                title={t('profiles.page.actions.reactivate')}
-                onClick={() => onEnhance(true)}
-              >
-                <LocalFireDepartmentRounded />
-              </IconButton>
-
-              {/* 故障检测和紧急恢复按钮 */}
-              {(error || isStale) && (
-                <IconButton
-                  size="small"
-                  color="warning"
-                  title="数据异常，点击强制刷新"
-                  onClick={onEmergencyRefresh}
-                  sx={{
-                    animation: 'pulse 2s infinite',
-                    '@keyframes pulse': {
-                      '0%': { opacity: 1 },
-                      '50%': { opacity: 0.5 },
-                      '100%': { opacity: 1 },
-                    },
-                  }}
-                >
-                  <ClearRounded />
-                </IconButton>
-              )}
-            </>
-          ) : (
-            // Batch mode header
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <IconButton
-                size="small"
-                color="inherit"
-                title={
-                  isAllSelected()
-                    ? t('profiles.page.batch.actions.deselectAll')
-                    : t('profiles.page.batch.actions.selectAll')
-                }
-                onClick={
-                  isAllSelected() ? clearAllSelections : selectAllProfiles
-                }
-              >
-                {getSelectionState() === 'all' ? (
-                  <CheckBoxRounded />
-                ) : getSelectionState() === 'partial' ? (
-                  <IndeterminateCheckBoxRounded />
-                ) : (
-                  <CheckBoxOutlineBlankRounded />
-                )}
-              </IconButton>
-              {/* FORK: Merge activate button */}
-              <Button
-                size="small"
-                variant="contained"
-                disabled={selectedProfiles.size < 2}
-                onClick={async () => {
-                  try {
-                    const uids = Array.from(selectedProfiles)
-                    await setMergedProfiles(uids)
-                    const c = await getMergeConflicts()
-                    setConflicts(c)
-                    showNotice.success(
-                      'profiles.page.feedback.notifications.profileReactivated',
-                      1000,
-                    )
-                  } catch (err: any) {
-                    showNotice.error(err)
-                  }
-                }}
-              >
-                {t('profiles.merge.activate')}
-              </Button>
-              <Button size="small" variant="outlined" onClick={onDoneMerge}>
-                {t('profiles.page.batch.actions.done')}
-              </Button>
-              <Box
-                sx={{ flex: 1, textAlign: 'right', color: 'text.secondary' }}
-              >
-                {t('profiles.page.batch.summary.selected')}{' '}
-                {selectedProfiles.size} {t('profiles.page.batch.summary.items')}
-              </Box>
-            </Box>
+          {(error || isStale) && (
+            <IconButton
+              size="small"
+              color="warning"
+              title="数据异常，点击强制刷新"
+              onClick={onEmergencyRefresh}
+              sx={{
+                animation: 'pulse 2s infinite',
+                '@keyframes pulse': {
+                  '0%': { opacity: 1 },
+                  '50%': { opacity: 0.5 },
+                  '100%': { opacity: 1 },
+                },
+              }}
+            >
+              <ClearRounded />
+            </IconButton>
           )}
         </Box>
       }
@@ -1016,6 +918,7 @@ const ProfilePage = () => {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
         <Box
@@ -1027,7 +930,7 @@ const ProfilePage = () => {
           }}
         >
           <Box sx={{ mb: 1.5 }}>
-            <Grid container spacing={{ xs: 1, lg: 1 }}>
+            <Grid container spacing={1}>
               <SortableContext
                 items={sortedProfiles.map((x) => {
                   return x.uid
@@ -1042,10 +945,7 @@ const ProfilePage = () => {
                     >
                       <ProfileItem
                         id={item.uid}
-                        selected={
-                          profiles.current === item.uid ||
-                          (batchMode && selectedProfiles.has(item.uid!))
-                        }
+                        selected={selectedProfiles.has(item.uid!)}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
                         onSelect={(f) => onSelect(item.uid, f)}
@@ -1055,21 +955,11 @@ const ProfilePage = () => {
                             await onEnhance(false)
                           }
                         }}
-                        onDelete={() => {
-                          if (batchMode) {
-                            toggleProfileSelection(item.uid)
-                          } else {
-                            onDelete(item.uid)
-                          }
-                        }}
-                        batchMode={batchMode}
-                        isSelected={selectedProfiles.has(item.uid)}
-                        onSelectionChange={() =>
-                          toggleProfileSelection(item.uid)
-                        }
+                        onDelete={() => onDelete(item.uid)}
                         isPrimary={isPrimary}
                         conflictCount={isPrimary ? conflicts.length : 0}
                         onShowConflicts={() => setConflictViewerOpen(true)}
+                        onToggle={() => onToggleProfile(item.uid!)}
                       />
                     </Grid>
                   )
@@ -1083,7 +973,7 @@ const ProfilePage = () => {
             sx={{ width: `calc(100% - 32px)`, borderColor: dividercolor }}
           ></Divider>
           <Box sx={{ mt: 1.5, mb: '10px' }}>
-            <Grid container spacing={{ xs: 1, lg: 1 }}>
+            <Grid container spacing={1}>
               <Grid size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
                 <ProfileMore
                   id="Merge"
@@ -1108,7 +998,20 @@ const ProfilePage = () => {
             </Grid>
           </Box>
         </Box>
-        <DragOverlay />
+        <DragOverlay dropAnimation={null}>
+          {draggingItem ? (
+            <ProfileItem
+              id={draggingItem.uid}
+              selected={selectedProfiles.has(draggingItem.uid!)}
+              activating={false}
+              itemData={draggingItem}
+              onSelect={() => {}}
+              onEdit={() => {}}
+              onDelete={() => {}}
+              onToggle={() => {}}
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <ProfileViewer
