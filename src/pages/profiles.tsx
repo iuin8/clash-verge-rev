@@ -421,21 +421,7 @@ const ProfilePage = () => {
     const activeUid = active.id.toString()
     const overUid = over.id.toString()
 
-    const activeIsActive = selectedProfiles.has(activeUid)
-    const overIsActive = selectedProfiles.has(overUid)
-
-    if (activeIsActive !== overIsActive) {
-      // Cross-zone drag: toggle the dragged card's membership
-      await onToggleProfile(activeUid)
-      return
-    }
-
-    if (!activeIsActive) {
-      // Both in inactive zone — reordering inactive cards has no priority meaning
-      return
-    }
-
-    // Both in active zone — update local order immediately (no SWR mutation to avoid snap-back)
+    // Only active-zone reordering — inactive cards are not draggable
     const oldOrder = localActiveOrder
     const oldIdx = oldOrder.indexOf(activeUid)
     const newIdx = oldOrder.indexOf(overUid)
@@ -996,6 +982,7 @@ const ProfilePage = () => {
                       <ProfileItem
                         id={item.uid}
                         selected={true}
+                        draggable={true}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
                         onSelect={(f) => onSelect(item.uid, f)}
@@ -1030,39 +1017,29 @@ const ProfilePage = () => {
               />
               <Box sx={{ mb: 1.5 }}>
                 <Grid container spacing={1}>
-                  <SortableContext
-                    items={inactiveProfiles.map((x) => x.uid)}
-                    strategy={rectSortingStrategy}
-                  >
-                    {inactiveProfiles.map((item) => (
-                      <Grid
-                        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-                        key={item.uid}
-                      >
-                        <ProfileItem
-                          id={item.uid}
-                          selected={false}
-                          activating={activatings.includes(item.uid)}
-                          itemData={item}
-                          onSelect={(f) => onSelect(item.uid, f)}
-                          onEdit={() => viewerRef.current?.edit(item)}
-                          onSave={async (prev, curr) => {
-                            if (
-                              prev !== curr &&
-                              profiles.current === item.uid
-                            ) {
-                              await onEnhance(false)
-                            }
-                          }}
-                          onDelete={() => onDelete(item.uid)}
-                          isPrimary={false}
-                          conflictCount={0}
-                          onShowConflicts={() => setConflictViewerOpen(true)}
-                          onToggle={() => onToggleProfile(item.uid!)}
-                        />
-                      </Grid>
-                    ))}
-                  </SortableContext>
+                  {inactiveProfiles.map((item) => (
+                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
+                      <ProfileItem
+                        id={item.uid}
+                        selected={false}
+                        draggable={false}
+                        activating={activatings.includes(item.uid)}
+                        itemData={item}
+                        onSelect={(f) => onSelect(item.uid, f)}
+                        onEdit={() => viewerRef.current?.edit(item)}
+                        onSave={async (prev, curr) => {
+                          if (prev !== curr && profiles.current === item.uid) {
+                            await onEnhance(false)
+                          }
+                        }}
+                        onDelete={() => onDelete(item.uid)}
+                        isPrimary={false}
+                        conflictCount={0}
+                        onShowConflicts={() => setConflictViewerOpen(true)}
+                        onToggle={() => onToggleProfile(item.uid!)}
+                      />
+                    </Grid>
+                  ))}
                 </Grid>
               </Box>
             </>

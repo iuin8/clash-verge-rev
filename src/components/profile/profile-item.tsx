@@ -48,6 +48,7 @@ interface Props {
   id: string
   selected: boolean
   activating: boolean
+  draggable?: boolean
   itemData: IProfileItem
   onSelect: (force: boolean) => void
   onEdit: () => void
@@ -64,6 +65,7 @@ export const ProfileItem = (props: Props) => {
     id,
     selected,
     activating,
+    draggable = false,
     itemData,
     onSelect,
     onEdit,
@@ -83,6 +85,7 @@ export const ProfileItem = (props: Props) => {
     isDragging,
   } = useSortable({
     id,
+    disabled: !draggable,
   })
 
   const { t } = useTranslation()
@@ -662,25 +665,27 @@ export const ProfileItem = (props: Props) => {
         )}
         <Box position="relative">
           <Box sx={{ display: 'flex', justifyContent: 'start' }}>
-            <Box
-              sx={{
-                display: 'flex',
-                margin: 'auto 0',
-                cursor: isDragging ? 'grabbing' : 'grab',
-                opacity: isDragging ? 0.5 : 1,
-              }}
-              {...attributes}
-              {...listeners}
-            >
-              <DragIndicatorRounded
-                sx={[
-                  { cursor: 'inherit', marginLeft: '-6px' },
-                  ({ palette: { text } }) => {
-                    return { color: text.primary }
-                  },
-                ]}
-              />
-            </Box>
+            {draggable && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  margin: 'auto 0',
+                  cursor: isDragging ? 'grabbing' : 'grab',
+                  opacity: isDragging ? 0.5 : 1,
+                }}
+                {...attributes}
+                {...listeners}
+              >
+                <DragIndicatorRounded
+                  sx={[
+                    { cursor: 'inherit', marginLeft: '-6px' },
+                    ({ palette: { text } }) => {
+                      return { color: text.primary }
+                    },
+                  ]}
+                />
+              </Box>
+            )}
 
             <Badge
               badgeContent={isPrimary && conflictCount ? conflictCount : 0}
