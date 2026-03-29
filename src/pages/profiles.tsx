@@ -2,12 +2,19 @@ import {
   closestCenter,
   DndContext,
   DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import {
+  arrayMove,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable'
 import {
   ClearRounded,
   ContentPasteRounded,
@@ -100,6 +107,10 @@ const ProfilePage = () => {
   const [disabled, setDisabled] = useState(false)
   const [activatings, setActivatings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  // FORK: Local drag order — decoupled from SWR to prevent revalidation snap-back
+  const [localActiveOrder, setLocalActiveOrder] = useState<string[]>([])
 
   // FORK: Multi-profile merge state — selectedProfiles always mirrors active state
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
@@ -269,18 +280,40 @@ const ProfilePage = () => {
     return items.filter((i) => i && type1.includes(i.type!))
   }, [profiles])
 
-  // Float selected profiles to top when 2+ are active (merged mode)
-  const sortedProfiles = useMemo(() => {
-    if (selectedProfiles.size < 2) return profileItems
-    const selectedArr = [...selectedProfiles]
+  const activeProfiles = useMemo(() => {
+    // During drag: use localActiveOrder for snap-back-free reordering
+    // Otherwise: derive from selectedProfiles, preserving any prior local order
+    const baseOrder = draggingId
+      ? localActiveOrder
+      : (() => {
+          const preserved = localActiveOrder.filter((uid) =>
+            selectedProfiles.has(uid),
+          )
+          const added = [...selectedProfiles].filter(
+            (uid) => !localActiveOrder.includes(uid),
+          )
+          return [...preserved, ...added]
+        })()
+    return baseOrder
       .map((uid) => profileItems.find((p) => p.uid === uid))
       .filter((p): p is IProfileItem => Boolean(p))
-    const unselected = profileItems.filter((p) => !selectedProfiles.has(p.uid!))
-    return [...selectedArr, ...unselected]
-  }, [profileItems, selectedProfiles])
+  }, [profileItems, localActiveOrder, selectedProfiles, draggingId])
+
+  const inactiveProfiles = useMemo(
+    () => profileItems.filter((p) => !selectedProfiles.has(p.uid!)),
+    [profileItems, selectedProfiles],
+  )
 
   const primaryUid =
-    selectedProfiles.size >= 2 ? (sortedProfiles[0]?.uid ?? null) : null
+    selectedProfiles.size >= 2 ? (activeProfiles[0]?.uid ?? null) : null
+
+  const draggingItem = useMemo(
+    () =>
+      draggingId
+        ? (profileItems.find((p) => p.uid === draggingId) ?? null)
+        : null,
+    [draggingId, profileItems],
+  )
 
   const currentActivatings = profiles.current ? [profiles.current] : []
 
@@ -380,16 +413,45 @@ const ProfilePage = () => {
     }
   }
 
+  const onDragStart = (event: DragStartEvent) => {
+    setDraggingId(event.active.id.toString())
+  }
+
   const onDragEnd = async (event: DragEndEvent) => {
+    setDraggingId(null)
     const { active, over } = event
-    if (over && active.id !== over.id) {
-      const activeUid = active.id.toString()
-      const overUid = over.id.toString()
-      const activeIsSelected = selectedProfiles.has(activeUid)
-      const overIsSelected = selectedProfiles.has(overUid)
-      if (activeIsSelected !== overIsSelected) return
+    if (!over || active.id === over.id) return
+
+    const activeUid = active.id.toString()
+    const overUid = over.id.toString()
+
+    const activeIsActive = selectedProfiles.has(activeUid)
+    const overIsActive = selectedProfiles.has(overUid)
+
+    if (activeIsActive !== overIsActive) {
+      // Cross-zone drag: toggle the dragged card's membership
+      await onToggleProfile(activeUid)
+      return
+    }
+
+    if (!activeIsActive) {
+      // Both in inactive zone — reordering inactive cards has no priority meaning
+      return
+    }
+
+    // Both in active zone — update local order immediately (no SWR mutation to avoid snap-back)
+    const oldOrder = localActiveOrder
+    const oldIdx = oldOrder.indexOf(activeUid)
+    const newIdx = oldOrder.indexOf(overUid)
+    if (oldIdx === -1 || newIdx === -1) return
+
+    const newOrder = arrayMove(oldOrder, oldIdx, newIdx)
+    setLocalActiveOrder(newOrder)
+
+    try {
       await reorderProfile(activeUid, overUid)
-      mutateProfiles()
+    } catch {
+      setLocalActiveOrder(oldOrder)
     }
   }
 
@@ -913,6 +975,7 @@ const ProfilePage = () => {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
         <Box
@@ -923,23 +986,20 @@ const ProfilePage = () => {
             overflowY: 'auto',
           }}
         >
+          {/* Active zone — drag to reorder merge priority */}
           <Box sx={{ mb: 1.5 }}>
             <Grid container spacing={1}>
               <SortableContext
-                items={sortedProfiles.map((x) => {
-                  return x.uid
-                })}
+                items={localActiveOrder}
+                strategy={rectSortingStrategy}
               >
-                {sortedProfiles.map((item) => {
+                {activeProfiles.map((item) => {
                   const isPrimary = primaryUid === item.uid
                   return (
-                    <Grid
-                      size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-                      key={item.file}
-                    >
+                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
                       <ProfileItem
                         id={item.uid}
-                        selected={selectedProfiles.has(item.uid!)}
+                        selected={true}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
                         onSelect={(f) => onSelect(item.uid, f)}
@@ -961,11 +1021,61 @@ const ProfilePage = () => {
               </SortableContext>
             </Grid>
           </Box>
+          {inactiveProfiles.length > 0 && (
+            <>
+              <Divider
+                variant="middle"
+                flexItem
+                sx={{
+                  width: `calc(100% - 32px)`,
+                  borderColor: dividercolor,
+                  mb: 1.5,
+                }}
+              />
+              <Box sx={{ mb: 1.5 }}>
+                <Grid container spacing={1}>
+                  <SortableContext
+                    items={inactiveProfiles.map((x) => x.uid)}
+                    strategy={rectSortingStrategy}
+                  >
+                    {inactiveProfiles.map((item) => (
+                      <Grid
+                        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
+                        key={item.uid}
+                      >
+                        <ProfileItem
+                          id={item.uid}
+                          selected={false}
+                          activating={activatings.includes(item.uid)}
+                          itemData={item}
+                          onSelect={(f) => onSelect(item.uid, f)}
+                          onEdit={() => viewerRef.current?.edit(item)}
+                          onSave={async (prev, curr) => {
+                            if (
+                              prev !== curr &&
+                              profiles.current === item.uid
+                            ) {
+                              await onEnhance(false)
+                            }
+                          }}
+                          onDelete={() => onDelete(item.uid)}
+                          isPrimary={false}
+                          conflictCount={0}
+                          onShowConflicts={() => setConflictViewerOpen(true)}
+                          onToggle={() => onToggleProfile(item.uid!)}
+                        />
+                      </Grid>
+                    ))}
+                  </SortableContext>
+                </Grid>
+              </Box>
+            </>
+          )}
           <Divider
             variant="middle"
             flexItem
             sx={{ width: `calc(100% - 32px)`, borderColor: dividercolor }}
-          ></Divider>
+          />
           <Box sx={{ mt: 1.5, mb: '10px' }}>
             <Grid container spacing={1}>
               <Grid size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
@@ -992,6 +1102,23 @@ const ProfilePage = () => {
             </Grid>
           </Box>
         </Box>
+        <DragOverlay>
+          {draggingItem && (
+            <ProfileItem
+              id={draggingItem.uid!}
+              selected={selectedProfiles.has(draggingItem.uid!)}
+              activating={false}
+              itemData={draggingItem}
+              onSelect={() => {}}
+              onEdit={() => {}}
+              onDelete={() => {}}
+              isPrimary={primaryUid === draggingItem.uid}
+              conflictCount={
+                primaryUid === draggingItem.uid ? conflicts.length : 0
+              }
+            />
+          )}
+        </DragOverlay>
       </DndContext>
 
       <ProfileViewer
