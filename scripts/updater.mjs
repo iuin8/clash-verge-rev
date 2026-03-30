@@ -22,41 +22,48 @@ async function resolveUpdater() {
   const options = { owner: context.repo.owner, repo: context.repo.repo }
   const github = getOctokit(process.env.GITHUB_TOKEN)
 
-  // Fetch all tags using pagination
-  let allTags = []
+  // Fetch releases (not tags) to avoid picking up inherited upstream tags from the fork
+  let allReleases = []
   let page = 1
   const perPage = 100
 
   while (true) {
-    const { data: pageTags } = await github.rest.repos.listTags({
+    const { data: pageReleases } = await github.rest.repos.listReleases({
       ...options,
       per_page: perPage,
       page: page,
     })
 
-    allTags = allTags.concat(pageTags)
+    allReleases = allReleases.concat(pageReleases)
 
-    // Break if we received fewer tags than requested (last page)
-    if (pageTags.length < perPage) {
+    if (pageReleases.length < perPage) {
       break
     }
 
     page++
   }
 
-  const tags = allTags
-  console.log(`Retrieved ${tags.length} tags in total`)
+  console.log(`Retrieved ${allReleases.length} releases in total`)
 
-  // More flexible tag detection with regex patterns
-  const stableTagRegex = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/ // Matches vX.Y.Z or vX.Y.Z-prerelease format (semver)
-  // const preReleaseRegex = /^v\d+\.\d+\.\d+-(alpha|beta|rc|pre)/i; // Matches vX.Y.Z-alpha/beta/rc format
-  const preReleaseRegex = /^(alpha|beta|rc|pre)$/i // Matches exact alpha/beta/rc/pre tags
+  // Only match semver tags created by this fork: vX.Y.Z or vX.Y.Z-prerelease
+  // Excludes upstream tags (e.g. v2.4.100107) that don't have a corresponding release
+  const stableTagRegex = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
+  // fa fork pre-release tags use suffix like -fa.NNNN; skip pure pre-release named tags
+  const preReleaseRegex = /^(alpha|beta|rc|pre)$/i
 
-  // Get the latest stable tag and pre-release tag
-  const stableTag = tags.find((t) => stableTagRegex.test(t.name))
-  const preReleaseTag = tags.find((t) => preReleaseRegex.test(t.name))
+  // Convert releases to tag-like objects for compatibility with processRelease
+  const tags = allReleases.map((r) => ({ name: r.tag_name }))
 
-  console.log('All tags:', tags.map((t) => t.name).join(', '))
+  // Get the latest stable release (non-prerelease, matching semver pattern)
+  const stableTag = allReleases
+    .filter((r) => !r.prerelease && stableTagRegex.test(r.tag_name))
+    .map((r) => ({ name: r.tag_name }))[0]
+
+  const preReleaseTag = allReleases
+    .filter((r) => r.prerelease && stableTagRegex.test(r.tag_name))
+    .map((r) => ({ name: r.tag_name }))[0]
+
+  console.log('All release tags:', tags.map((t) => t.name).join(', '))
   console.log('Stable tag:', stableTag ? stableTag.name : 'None found')
   console.log(
     'Pre-release tag:',
