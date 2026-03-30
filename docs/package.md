@@ -4,7 +4,7 @@
 
 ```bash
 # 触发 GitHub action 自动发布新包
-TAG=v2.4.7-fa1018 && git tag $TAG && git push origin $TAG
+TAG=v2.4.7-fa.1019 && git tag $TAG && git push origin $TAG
 ```
 
 ## 签名问题

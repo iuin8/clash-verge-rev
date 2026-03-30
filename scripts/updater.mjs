@@ -48,7 +48,7 @@ async function resolveUpdater() {
   console.log(`Retrieved ${tags.length} tags in total`)
 
   // More flexible tag detection with regex patterns
-  const stableTagRegex = /^v\d+\.\d+\.\d+(\.\d+)*$/ // Matches vX.Y.Z or vX.Y.Z.N format (fork)
+  const stableTagRegex = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/ // Matches vX.Y.Z or vX.Y.Z-prerelease format (semver)
   // const preReleaseRegex = /^v\d+\.\d+\.\d+-(alpha|beta|rc|pre)/i; // Matches vX.Y.Z-alpha/beta/rc format
   const preReleaseRegex = /^(alpha|beta|rc|pre)$/i // Matches exact alpha/beta/rc/pre tags
 
@@ -85,7 +85,11 @@ async function processRelease(github, options, tag, isAlpha) {
       tag: tag.name,
     })
 
+    // Strip leading 'v' and ensure valid semver for Tauri Rust parser
+    const semverVersion = tag.name.replace(/^v/, '')
+
     const updateData = {
+      version: semverVersion,
       name: tag.name,
       notes: await resolveUpdateLog(tag.name).catch(() =>
         resolveUpdateLogDefault().catch(() => 'No changelog available'),
