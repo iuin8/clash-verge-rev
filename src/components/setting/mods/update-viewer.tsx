@@ -14,6 +14,7 @@ import { useUpdate } from '@/hooks/use-update'
 import { portableFlag } from '@/pages/_layout'
 import { showNotice } from '@/services/notice-service'
 import { useSetUpdateState, useUpdateState } from '@/services/states'
+import { resolveRemoteVersion } from '@/services/update'
 
 export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation()
@@ -23,6 +24,9 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const setUpdateState = useSetUpdateState()
 
   const { updateInfo } = useUpdate()
+  const resolvedVersion = updateInfo
+    ? (resolveRemoteVersion(updateInfo) ?? updateInfo.version)
+    : ''
 
   const [downloaded, setDownloaded] = useState(0)
   const [total, setTotal] = useState(0)
@@ -114,7 +118,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
       title={
         <Box display="flex" justifyContent="space-between">
           {t('settings.modals.update.title', {
-            version: updateInfo?.version ?? '',
+            version: resolvedVersion,
           })}
           <Box>
             <Button
@@ -122,7 +126,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
               size="small"
               onClick={() => {
                 openUrl(
-                  `https://github.com/clash-verge-rev/clash-verge-rev/releases/tag/v${updateInfo?.version}`,
+                  `https://github.com/iuin8/clash-verge-rev/releases/tag/v${resolvedVersion}`,
                 )
               }}
             >
