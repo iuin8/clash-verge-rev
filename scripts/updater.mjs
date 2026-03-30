@@ -92,12 +92,11 @@ async function processRelease(github, options, tag, isAlpha) {
       tag: tag.name,
     })
 
-    // Strip leading 'v' and ensure valid semver for Tauri Rust parser
+    // Strip leading 'v' for semver; Tauri updater reads 'name' as version
     const semverVersion = tag.name.replace(/^v/, '')
 
     const updateData = {
-      version: semverVersion,
-      name: tag.name,
+      name: semverVersion,
       notes: await resolveUpdateLog(tag.name).catch(() =>
         resolveUpdateLogDefault().catch(() => 'No changelog available'),
       ),
