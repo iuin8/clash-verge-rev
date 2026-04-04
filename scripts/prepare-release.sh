@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # 准备发布：自动更新 Changelog.md 并创建 tag
-# 用法: ./scripts/prepare-release.sh v2.4.7.1002
+# 用法: ./scripts/prepare-release.sh v2.4.7.1002 [--yes]
+#
+# 选项:
+#   --yes, -y    非交互模式，自动确认所有操作
 
 set -e
 
@@ -10,13 +13,31 @@ TEMP_CHANGELOG=""
 TEMP_FILE=""
 trap 'rm -f "$TEMP_CHANGELOG" "$TEMP_FILE"' EXIT
 
-if [ -z "$1" ]; then
+# 解析参数
+AUTO_YES=false
+TAG_NAME=""
+
+for arg in "$@"; do
+  case $arg in
+    --yes|-y)
+      AUTO_YES=true
+      shift
+      ;;
+    *)
+      if [ -z "$TAG_NAME" ]; then
+        TAG_NAME="$arg"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$TAG_NAME" ]; then
   echo "错误: 请提供版本号"
-  echo "用法: $0 v2.4.7.1002"
+  echo "用法: $0 v2.4.7.1002 [--yes]"
   exit 1
 fi
 
-TAG_NAME="$1"
 VERSION="${TAG_NAME#v}"
 
 # 验证版本号格式
@@ -139,12 +160,18 @@ echo ""
 # 检查是否已经存在该版本的 changelog
 if [ -f "Changelog.md" ] && grep -q "^## v${VERSION}" Changelog.md; then
   echo "警告: Changelog.md 中已存在版本 v${VERSION}"
-  read -p "是否覆盖? (y/N) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "已取消"
-    exit 1
+
+  if [ "$AUTO_YES" = true ]; then
+    echo "非交互模式: 自动覆盖现有版本"
+  else
+    read -p "是否覆盖? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "已取消"
+      exit 1
+    fi
   fi
+
   # 删除旧的版本条目（跨平台兼容）
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (BSD sed)
@@ -185,42 +212,58 @@ echo "✅ Changelog.md 已更新"
 echo ""
 
 # 询问是否提交
-read -p "是否提交 Changelog.md 并创建 tag? (Y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Nn]$ ]]; then
-  echo "已取消。Changelog.md 已更新但未提交。"
-  exit 0
+if [ "$AUTO_YES" = true ]; then
+  echo "非交互模式: 自动提交并创建 tag"
+  SHOULD_COMMIT=true
+else
+  read -p "是否提交 Changelog.md 并创建 tag? (Y/n) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Nn]$ ]]; then
+    echo "已取消。Changelog.md 已更新但未提交。"
+    exit 0
+  fi
+  SHOULD_COMMIT=true
 fi
 
-# 提交 Changelog.md
-git add Changelog.md
-git commit -m "docs: 更新 Changelog.md for ${TAG_NAME}"
+if [ "$SHOULD_COMMIT" = true ]; then
+  # 提交 Changelog.md
+  git add Changelog.md
+  git commit -m "docs: 更新 Changelog.md for ${TAG_NAME}"
 
-echo "✅ 已提交 Changelog.md"
-echo ""
+  echo "✅ 已提交 Changelog.md"
+  echo ""
 
-# 创建 tag
-git tag "$TAG_NAME"
-echo "✅ 已创建 tag: $TAG_NAME"
-echo ""
+  # 创建 tag
+  git tag "$TAG_NAME"
+  echo "✅ 已创建 tag: $TAG_NAME"
+  echo ""
+fi
 
 # 询问是否推送
-read -p "是否推送到远程仓库? (Y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Nn]$ ]]; then
-  echo "已取消推送。请手动执行:"
-  echo "  git push origin HEAD"
-  echo "  git push origin $TAG_NAME"
-  exit 0
+if [ "$AUTO_YES" = true ]; then
+  echo "非交互模式: 自动推送到远程仓库"
+  SHOULD_PUSH=true
+else
+  read -p "是否推送到远程仓库? (Y/n) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Nn]$ ]]; then
+    echo "已取消推送。请手动执行:"
+    echo "  git push origin HEAD"
+    echo "  git push origin $TAG_NAME"
+    exit 0
+  fi
+  SHOULD_PUSH=true
 fi
 
-# 推送
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git push origin "$CURRENT_BRANCH"
-git push origin "$TAG_NAME"
+if [ "$SHOULD_PUSH" = true ]; then
+  # 推送
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  git push origin "$CURRENT_BRANCH"
+  git push origin "$TAG_NAME"
 
-echo ""
-echo "🎉 发布准备完成！"
-echo "   - Changelog.md 已更新并提交"
-echo "   - Tag $TAG_NAME 已创建并推送"
-echo "   - GitHub Actions 将自动开始构建发布"
+  echo ""
+  echo "🎉 发布准备完成！"
+  echo "   - Changelog.md 已更新并提交"
+  echo "   - Tag $TAG_NAME 已创建并推送"
+  echo "   - GitHub Actions 将自动开始构建发布"
+fi

@@ -13,13 +13,22 @@
 ### 使用方法
 
 ```bash
-# 基本用法
+# 交互模式（默认）
 ./scripts/prepare-release.sh v2.4.7-fa.0
 
-# 脚本会：
+# 非交互模式（适合 CI/CD 或 agent 自动化）
+./scripts/prepare-release.sh v2.4.7-fa.0 --yes
+# 或
+./scripts/prepare-release.sh v2.4.7-fa.0 -y
+
+# 交互模式会：
 # 1. 显示生成的 Changelog 内容供你确认
 # 2. 询问是否提交
 # 3. 询问是否推送
+
+# 非交互模式会：
+# 1. 自动确认所有操作
+# 2. 直接提交、创建 tag 并推送
 ```
 
 ### Commit Message 规范
