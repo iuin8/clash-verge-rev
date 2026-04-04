@@ -1,3 +1,19 @@
+## v2.4.7-fa.1021
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- update GitHub repository link to point to the correct owner
+
+### ✨ 新增功能
+
+- 添加 workflow_call 支持以允许其他 workflow 调用 updater
+- add automated release process with Changelog update and tag creation
+
+---
+
 ## v2.4.7.1001
 
 > [!IMPORTANT]
