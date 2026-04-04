@@ -86,10 +86,11 @@ jobs:
           echo "TAG_NAME=$TAG_REF" >> $GITHUB_ENV
           VERSION=$(echo "$TAG_REF" | sed 's/^v//')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=https://github.com/clash-verge-rev/clash-verge-rev/releases/download/$TAG_REF" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/$TAG_REF" >> $GITHUB_ENV
         shell: bash
 
-      - run: |
+      - name: Generate release body
+        run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
             UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
