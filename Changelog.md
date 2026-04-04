@@ -1,3 +1,21 @@
+## v2.4.7-fa.1022
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 简化 release 下载链接，只显示实际构建的平台（Windows x64, macOS ARM64, Linux x64）
+- 修复 release 下载链接指向错误仓库的问题，使用 github.repository 变量
+- 移除 release 名称中的 'Clash Verge Rev' 前缀，只保留版本号
+
+### ✨ 新增功能
+
+- add GitNexus skills and update AGENTS.md for enhanced code intelligence
+- 添加非交互模式支持 --yes 参数以支持 CI/CD 和 agent 自动化
+
+---
+
 ## v2.4.7-fa.1021
 
 > [!IMPORTANT]
