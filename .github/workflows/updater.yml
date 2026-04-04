@@ -1,6 +1,9 @@
 name: Updater CI
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  workflow_call:
+    # 允许被其他 workflow 调用
 permissions: write-all
 env:
   HUSKY: 0
