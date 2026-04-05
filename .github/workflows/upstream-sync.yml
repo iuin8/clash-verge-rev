@@ -1,0 +1,291 @@
+name: Sync Upstream Release
+
+on:
+  # 定期检查上游是否有新 release（每天一次）
+  schedule:
+    - cron: '0 2 * * *' # 每天凌晨 2 点（UTC）运行
+
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Upstream tag to sync (e.g., v1.7.7)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  UPSTREAM_REPO: 'clash-verge-rev/clash-verge-rev'
+  UPSTREAM_OWNER: 'clash-verge-rev'
+  UPSTREAM_NAME: 'clash-verge-rev'
+
+jobs:
+  check-new-release:
+    name: Check for New Upstream Release
+    runs-on: ubuntu-latest
+    outputs:
+      has_new_release: ${{ steps.check.outputs.has_new_release }}
+      latest_tag: ${{ steps.check.outputs.latest_tag }}
+      release_url: ${{ steps.check.outputs.release_url }}
+      release_body: ${{ steps.check.outputs.release_body }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git || true
+          git fetch upstream --tags
+
+      - name: Check for new upstream release
+        id: check
+        run: |
+          # 获取上游最新的 release tag
+          if [ -n "${{ github.event.inputs.upstream_tag }}" ]; then
+            LATEST_UPSTREAM_TAG="${{ github.event.inputs.upstream_tag }}"
+            echo "Using manually specified tag: $LATEST_UPSTREAM_TAG"
+          else
+            LATEST_UPSTREAM_TAG=$(git ls-remote --tags --refs --sort='v:refname' https://github.com/${{ env.UPSTREAM_REPO }}.git | grep -v '\-rc' | tail -1 | sed 's/.*\///')
+            echo "Latest upstream tag: $LATEST_UPSTREAM_TAG"
+          fi
+
+          if [ -z "$LATEST_UPSTREAM_TAG" ]; then
+            echo "No upstream tags found"
+            echo "has_new_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 检查这个 tag 是否已经在我们的仓库中
+          if git rev-parse "refs/tags/$LATEST_UPSTREAM_TAG" >/dev/null 2>&1; then
+            echo "Tag $LATEST_UPSTREAM_TAG already exists in our repo"
+            echo "has_new_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 检查是否已经有对应的同步分支或 PR
+          SYNC_BRANCH="upstream-sync/${LATEST_UPSTREAM_TAG}"
+          if git ls-remote --heads origin "$SYNC_BRANCH" | grep -q "$SYNC_BRANCH"; then
+            echo "Sync branch $SYNC_BRANCH already exists"
+            echo "has_new_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "New upstream release found: $LATEST_UPSTREAM_TAG"
+          echo "has_new_release=true" >> $GITHUB_OUTPUT
+          echo "latest_tag=$LATEST_UPSTREAM_TAG" >> $GITHUB_OUTPUT
+
+          # 获取 release 信息
+          RELEASE_INFO=$(gh release view "$LATEST_UPSTREAM_TAG" --repo "${{ env.UPSTREAM_REPO }}" --json url,body 2>/dev/null || echo '{}')
+          RELEASE_URL=$(echo "$RELEASE_INFO" | jq -r '.url // ""')
+          RELEASE_BODY=$(echo "$RELEASE_INFO" | jq -r '.body // ""' | head -c 1000)
+
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "release_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  sync-upstream:
+    name: Sync Upstream Release
+    needs: check-new-release
+    if: needs.check-new-release.outputs.has_new_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git || true
+          git fetch upstream --tags
+          git fetch upstream
+
+      - name: Create sync branch
+        id: create_branch
+        run: |
+          UPSTREAM_TAG="${{ needs.check-new-release.outputs.latest_tag }}"
+          SYNC_BRANCH="upstream-sync/${UPSTREAM_TAG}"
+
+          echo "Creating sync branch: $SYNC_BRANCH"
+          git checkout -b "$SYNC_BRANCH"
+          echo "sync_branch=$SYNC_BRANCH" >> $GITHUB_OUTPUT
+          echo "upstream_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+
+      - name: Attempt merge
+        id: merge
+        continue-on-error: true
+        run: |
+          UPSTREAM_TAG="${{ needs.check-new-release.outputs.latest_tag }}"
+
+          echo "Attempting to merge upstream tag: $UPSTREAM_TAG"
+
+          # 尝试合并
+          if git merge "upstream/$UPSTREAM_TAG" --no-edit -m "chore: merge upstream $UPSTREAM_TAG"; then
+            echo "Merge successful without conflicts"
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "Merge has conflicts"
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+
+            # 获取冲突文件列表
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U | tr '\n' ',' | sed 's/,$//')
+            echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
+
+            # 中止合并，保持干净状态
+            git merge --abort
+          fi
+
+      - name: Push sync branch
+        if: steps.merge.outputs.merge_status == 'success'
+        run: |
+          SYNC_BRANCH="${{ steps.create_branch.outputs.sync_branch }}"
+          git push origin "$SYNC_BRANCH"
+
+      - name: Create PR for clean merge
+        if: steps.merge.outputs.has_conflicts == 'false'
+        run: |
+          UPSTREAM_TAG="${{ needs.check-new-release.outputs.latest_tag }}"
+          SYNC_BRANCH="${{ steps.create_branch.outputs.sync_branch }}"
+          RELEASE_URL="${{ needs.check-new-release.outputs.release_url }}"
+
+          cat > /tmp/pr_body.md << 'EOFMARKER'
+          ## 🔄 Upstream Sync: $UPSTREAM_TAG
+
+          ### ✅ Clean Merge (No Conflicts)
+
+          This PR automatically syncs the upstream release [$UPSTREAM_TAG]($RELEASE_URL) to our fork.
+
+          **Merge Status:** ✅ No conflicts detected
+          **CI Status:** Tests will run automatically
+
+          ### Upstream Release Notes
+
+          ${{ needs.check-new-release.outputs.release_body }}
+
+          ### Review Checklist
+
+          - [ ] Review upstream changes
+          - [ ] Verify CI tests pass
+          - [ ] Check that fork-specific modifications (marked with \`// FORK:\`) are preserved
+          - [ ] Test locally if needed
+
+          ### Next Steps
+
+          1. Wait for CI tests to complete
+          2. Review the changes
+          3. Merge if everything looks good
+
+          ---
+          *This PR was automatically created by the upstream-sync workflow.*
+          EOFMARKER
+
+          # Replace variables in the template
+          sed -i "s|\$UPSTREAM_TAG|$UPSTREAM_TAG|g" /tmp/pr_body.md
+          sed -i "s|\$RELEASE_URL|$RELEASE_URL|g" /tmp/pr_body.md
+
+          gh pr create \
+            --title "chore: sync upstream $UPSTREAM_TAG" \
+            --body-file /tmp/pr_body.md \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$SYNC_BRANCH" \
+            --label "upstream-sync,automated"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Handle conflicts - Create branch and PR
+        if: steps.merge.outputs.has_conflicts == 'true'
+        run: |
+          UPSTREAM_TAG="${{ needs.check-new-release.outputs.latest_tag }}"
+          SYNC_BRANCH="${{ steps.create_branch.outputs.sync_branch }}"
+          RELEASE_URL="${{ needs.check-new-release.outputs.release_url }}"
+          CONFLICT_FILES="${{ steps.merge.outputs.conflict_files }}"
+
+          # 推送空分支（基于当前分支，未合并）
+          git push origin "$SYNC_BRANCH"
+
+          # 创建 PR 并请求 Claude 帮助
+          cat > /tmp/pr_body_conflict.md << 'EOFMARKER'
+          ## 🔄 Upstream Sync: $UPSTREAM_TAG
+
+          ### ⚠️ Merge Conflicts Detected
+
+          This PR syncs the upstream release [$UPSTREAM_TAG]($RELEASE_URL) to our fork, but **merge conflicts were detected**.
+
+          **Conflicting files:** `$CONFLICT_FILES`
+
+          ### Upstream Release Notes
+
+          ${{ needs.check-new-release.outputs.release_body }}
+
+          ### Resolution Strategy
+
+          @claude Please help resolve the merge conflicts for upstream sync $UPSTREAM_TAG.
+
+          **Context:**
+          - This is a personal fork of clash-verge-rev with custom modifications
+          - Fork-specific changes are marked with `// FORK:` comments
+          - We want to accept most upstream changes while preserving our customizations
+
+          **Instructions:**
+          1. Fetch the upstream tag: `git fetch upstream --tags`
+          2. Attempt merge: `git merge upstream/$UPSTREAM_TAG`
+          3. For each conflict:
+             - If the conflict is in a file with `// FORK:` comments, preserve our fork-specific logic
+             - If the conflict is in upstream-only code, accept upstream changes
+             - If unsure, create a comment explaining the conflict and ask for guidance
+          4. After resolving conflicts:
+             - Run `pnpm typecheck` to verify TypeScript
+             - Run `cargo clippy-all` to verify Rust
+             - Commit with message: `chore: resolve conflicts for upstream $UPSTREAM_TAG`
+
+          **Conflicting files to resolve:**
+          ```
+          $CONFLICT_FILES
+          ```
+
+          ### Review Checklist
+
+          - [ ] Claude resolves conflicts
+          - [ ] CI tests pass
+          - [ ] Manual review of conflict resolutions
+          - [ ] Test locally if needed
+
+          ---
+          *This PR was automatically created by the upstream-sync workflow.*
+          EOFMARKER
+
+          # Replace variables in the template
+          sed -i "s|\$UPSTREAM_TAG|$UPSTREAM_TAG|g" /tmp/pr_body_conflict.md
+          sed -i "s|\$RELEASE_URL|$RELEASE_URL|g" /tmp/pr_body_conflict.md
+          sed -i "s|\$CONFLICT_FILES|$CONFLICT_FILES|g" /tmp/pr_body_conflict.md
+
+          PR_URL=$(gh pr create \
+            --title "chore: sync upstream $UPSTREAM_TAG (conflicts)" \
+            --body-file /tmp/pr_body_conflict.md \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$SYNC_BRANCH" \
+            --label "upstream-sync,conflicts,automated" \
+            --draft)
+
+          echo "Created PR with conflicts: $PR_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
