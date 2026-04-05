@@ -1,3 +1,18 @@
+## v2.4.7-fa.1023
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- update release body generation to use environment variable for update logs
+
+### ✨ 新增功能
+
+- add upstream auto-sync workflow with AI assistance
+
+---
+
 ## v2.4.7-fa.1022
 
 > [!IMPORTANT]
