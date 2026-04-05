@@ -91,11 +91,12 @@ jobs:
 
       - name: Generate release body
         run: |
-          if [ -z "$UPDATE_LOGS" ]; then
+          if [ -z "${{ env.UPDATE_LOGS }}" ]; then
             echo "No update logs found, using default message"
             UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
           else
             echo "Using found update logs"
+            UPDATE_LOGS="${{ env.UPDATE_LOGS }}"
           fi
 
           cat > release.txt << EOF
