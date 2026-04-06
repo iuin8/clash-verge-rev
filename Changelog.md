@@ -1,3 +1,14 @@
+## v2.4.7-fa.1024
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- correct UPDATE_LOGS environment variable usage in release workflow
+
+---
+
 ## v2.4.7-fa.1023
 
 > [!IMPORTANT]
