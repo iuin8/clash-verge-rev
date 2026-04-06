@@ -1,3 +1,14 @@
+## v2.4.7-fa.1025
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- fix release body not updating by adding make_latest parameter to softprops/action-gh-release
+
+---
+
 ## v2.4.7-fa.1024
 
 > [!IMPORTANT]

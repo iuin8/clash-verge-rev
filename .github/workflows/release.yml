@@ -122,16 +122,35 @@ jobs:
           Created at ${{ env.BUILDTIME }}.
           EOF
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: '${{ env.TAG_NAME }}'
-          body_path: release.txt
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # generate_release_notes: true
+      - name: Find and update draft release
+        run: |
+          echo "Looking for draft release with tag ${{ env.TAG_NAME }}..."
+
+          # 查找最新的 draft release
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases \
+            --jq ".[] | select(.tag_name == \"${{ env.TAG_NAME }}\" and .draft == true) | .id" \
+            | head -n 1)
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "❌ No draft release found for tag ${{ env.TAG_NAME }}"
+            echo "Available releases:"
+            gh release list --limit 10
+            exit 1
+          fi
+
+          echo "✅ Found draft release ID: $RELEASE_ID"
+          echo "Updating release with new body and publishing..."
+
+          # 更新 release：设置 body、取消 draft、设置 latest
+          gh api -X PATCH repos/${{ github.repository }}/releases/$RELEASE_ID \
+            -f body="$(cat release.txt)" \
+            -F draft=false \
+            -F prerelease=${{ contains(github.ref_name, '-rc') }} \
+            -F make_latest=true
+
+          echo "✅ Release updated and published successfully"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     name: Release Build
