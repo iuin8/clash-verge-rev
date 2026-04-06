@@ -230,7 +230,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: '${{ github.ref_name }}'
+          releaseName: 'Draft ${{ github.ref_name }}'
           releaseBody: 'Draft release, will be updated later.'
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}

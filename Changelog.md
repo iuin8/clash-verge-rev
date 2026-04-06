@@ -1,3 +1,14 @@
+## v2.4.7-fa.1026
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 修复 release body 未更新的问题，通过给 draft release 添加 'Draft' 前缀来区分草稿和最终版本
+
+---
+
 ## v2.4.7-fa.1025
 
 > [!IMPORTANT]
