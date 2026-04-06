@@ -648,6 +648,16 @@ jobs:
           Created at ${{ env.BUILDTIME }}.
           EOF
 
+      - name: Update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: '${{ env.TAG_NAME }}'
+          body_path: release.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Send Telegram Notification
         run: node scripts/telegram.mjs
         env:
