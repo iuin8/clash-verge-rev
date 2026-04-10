@@ -1,0 +1,6 @@
+interface:
+  display_name: "Clash Verge Rev"
+  short_description: "Repo-specific patterns and workflows for clash-verge-rev"
+  default_prompt: "Use the clash-verge-rev repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
