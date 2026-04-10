@@ -19,8 +19,11 @@ const DEV_URLS = [
   'http://localhost:3000',
 ]
 
-// 获取完整的源列表，包括开发URL
+// 获取完整的源列表，仅在开发模式下包括开发URL
 const getFullOrigins = (origins: string[]) => {
+  if (!import.meta.env.DEV) {
+    return origins
+  }
   // 合并现有源和开发URL，并去重
   const allOrigins = [...origins, ...DEV_URLS]
   const uniqueOrigins = [...new Set(allOrigins)]

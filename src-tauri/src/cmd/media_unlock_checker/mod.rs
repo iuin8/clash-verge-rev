@@ -45,8 +45,7 @@ pub async fn check_media_unlock() -> Result<Vec<UnlockItem>, String> {
         .use_rustls_tls()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
         .timeout(std::time::Duration::from_secs(30))
-        .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames(true)
+        .danger_accept_invalid_certs(false)
         .tcp_keepalive(std::time::Duration::from_secs(60))
         .connection_verbose(true)
         .build() {

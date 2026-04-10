@@ -306,7 +306,7 @@ export const useCustomTheme = () => {
         }
       `
 
-      styleElement.innerHTML = effectiveInjectedCss + globalStyles
+      styleElement.textContent = effectiveInjectedCss + globalStyles
     }
 
     const { palette } = muiTheme

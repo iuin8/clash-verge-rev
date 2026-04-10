@@ -55,7 +55,7 @@
     "@tauri-apps/plugin-shell": "2.3.5",
     "@tauri-apps/plugin-updater": "2.10.0",
     "ahooks": "^3.9.6",
-    "axios": "^1.13.6",
+    "axios": "^1.15.0",
     "cidr-block": "^2.3.0",
     "dayjs": "1.11.20",
     "foxact": "^0.3.0",
@@ -119,7 +119,7 @@
     "terser": "^5.46.1",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.57.1",
-    "vite": "^8.0.1",
+    "vite": "^8.0.5",
     "vite-plugin-svgr": "^4.5.0"
   },
   "lint-staged": {

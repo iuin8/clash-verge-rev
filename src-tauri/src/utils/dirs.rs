@@ -197,6 +197,13 @@ pub fn get_encryption_key() -> Result<Vec<u8>> {
         }
         // Save key
         fs::write(&key_path, &key).map_err(|e| anyhow::anyhow!("Failed to save encryption key: {}", e))?;
+        // Restrict file permissions to owner-only on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600))
+                .map_err(|e| anyhow::anyhow!("Failed to set encryption key permissions: {}", e))?;
+        }
         Ok(key)
     }
 }
