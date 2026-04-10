@@ -124,9 +124,29 @@ impl Tray {
         Self::default()
     }
 
-    pub async fn init(&self) -> Result<()> {
+    /// Returns `true` (and logs) when the app is shutting down, so callers
+    /// can `return Ok(())` early.  Centralises the guard that was previously
+    /// copy-pasted into every public method.
+    fn is_exiting(context: &str) -> bool {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘初始化");
+            logging!(debug, Type::Tray, "应用正在退出，跳过{}", context);
+            return true;
+        }
+        false
+    }
+
+    /// Convenience wrapper around `tray_by_id("main")` that logs a warning
+    /// when the tray has not been created yet.
+    fn get_main_tray(app_handle: &AppHandle) -> Option<TrayIcon> {
+        let tray = app_handle.tray_by_id("main");
+        if tray.is_none() {
+            logging!(warn, Type::Tray, "Failed to get main tray: tray not found");
+        }
+        tray
+    }
+
+    pub async fn init(&self) -> Result<()> {
+        if Self::is_exiting("托盘初始化") {
             return Ok(());
         }
 
@@ -150,17 +170,16 @@ impl Tray {
 
     /// 更新托盘点击行为
     pub async fn update_click_behavior(&self) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘点击行为更新");
+        if Self::is_exiting("托盘点击行为更新") {
             return Ok(());
         }
 
         let app_handle = handle::Handle::app_handle();
         let tray_event = { Config::verge().await.latest_arc().tray_event.clone() };
         let tray_event = TrayAction::from(tray_event.as_deref().unwrap_or("main_window"));
-        let tray = app_handle
-            .tray_by_id("main")
-            .ok_or_else(|| anyhow::anyhow!("Failed to get main tray"))?;
+        let Some(tray) = Self::get_main_tray(app_handle) else {
+            return Ok(());
+        };
         match tray_event {
             TrayAction::TrayMenu => tray.set_show_menu_on_left_click(true)?,
             _ => tray.set_show_menu_on_left_click(false)?,
@@ -170,8 +189,7 @@ impl Tray {
 
     /// 更新托盘菜单
     pub async fn update_menu(&self) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘菜单更新");
+        if Self::is_exiting("托盘菜单更新") {
             return Ok(());
         }
         let app_handle = handle::Handle::app_handle();
@@ -179,8 +197,7 @@ impl Tray {
     }
 
     async fn update_menu_internal(&self, app_handle: &AppHandle) -> Result<()> {
-        let Some(tray) = app_handle.tray_by_id("main") else {
-            logging!(warn, Type::Tray, "Failed to update tray menu: tray not found");
+        let Some(tray) = Self::get_main_tray(app_handle) else {
             return Ok(());
         };
 
@@ -226,15 +243,13 @@ impl Tray {
 
     /// 更新托盘图标
     pub async fn update_icon(&self, verge: &IVerge) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘图标更新");
+        if Self::is_exiting("托盘图标更新") {
             return Ok(());
         }
 
         let app_handle = handle::Handle::app_handle();
 
-        let Some(tray) = app_handle.tray_by_id("main") else {
-            logging!(warn, Type::Tray, "Failed to update tray icon: tray not found");
+        let Some(tray) = Self::get_main_tray(app_handle) else {
             return Ok(());
         };
 
@@ -256,8 +271,7 @@ impl Tray {
 
     /// 更新托盘提示
     pub async fn update_tooltip(&self) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘提示更新");
+        if Self::is_exiting("托盘提示更新") {
             return Ok(());
         }
 
@@ -307,8 +321,7 @@ impl Tray {
             current_profile_name
         );
 
-        let Some(tray) = app_handle.tray_by_id("main") else {
-            logging!(warn, Type::Tray, "Failed to update tray tooltip: tray not found");
+        let Some(tray) = Self::get_main_tray(app_handle) else {
             return Ok(());
         };
 
@@ -317,27 +330,29 @@ impl Tray {
         Ok(())
     }
 
+    /// Update menu, icon, and tooltip together (used after state changes that
+    /// affect all three, e.g. toggling system proxy / TUN).
     pub async fn update_part(&self) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘局部更新");
-            return Ok(());
-        }
-        let verge = Config::verge().await.data_arc();
-        self.update_menu().await?;
-        self.update_icon(&verge).await?;
-        self.update_tooltip().await?;
+        self.update_menu_and_icon().await;
+        logging_error!(Type::Tray, self.update_tooltip().await);
         Ok(())
     }
 
+    /// Update menu and icon together (used when the proxy mode changes).
     pub async fn update_menu_and_icon(&self) {
         logging_error!(Type::Tray, self.update_menu().await);
         let verge = Config::verge().await.data_arc();
         logging_error!(Type::Tray, self.update_icon(&verge).await);
     }
 
+    /// Update menu and tooltip together (used after profile switches/deletes).
+    pub async fn update_menu_and_tooltip(&self) {
+        logging_error!(Type::Tray, self.update_menu().await);
+        logging_error!(Type::Tray, self.update_tooltip().await);
+    }
+
     async fn create_tray_from_handle(&self, app_handle: &AppHandle) -> Result<()> {
-        if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘创建");
+        if Self::is_exiting("托盘创建") {
             return Ok(());
         }
 

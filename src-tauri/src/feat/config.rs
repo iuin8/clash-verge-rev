@@ -228,16 +228,21 @@ async fn process_terminated_flags(update_flags: UpdateFlags, patch: &IVerge) -> 
     {
         hotkey::Hotkey::global().update(hotkeys.to_owned()).await?;
     }
-    if update_flags.contains(UpdateFlags::SYSTRAY_MENU) {
-        tray::Tray::global().update_menu().await?;
-    }
-    if update_flags.contains(UpdateFlags::SYSTRAY_ICON) {
-        tray::Tray::global()
-            .update_icon(&Config::verge().await.latest_arc())
-            .await?;
-    }
-    if update_flags.contains(UpdateFlags::SYSTRAY_TOOLTIP) {
-        tray::Tray::global().update_tooltip().await?;
+    // Consolidate tray updates: use combo helpers when multiple parts change
+    if update_flags.contains(UpdateFlags::GROUP_SYS_TRAY) {
+        tray::Tray::global().update_part().await?;
+    } else {
+        if update_flags.contains(UpdateFlags::SYSTRAY_MENU) {
+            tray::Tray::global().update_menu().await?;
+        }
+        if update_flags.contains(UpdateFlags::SYSTRAY_ICON) {
+            tray::Tray::global()
+                .update_icon(&Config::verge().await.latest_arc())
+                .await?;
+        }
+        if update_flags.contains(UpdateFlags::SYSTRAY_TOOLTIP) {
+            tray::Tray::global().update_tooltip().await?;
+        }
     }
     if update_flags.contains(UpdateFlags::SYSTRAY_CLICK_BEHAVIOR) {
         tray::Tray::global().update_click_behavior().await?;
