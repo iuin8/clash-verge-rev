@@ -1,3 +1,14 @@
+## v2.4.7-fa.1030
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- simplify update_tag job dependencies and adjust release name format
+
+---
+
 ## v2.4.7-fa.1026
 
 > [!IMPORTANT]
