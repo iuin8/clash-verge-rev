@@ -171,8 +171,8 @@ async function updateHashCache(targetPath) {
 // Meta maps (stable & alpha)
 // =======================
 const META_ALPHA_VERSION_URL =
-  'https://github.com/iuin8/mihomo/releases/download/Prerelease-Alpha/version.txt'
-const META_ALPHA_URL_PREFIX = `https://github.com/iuin8/mihomo/releases/download/Prerelease-Alpha`
+  'https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt'
+const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`
 let META_ALPHA_VERSION
 
 const META_VERSION_URL =
