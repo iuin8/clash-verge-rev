@@ -1,3 +1,14 @@
+## v2.4.7-fa.1031
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 📝 更新内容
+
+- ci: enforce Changelog.md entry validation before release build
+
+---
+
 ## v2.4.7-fa.1030
 
 > [!IMPORTANT]
