@@ -30,8 +30,53 @@ description: >-
 ```bash
 git fetch --tags
 LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+\.[0-9]+)?$' | head -1)
-UPSTREAM_VERSION=$(jq -r '.version' package.json)
+FORK_BASE=$(jq -r '.version' package.json)
 ```
+
+### 1.5. 检查上游版本（必须在建议版本前执行）
+
+```bash
+# 获取上游最新 release tag
+UPSTREAM_LATEST=$(gh api repos/clash-verge-rev/clash-verge-rev/releases/latest --jq '.tag_name' | sed 's/^v//')
+
+# 比较版本：fork base 是否落后于上游
+NEWER=$(printf '%s\n%s\n' "$FORK_BASE" "$UPSTREAM_LATEST" | sort -V | tail -1)
+if [ "$NEWER" != "$FORK_BASE" ] && [ "$UPSTREAM_LATEST" != "$FORK_BASE" ]; then
+  echo "上游有新版本: $UPSTREAM_LATEST (当前 fork base: $FORK_BASE)"
+fi
+```
+
+**如果上游版本更新，立即停止并通知用户：**
+
+```
+⚠️ 检测到上游有新版本，当前 fork 尚未合并。
+
+上游最新版本：v{UPSTREAM_LATEST}
+当前 fork base：v{FORK_BASE}
+
+建议先完成上游合并，再发布新版本。
+未合并直接发布会导致：fork 版本号与实际代码不符，遗漏上游修复/新功能。
+
+如需继续，请先处理上游同步：
+  cd clash-verge-rev
+  git fetch upstream --tags
+  git merge upstream/main   # 或对应分支，解决冲突后再回来发布
+```
+
+使用 AskUserQuestion 询问用户：
+
+```
+上游 clash-verge-rev/clash-verge-rev 已发布 v{UPSTREAM_LATEST}，
+当前 fork base 仍为 v{FORK_BASE}，尚未合并上游更新。
+
+请选择：
+A) 暂停发布，我去处理上游合并（推荐）
+B) 忽略上游更新，仍以 v{FORK_BASE}-fa.{increment} 发布当前代码
+```
+
+- 选 **A**：停止流程，不做任何操作，等用户处理完上游合并后重新触发发布。
+- 选 **B**：继续发布，但在 Changelog.md 和询问确认时明确标注
+  `⚠️ 此版本基于 upstream v{FORK_BASE}，上游 v{UPSTREAM_LATEST} 尚未合并`。
 
 ### 2. 建议版本号
 
@@ -48,7 +93,7 @@ UPSTREAM_VERSION=$(jq -r '.version' package.json)
 
 ```
 当前最新版本: v2.4.7-fa.1030
-上游版本: v2.4.7
+Fork base: v2.4.7（已确认与上游一致）
 建议新版本: v2.4.7-fa.1031
 
 请选择：
