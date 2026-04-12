@@ -66,6 +66,22 @@ jobs:
 
           echo "✅ Tag and package.json version are consistent."
 
+      - name: Check Changelog.md has entry for this tag
+        run: |
+          TAG_REF="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+
+          if grep -q "^## ${TAG_REF}" Changelog.md; then
+            echo "✅ Changelog.md has entry for ${TAG_REF}"
+          else
+            LATEST=$(grep "^## v" Changelog.md | head -1 | sed 's/^## //')
+            echo "❌ Changelog.md missing entry for ${TAG_REF}"
+            echo "   Latest entry: ${LATEST}"
+            echo ""
+            echo "Run before tagging:"
+            echo "   ./scripts/prepare-release.sh ${TAG_REF}"
+            exit 1
+          fi
+
   update_tag:
     name: Update tag
     runs-on: ubuntu-latest
