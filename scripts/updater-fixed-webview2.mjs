@@ -17,26 +17,33 @@ async function resolveUpdater() {
   const options = { owner: context.repo.owner, repo: context.repo.repo }
   const github = getOctokit(process.env.GITHUB_TOKEN)
 
-  const { data: tags } = await github.rest.repos.listTags({
-    ...options,
-    per_page: 10,
-    page: 1,
-  })
+  const explicitReleaseTag = process.env.RELEASE_TAG?.trim()
+  let tagName
 
-  // get the latest publish tag
-  const tag = tags.find((t) => t.name.startsWith('v'))
-
-  console.log(tag)
+  if (explicitReleaseTag) {
+    tagName = explicitReleaseTag
+    console.log(`Using explicit release tag from RELEASE_TAG: ${tagName}`)
+  } else {
+    const { data: tags } = await github.rest.repos.listTags({
+      ...options,
+      per_page: 10,
+      page: 1,
+    })
+    // get the latest publish tag
+    const tag = tags.find((t) => t.name.startsWith('v'))
+    tagName = tag.name
+    console.log(`Using latest tag from listTags: ${tagName}`)
+  }
   console.log()
 
   const { data: latestRelease } = await github.rest.repos.getReleaseByTag({
     ...options,
-    tag: tag.name,
+    tag: tagName,
   })
 
   const updateData = {
-    name: tag.name,
-    notes: await resolveUpdateLog(tag.name), // use Changelog.md
+    name: tagName,
+    notes: await resolveUpdateLog(tagName), // use Changelog.md
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': { signature: '', url: '' },

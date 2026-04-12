@@ -21,6 +21,27 @@ async function resolveUpdater() {
 
   const options = { owner: context.repo.owner, repo: context.repo.repo }
   const github = getOctokit(process.env.GITHUB_TOKEN)
+  const explicitReleaseTag = process.env.RELEASE_TAG?.trim()
+
+  if (explicitReleaseTag) {
+    const { data: explicitRelease } = await github.rest.repos.getReleaseByTag({
+      ...options,
+      tag: explicitReleaseTag,
+    })
+
+    console.log(
+      `Using explicit release tag from RELEASE_TAG: ${explicitReleaseTag}`,
+    )
+
+    await processRelease(
+      github,
+      options,
+      { name: explicitReleaseTag },
+      explicitRelease.prerelease,
+    )
+
+    return
+  }
 
   // Fetch releases (not tags) to avoid picking up inherited upstream tags from the fork
   let allReleases = []
@@ -48,8 +69,6 @@ async function resolveUpdater() {
   // Only match semver tags created by this fork: vX.Y.Z or vX.Y.Z-prerelease
   // Excludes upstream tags (e.g. v2.4.100107) that don't have a corresponding release
   const stableTagRegex = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
-  // fa fork pre-release tags use suffix like -fa.NNNN; skip pure pre-release named tags
-  const preReleaseRegex = /^(alpha|beta|rc|pre)$/i
 
   // Convert releases to tag-like objects for compatibility with processRelease
   const tags = allReleases.map((r) => ({ name: r.tag_name }))
@@ -71,15 +90,51 @@ async function resolveUpdater() {
   )
   console.log()
 
-  // Process stable release
   if (stableTag) {
     await processRelease(github, options, stableTag, false)
   }
 
-  // Process pre-release if found
   if (preReleaseTag) {
     await processRelease(github, options, preReleaseTag, true)
   }
+}
+
+async function verifyUpdateAsset({
+  github,
+  options,
+  updaterTag,
+  assetName,
+  expectedVersion,
+}) {
+  const { data: updateRelease } = await github.rest.repos.getReleaseByTag({
+    ...options,
+    tag: updaterTag,
+  })
+  const asset = updateRelease.assets.find((item) => item.name === assetName)
+
+  if (!asset) {
+    throw new Error(
+      `Failed to verify ${assetName}: asset not found on ${updaterTag}`,
+    )
+  }
+
+  const response = await fetch(asset.browser_download_url)
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to verify ${assetName}: download returned ${response.status}`,
+    )
+  }
+
+  const updateJson = await response.json()
+
+  if (updateJson.name !== expectedVersion) {
+    throw new Error(
+      `Failed to verify ${assetName}: expected ${expectedVersion}, got ${updateJson.name}`,
+    )
+  }
+
+  console.log(`Verified ${updaterTag}/${assetName} -> ${updateJson.name}`)
 }
 
 // Process a release (stable or alpha) and generate update files
@@ -303,11 +358,21 @@ async function processRelease(github, options, tag, isAlpha) {
       console.log(
         `Successfully uploaded ${isAlpha ? 'alpha' : 'stable'} update files to ${releaseTag}`,
       )
+
+      // Verify uploaded asset points at the expected version — fail CI if stale
+      await verifyUpdateAsset({
+        github,
+        options,
+        updaterTag: releaseTag,
+        assetName: jsonFile,
+        expectedVersion: semverVersion,
+      })
     } catch (error) {
       console.error(
         `Failed to process ${isAlpha ? 'alpha' : 'stable'} release:`,
         error.message,
       )
+      throw error
     }
   } catch (error) {
     if (error.status === 404) {

@@ -538,6 +538,7 @@ jobs:
         run: pnpm updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
 
   release-update-for-fixed-webview2:
     if: ${{ !contains(github.ref_name, '-rc') }}
@@ -564,6 +565,7 @@ jobs:
         run: pnpm updater-fixed-webview2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
 
   submit-to-winget:
     if: false # FORK: disabled, not publishing to winget
