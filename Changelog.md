@@ -1,3 +1,14 @@
+## v2.4.7-fa.1032
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- force release body sync after publish
+
+---
+
 ## v2.4.7-fa.1031
 
 > [!IMPORTANT]
