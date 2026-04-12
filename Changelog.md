@@ -1,3 +1,14 @@
+## v2.4.7-fa.1035
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- Revert "fix: use MetaCubeX upstream for alpha mihomo sidecar prebuild"
+
+---
+
 ## v2.4.7-fa.1034
 
 > [!IMPORTANT]
