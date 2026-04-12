@@ -1,3 +1,15 @@
+## v2.4.7-fa.1033
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 📝 更新内容
+
+- docs: enhance release process with upstream version check and user notification
+- ci: deterministic updater channel refresh on release
+
+---
+
 ## v2.4.7-fa.1032
 
 > [!IMPORTANT]
