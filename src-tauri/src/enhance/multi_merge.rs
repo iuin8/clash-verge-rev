@@ -78,70 +78,6 @@ fn ensure_mapping_field<'a>(
     mapping
 }
 
-fn normalize_existing_sequence_field(
-    base: &mut Mapping,
-    field: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
-    let Some(base_value) = base.get_mut(field) else {
-        return;
-    };
-    if !matches!(base_value, Value::Sequence(_)) {
-        push_conflict(
-            conflicts,
-            field,
-            "<top-level>",
-            primary_name,
-            "primary field has invalid shape; replaced during merge",
-        );
-        *base_value = Value::Sequence(vec![]);
-    }
-}
-
-fn normalize_existing_mapping_field(
-    base: &mut Mapping,
-    field: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
-    let Some(base_value) = base.get_mut(field) else {
-        return;
-    };
-    if !matches!(base_value, Value::Mapping(_)) {
-        push_conflict(
-            conflicts,
-            field,
-            "<top-level>",
-            primary_name,
-            "primary field has invalid shape; replaced during merge",
-        );
-        *base_value = Value::Mapping(Mapping::new());
-    }
-}
-
-fn normalize_group_member_field(
-    group: &mut Mapping,
-    field: &str,
-    group_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
-    let Some(member_value) = group.get_mut(field) else {
-        return;
-    };
-    if !matches!(member_value, Value::Sequence(_)) {
-        push_conflict(
-            conflicts,
-            "proxy-groups",
-            group_name,
-            primary_name,
-            format!("existing group has invalid `{field}` members; replaced during merge"),
-        );
-        *member_value = Value::Sequence(vec![]);
-    }
-}
-
 fn merge_proxies(
     base: &mut Mapping,
     supp: &Mapping,
@@ -150,6 +86,9 @@ fn merge_proxies(
     conflicts: &mut Vec<ConflictEntry>,
 ) {
     if let Some(Value::Sequence(supp_proxies)) = supp.get("proxies") {
+        if supp_proxies.is_empty() {
+            return;
+        }
         let base_seq = ensure_sequence_field(base, "proxies", primary_name, conflicts);
         let mut existing_names: HashSet<String> = base_seq
             .iter()
@@ -198,7 +137,14 @@ fn filtered_group_settings(mapping: &Mapping) -> Mapping {
         .collect()
 }
 
-fn merge_group_member_list(existing_map: &mut Mapping, incoming_map: &Mapping, field: &str) {
+fn merge_group_member_list(
+    existing_map: &mut Mapping,
+    incoming_map: &Mapping,
+    field: &str,
+    group_name: &str,
+    primary_name: &str,
+    conflicts: &mut Vec<ConflictEntry>,
+) {
     let supp_members: Vec<Value> = incoming_map
         .get(field)
         .and_then(|v| v.as_sequence())
@@ -211,25 +157,42 @@ fn merge_group_member_list(existing_map: &mut Mapping, incoming_map: &Mapping, f
     let existing_members = existing_map
         .entry(Value::String(field.into()))
         .or_insert_with(|| Value::Sequence(vec![]));
-    if let Value::Sequence(existing_seq) = existing_members {
-        let mut seen_members: HashSet<String> = existing_seq
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
-        let mut members_to_prepend: Vec<Value> = vec![];
-        for member in &supp_members {
-            let member_name = member.as_str().unwrap_or("");
-            if seen_members.insert(member_name.to_string()) {
-                members_to_prepend.push(member.clone());
-            }
+    if !matches!(existing_members, Value::Sequence(_)) {
+        push_conflict(
+            conflicts,
+            "proxy-groups",
+            group_name,
+            primary_name,
+            format!("existing group has invalid `{field}` members; replaced during merge"),
+        );
+        *existing_members = Value::Sequence(vec![]);
+    }
+
+    let Value::Sequence(existing_seq) = existing_members else {
+        unreachable!("group member field should be normalized before merge")
+    };
+    let mut seen_members: HashSet<String> = existing_seq
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    let mut members_to_prepend: Vec<Value> = vec![];
+    for member in &supp_members {
+        let member_name = member.as_str().unwrap_or("");
+        if seen_members.insert(member_name.to_string()) {
+            members_to_prepend.push(member.clone());
         }
-        for item in members_to_prepend.into_iter().rev() {
-            existing_seq.insert(0, item);
-        }
+    }
+    for item in members_to_prepend.into_iter().rev() {
+        existing_seq.insert(0, item);
     }
 }
 
-fn merge_group_members(existing_group: &mut Value, incoming_group: &Value) {
+fn merge_group_members(
+    existing_group: &mut Value,
+    incoming_group: &Value,
+    primary_name: &str,
+    conflicts: &mut Vec<ConflictEntry>,
+) {
     let Some(existing_map) = existing_group.as_mapping_mut() else {
         return;
     };
@@ -237,13 +200,38 @@ fn merge_group_members(existing_group: &mut Value, incoming_group: &Value) {
         return;
     };
 
-    merge_group_member_list(existing_map, incoming_map, "proxies");
-    merge_group_member_list(existing_map, incoming_map, "use");
+    let group_name = existing_map
+        .get("name")
+        .and_then(Value::as_str)
+        .or_else(|| incoming_map.get("name").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string();
+
+    merge_group_member_list(
+        existing_map,
+        incoming_map,
+        "proxies",
+        &group_name,
+        primary_name,
+        conflicts,
+    );
+    merge_group_member_list(existing_map, incoming_map, "use", &group_name, primary_name, conflicts);
+}
+
+fn has_non_empty_group_members(mapping: &Mapping, field: &str) -> bool {
+    mapping
+        .get(field)
+        .and_then(Value::as_sequence)
+        .is_some_and(|members| !members.is_empty())
+}
+
+fn has_invalid_group_members(mapping: &Mapping, field: &str) -> bool {
+    matches!(mapping.get(field), Some(value) if !matches!(value, Value::Sequence(_)))
 }
 
 fn group_member_mode(mapping: &Mapping) -> &'static str {
-    let has_proxies = mapping.get("proxies").and_then(Value::as_sequence).is_some();
-    let has_use = mapping.get("use").and_then(Value::as_sequence).is_some();
+    let has_proxies = has_non_empty_group_members(mapping, "proxies");
+    let has_use = has_non_empty_group_members(mapping, "use");
 
     match (has_proxies, has_use) {
         (true, false) => "proxies",
@@ -261,18 +249,19 @@ fn can_merge_group_members(existing_group: &Value, incoming_group: &Value) -> bo
         return false;
     };
 
+    let incoming_contributes_members = has_non_empty_group_members(incoming_map, "proxies")
+        || has_non_empty_group_members(incoming_map, "use");
+    let leaves_invalid_existing_members_untouched = ["proxies", "use"]
+        .into_iter()
+        .any(|field| has_invalid_group_members(existing_map, field) && !has_non_empty_group_members(incoming_map, field));
+    if incoming_contributes_members && leaves_invalid_existing_members_untouched {
+        return false;
+    }
+
     let existing_mode = group_member_mode(existing_map);
     let incoming_mode = group_member_mode(incoming_map);
 
     existing_mode == incoming_mode || existing_mode == "none" || incoming_mode == "none"
-}
-
-fn normalize_primary_merge_fields(base: &mut Mapping, primary_name: &str, conflicts: &mut Vec<ConflictEntry>) {
-    normalize_existing_sequence_field(base, "proxies", primary_name, conflicts);
-    normalize_existing_mapping_field(base, "proxy-providers", primary_name, conflicts);
-    normalize_existing_sequence_field(base, "proxy-groups", primary_name, conflicts);
-    normalize_existing_sequence_field(base, "rules", primary_name, conflicts);
-    normalize_existing_mapping_field(base, "rule-providers", primary_name, conflicts);
 }
 
 fn merge_proxy_groups(
@@ -283,6 +272,9 @@ fn merge_proxy_groups(
     conflicts: &mut Vec<ConflictEntry>,
 ) {
     if let Some(Value::Sequence(supp_groups)) = supp.get("proxy-groups") {
+        if supp_groups.is_empty() {
+            return;
+        }
         let base_seq = ensure_sequence_field(base, "proxy-groups", primary_name, conflicts);
         let mut existing_group_names: HashSet<String> = base_seq
             .iter()
@@ -326,11 +318,6 @@ fn merge_proxy_groups(
                 continue;
             };
 
-            if let Some(target_map) = target_group.as_mapping_mut() {
-                normalize_group_member_field(target_map, "proxies", group_name, primary_name, conflicts);
-                normalize_group_member_field(target_map, "use", group_name, primary_name, conflicts);
-            }
-
             let existing_settings = target_group
                 .as_mapping()
                 .map(filtered_group_settings)
@@ -347,7 +334,7 @@ fn merge_proxy_groups(
                 continue;
             }
 
-            merge_group_members(target_group, group);
+            merge_group_members(target_group, group, primary_name, conflicts);
         }
 
         for item in groups_to_prepend.into_iter().rev() {
@@ -358,6 +345,9 @@ fn merge_proxy_groups(
 
 fn merge_rules(base: &mut Mapping, supp: &Mapping, primary_name: &str, conflicts: &mut Vec<ConflictEntry>) {
     if let Some(Value::Sequence(supp_rules)) = supp.get("rules") {
+        if supp_rules.is_empty() {
+            return;
+        }
         let base_seq = ensure_sequence_field(base, "rules", primary_name, conflicts);
         let mut existing_rules: HashSet<String> = base_seq
             .iter()
@@ -385,6 +375,9 @@ fn merge_named_mapping(
     conflicts: &mut Vec<ConflictEntry>,
 ) {
     if let Some(Value::Mapping(supp_map)) = supp.get(field) {
+        if supp_map.is_empty() {
+            return;
+        }
         let base_map = ensure_mapping_field(base, field, primary_name, conflicts);
         for (name, value) in supp_map {
             let name_str = name.as_str().map(str::to_owned).unwrap_or_else(|| format!("{name:?}"));
@@ -439,8 +432,6 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
     let primary_name = names.first().copied().unwrap_or("primary");
     let mut conflicts: Vec<ConflictEntry> = vec![];
 
-    normalize_primary_merge_fields(&mut base, primary_name, &mut conflicts);
-
     for (i, supp) in configs[1..].iter().enumerate() {
         let supp_name = names.get(i + 1).copied().unwrap_or("unknown");
         merge_proxies(&mut base, supp, supp_name, primary_name, &mut conflicts);
@@ -458,53 +449,12 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
 mod tests {
     use super::*;
 
-    const LOCAL_LAN_PRIMARY_YAML: &str = r#"
-mixed-port: 7890
-mode: rule
-log-level: info
-
-proxies: []
-proxy-groups: []
-
-rules:
-  - MATCH,DIRECT
-"#;
-
-    const LOCAL_LAN_SUPPLEMENT_YAML: &str = r#"
-mixed-port: 7891
-mode: rule
-log-level: info
-
-proxies: []
-proxy-groups: []
-
-rule-providers:
-  Local-LAN:
-    type: inline
-    behavior: classical
-    payload:
-      - IP-CIDR,192.168.0.0/16,DIRECT
-      - DOMAIN-SUFFIX,lan,DIRECT
-
-rules:
-  - IP-CIDR,10.0.0.0/8,DIRECT
-  - RULE-SET,Local-LAN,DIRECT
-  - MATCH,DIRECT
-"#;
-
-    const LOCAL_LAN_BROKEN_BASELINE_YAML: &str = r#"
-mixed-port: 7890
-mode: rule
-log-level: info
-
-proxies: []
-proxy-groups: []
-
-rules:
-  - IP-CIDR,10.0.0.0/8,DIRECT
-  - RULE-SET,Local-LAN,DIRECT
-  - MATCH,DIRECT
-"#;
+    const LOCAL_LAN_PRIMARY_YAML: &str =
+        include_str!("../../../docs/repro/local-lan-rule-set/10-merge-primary-valid.yaml");
+    const LOCAL_LAN_SUPPLEMENT_YAML: &str =
+        include_str!("../../../docs/repro/local-lan-rule-set/11-merge-supplement-valid.yaml");
+    const LOCAL_LAN_BROKEN_BASELINE_YAML: &str =
+        include_str!("../../../docs/repro/local-lan-rule-set/12-expected-broken-merged-output.yaml");
 
     fn mapping(yaml: &str) -> Mapping {
         serde_yaml_ng::from_str(yaml).expect("test YAML is valid")
@@ -521,12 +471,7 @@ rules:
     fn single_config_returned_as_is() {
         let cfg = mapping("proxies:\n  - name: px1\n    type: ss");
         let (result, conflicts) = multi_profile_merge(std::slice::from_ref(&cfg), &["primary"]);
-        let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
-        assert_eq!(proxies.len(), 1);
-        assert_eq!(
-            proxies[0].as_mapping().unwrap().get("name").unwrap().as_str().unwrap(),
-            "px1"
-        );
+        assert_eq!(result, cfg);
         assert!(conflicts.is_empty());
     }
 
@@ -749,15 +694,14 @@ rules:
     }
 
     #[test]
-    fn malformed_primary_proxies_are_normalized_without_supplement() {
+    fn malformed_primary_proxies_remain_unchanged_without_supplement() {
         let primary = mapping("proxies: invalid");
+        let expected = primary.clone();
 
         let (result, conflicts) = multi_profile_merge(&[primary], &["primary"]);
 
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "proxies");
-        let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
-        assert!(proxies.is_empty());
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -815,15 +759,26 @@ rules:
     }
 
     #[test]
-    fn malformed_primary_rules_are_normalized_without_supplement() {
+    fn malformed_primary_rules_remain_unchanged_without_supplement() {
         let primary = mapping("rules: invalid");
+        let expected = primary.clone();
 
         let (result, conflicts) = multi_profile_merge(&[primary], &["primary"]);
 
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "rules");
-        let rules = result.get("rules").unwrap().as_sequence().unwrap();
-        assert!(rules.is_empty());
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn malformed_primary_rules_remain_unchanged_when_supplement_rules_are_empty() {
+        let primary = mapping("rules: invalid");
+        let expected = primary.clone();
+        let supp = mapping("rules: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -841,6 +796,17 @@ rules:
             groups[0].as_mapping().unwrap().get("name").unwrap().as_str().unwrap(),
             "auto"
         );
+    }
+
+    #[test]
+    fn malformed_primary_proxy_groups_remain_unchanged_without_supplement() {
+        let primary = mapping("proxy-groups: invalid");
+        let expected = primary.clone();
+
+        let (result, conflicts) = multi_profile_merge(&[primary], &["primary"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -865,6 +831,75 @@ rules:
     }
 
     #[test]
+    fn malformed_primary_proxy_group_use_members_are_repaired_during_merge() {
+        let primary = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: invalid");
+        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].field, "proxy-groups");
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let providers = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("use")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].as_str().unwrap(), "provider-a");
+    }
+
+    #[test]
+    fn malformed_primary_proxy_group_members_remain_unchanged_when_supplement_members_are_missing() {
+        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: invalid");
+        let expected = primary.clone();
+        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn malformed_primary_proxy_group_members_remain_unchanged_when_supplement_members_are_empty() {
+        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: invalid");
+        let expected = primary.clone();
+        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn malformed_primary_proxy_group_use_members_remain_unchanged_when_supplement_use_is_missing() {
+        let primary = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: invalid");
+        let expected = primary.clone();
+        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn malformed_primary_proxy_group_use_members_remain_unchanged_when_supplement_use_is_empty() {
+        let primary = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: invalid");
+        let expected = primary.clone();
+        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
     fn missing_supplementary_proxy_group_members_do_not_create_conflict() {
         let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
         let supp = mapping("proxy-groups:\n  - name: auto\n    type: select");
@@ -885,6 +920,84 @@ rules:
     }
 
     #[test]
+    fn empty_supplementary_proxy_group_members_do_not_create_conflict() {
+        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let proxies = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("proxies")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert_eq!(proxies.len(), 1);
+        assert_eq!(proxies[0].as_str().unwrap(), "a");
+    }
+
+    #[test]
+    fn empty_supplementary_proxy_group_use_members_do_not_create_conflict() {
+        let primary =
+            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let providers = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("use")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].as_str().unwrap(), "provider-a");
+    }
+
+    #[test]
+    fn duplicate_proxy_group_merge_rejects_invalid_untouched_use_members() {
+        let primary =
+            mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - a\n    use: invalid");
+        let expected = primary.clone();
+        let supp =
+            mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - b");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].field, "proxy-groups");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn empty_proxy_group_members_do_not_force_incompatible_mode_conflict() {
+        let primary =
+            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let supp =
+            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    proxies: []");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let providers = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("use")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].as_str().unwrap(), "provider-a");
+    }
+
+    #[test]
     fn malformed_primary_rule_providers_are_replaced_during_merge() {
         let primary = mapping("rule-providers: invalid");
         let supp = mapping(
@@ -900,15 +1013,26 @@ rules:
     }
 
     #[test]
-    fn malformed_primary_rule_providers_are_normalized_without_supplement() {
+    fn malformed_primary_rule_providers_remain_unchanged_without_supplement() {
         let primary = mapping("rule-providers: invalid");
+        let expected = primary.clone();
 
         let (result, conflicts) = multi_profile_merge(&[primary], &["primary"]);
 
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "rule-providers");
-        let providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
-        assert!(providers.is_empty());
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn malformed_primary_rule_providers_remain_unchanged_when_supplement_rule_providers_are_empty() {
+        let primary = mapping("rule-providers: invalid");
+        let expected = primary.clone();
+        let supp = mapping("rule-providers: {}");
+
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -927,15 +1051,14 @@ rules:
     }
 
     #[test]
-    fn malformed_primary_proxy_providers_are_normalized_without_supplement() {
+    fn malformed_primary_proxy_providers_remain_unchanged_without_supplement() {
         let primary = mapping("proxy-providers: invalid");
+        let expected = primary.clone();
 
         let (result, conflicts) = multi_profile_merge(&[primary], &["primary"]);
 
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "proxy-providers");
-        let providers = result.get("proxy-providers").unwrap().as_mapping().unwrap();
-        assert!(providers.is_empty());
+        assert!(conflicts.is_empty());
+        assert_eq!(result, expected);
     }
 
     #[test]

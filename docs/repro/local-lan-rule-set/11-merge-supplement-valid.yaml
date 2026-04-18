@@ -1,0 +1,22 @@
+# Merge repro: supplementary profile is valid alone because it defines both
+# rule-providers.Local-LAN and the matching RULE-SET reference.
+# Put this profile SECOND in clash-verge multi-profile merge mode.
+mixed-port: 7891
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rule-providers:
+  Local-LAN:
+    type: inline
+    behavior: classical
+    payload:
+      - IP-CIDR,192.168.0.0/16,DIRECT
+      - DOMAIN-SUFFIX,lan,DIRECT
+
+rules:
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - RULE-SET,Local-LAN,DIRECT
+  - MATCH,DIRECT

@@ -1,0 +1,11 @@
+# Minimal broken fixture: RULE-SET references Local-LAN, but Local-LAN is never defined.
+mixed-port: 7890
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rules:
+  - RULE-SET,Local-LAN,DIRECT
+  - MATCH,DIRECT

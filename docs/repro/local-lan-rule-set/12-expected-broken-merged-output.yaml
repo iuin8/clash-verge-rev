@@ -1,0 +1,14 @@
+# Historical broken merged output from the pre-fix clash-verge multi_profile_merge behavior.
+# This output is invalid because the supplementary RULE-SET survives, but the matching
+# supplementary rule-providers.Local-LAN definition is dropped.
+mixed-port: 7890
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rules:
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - RULE-SET,Local-LAN,DIRECT
+  - MATCH,DIRECT
