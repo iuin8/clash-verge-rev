@@ -249,11 +249,11 @@ fn can_merge_group_members(existing_group: &Value, incoming_group: &Value) -> bo
         return false;
     };
 
-    let incoming_contributes_members = has_non_empty_group_members(incoming_map, "proxies")
-        || has_non_empty_group_members(incoming_map, "use");
-    let leaves_invalid_existing_members_untouched = ["proxies", "use"]
-        .into_iter()
-        .any(|field| has_invalid_group_members(existing_map, field) && !has_non_empty_group_members(incoming_map, field));
+    let incoming_contributes_members =
+        has_non_empty_group_members(incoming_map, "proxies") || has_non_empty_group_members(incoming_map, "use");
+    let leaves_invalid_existing_members_untouched = ["proxies", "use"].into_iter().any(|field| {
+        has_invalid_group_members(existing_map, field) && !has_non_empty_group_members(incoming_map, field)
+    });
     if incoming_contributes_members && leaves_invalid_existing_members_untouched {
         return false;
     }
@@ -962,11 +962,11 @@ mod tests {
 
     #[test]
     fn duplicate_proxy_group_merge_rejects_invalid_untouched_use_members() {
-        let primary =
-            mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - a\n    use: invalid");
+        let primary = mapping(
+            "proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - a\n    use: invalid",
+        );
         let expected = primary.clone();
-        let supp =
-            mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - b");
+        let supp = mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - b");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -979,8 +979,7 @@ mod tests {
     fn empty_proxy_group_members_do_not_force_incompatible_mode_conflict() {
         let primary =
             mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
-        let supp =
-            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    proxies: []");
+        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    proxies: []");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
