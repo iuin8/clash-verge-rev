@@ -1,3 +1,17 @@
+## v2.4.7-fa.1036
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- docs(merge): record shipped rule-provider fix state
+- harden multi-profile merge edge cases
+- harden multi-profile merge behavior
+- update build monitoring interval to every 3 minutes
+
+---
+
 ## v2.4.7-fa.1035
 
 > [!IMPORTANT]
