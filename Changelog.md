@@ -1,3 +1,14 @@
+## v2.4.7-fa.1041
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 恢复 update.json 的 version 字段,修复更新对话框
+
+---
+
 ## v2.4.7-fa.1040
 
 > [!IMPORTANT]
