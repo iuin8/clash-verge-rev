@@ -193,6 +193,20 @@ impl IProfiles {
         let item = items.remove(old_idx);
         items.insert(new_idx, item);
         self.items = Some(items);
+
+        // FORK: 同步重排 merged 数组顺序。多激活模式下,前端 activeProfiles
+        // 在切换 tab 后从 selectedProfiles 派生 (即 merged 顺序)。如果不同步,
+        // 切 tab 回来会看到旧顺序,造成"拖动排序不生效"的假象。
+        if let Some(mut merged) = self.merged.take() {
+            let m_old = merged.iter().position(|u| u == active_id);
+            let m_new = merged.iter().position(|u| u == over_id);
+            if let (Some(o), Some(n)) = (m_old, m_new) {
+                let uid = merged.remove(o);
+                merged.insert(n, uid);
+            }
+            self.merged = Some(merged);
+        }
+
         self.save_file().await
     }
 

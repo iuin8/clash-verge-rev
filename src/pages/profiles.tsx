@@ -437,6 +437,10 @@ const ProfilePage = () => {
 
     try {
       await reorderProfile(activeUid, overUid)
+      // 后端 reorder 同步重排 merged 数组,但 SWR 缓存的 profiles.merged
+      // 还是旧顺序。切 tab 后 hydration useEffect 会用 SWR 缓存重置
+      // selectedProfiles → 顺序回退。这里显式 mutate 让缓存同步到磁盘真值。
+      await mutateProfiles()
     } catch {
       setLocalActiveOrder(oldOrder)
     }
