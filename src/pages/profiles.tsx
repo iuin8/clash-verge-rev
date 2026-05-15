@@ -621,20 +621,6 @@ const ProfilePage = () => {
       cleanupSwitchState,
     ],
   )
-  const onSelect = async (current: string, force: boolean) => {
-    // 阻止重复点击或已激活的profile
-    if (switchingProfileRef.current === current) {
-      debugProfileSwitch('DUPLICATE_CLICK_IGNORED', current)
-      return
-    }
-
-    if (!force && current === profiles.current) {
-      debugProfileSwitch('ALREADY_CURRENT_IGNORED', current)
-      return
-    }
-
-    await activateProfile(current, true)
-  }
 
   useEffect(() => {
     ;(async () => {
@@ -1018,7 +1004,6 @@ const ProfilePage = () => {
                         draggable={true}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
-                        onSelect={(f) => onSelect(item.uid, f)}
                         onEdit={() => viewerRef.current?.edit(item)}
                         onSave={async (prev, curr) => {
                           if (prev !== curr && profiles.current === item.uid) {
@@ -1058,7 +1043,6 @@ const ProfilePage = () => {
                         draggable={false}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
-                        onSelect={(f) => onSelect(item.uid, f)}
                         onEdit={() => viewerRef.current?.edit(item)}
                         onSave={async (prev, curr) => {
                           if (prev !== curr && profiles.current === item.uid) {

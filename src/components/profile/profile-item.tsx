@@ -50,7 +50,6 @@ interface Props {
   activating: boolean
   draggable?: boolean
   itemData: IProfileItem
-  onSelect: (force: boolean) => void
   onEdit: () => void
   onSave?: (prev?: string, curr?: string) => void
   onDelete: () => void
@@ -67,7 +66,6 @@ export const ProfileItem = (props: Props) => {
     activating,
     draggable = false,
     itemData,
-    onSelect,
     onEdit,
     onSave,
     onDelete,
@@ -342,11 +340,6 @@ export const ProfileItem = (props: Props) => {
     setScriptOpen(true)
   }
 
-  const onForceSelect = () => {
-    setAnchorEl(null)
-    onSelect(true)
-  }
-
   const onOpenFile = useLockFn(async () => {
     setAnchorEl(null)
     try {
@@ -401,7 +394,6 @@ export const ProfileItem = (props: Props) => {
 
   const menuLabels: Record<string, TranslationKey> = {
     home: 'profiles.components.menu.home',
-    select: 'profiles.components.menu.select',
     editInfo: 'profiles.components.menu.editInfo',
     editFile: 'profiles.components.menu.editFile',
     editRules: 'profiles.components.menu.editRules',
@@ -425,11 +417,9 @@ export const ProfileItem = (props: Props) => {
           } satisfies ContextMenuItem,
         ]
       : []),
-    {
-      label: menuLabels.select,
-      handler: onForceSelect,
-      disabled: false,
-    },
+    // FORK: 移除"使用"菜单项 — 与多订阅激活功能不兼容,
+    // onForceSelect 会强制把当前 profile 设为唯一 current,
+    // 破坏 selectedProfiles 多激活态。激活/取消请直接点击卡片 (触发 onToggle)。
     {
       label: menuLabels.editInfo,
       handler: onEditInfo,
@@ -490,11 +480,9 @@ export const ProfileItem = (props: Props) => {
     },
   ]
   const fileModeMenu: ContextMenuItem[] = [
-    {
-      label: menuLabels.select,
-      handler: onForceSelect,
-      disabled: false,
-    },
+    // FORK: 移除"使用"菜单项 — 与多订阅激活功能不兼容,
+    // onForceSelect 会强制把当前 profile 设为唯一 current,
+    // 破坏 selectedProfiles 多激活态。激活/取消请直接点击卡片 (触发 onToggle)。
     {
       label: menuLabels.editInfo,
       handler: onEditInfo,
