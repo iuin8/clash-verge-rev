@@ -1,3 +1,14 @@
+## v2.4.7-fa.1042
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 只输出 version 字段避免 duplicate field 错误
+
+---
+
 ## v2.4.7-fa.1041
 
 > [!IMPORTANT]
