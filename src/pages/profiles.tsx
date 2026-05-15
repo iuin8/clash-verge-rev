@@ -421,8 +421,13 @@ const ProfilePage = () => {
     const activeUid = active.id.toString()
     const overUid = over.id.toString()
 
-    // Only active-zone reordering — inactive cards are not draggable
-    const oldOrder = localActiveOrder
+    // Only active-zone reordering — inactive cards are not draggable.
+    // localActiveOrder 在 onDragStart 才被种子，但 React state 异步生效，
+    // 此处可能仍为空数组；fallback 到 activeProfiles 实时计算的顺序。
+    const oldOrder =
+      localActiveOrder.length > 0
+        ? localActiveOrder
+        : activeProfiles.map((p) => p.uid!)
     const oldIdx = oldOrder.indexOf(activeUid)
     const newIdx = oldOrder.indexOf(overUid)
     if (oldIdx === -1 || newIdx === -1) return
@@ -1000,7 +1005,7 @@ const ProfilePage = () => {
           <Box sx={{ mb: 1.5 }}>
             <Grid container spacing={1}>
               <SortableContext
-                items={localActiveOrder}
+                items={activeProfiles.map((p) => p.uid!)}
                 strategy={rectSortingStrategy}
               >
                 {activeProfiles.map((item) => {
