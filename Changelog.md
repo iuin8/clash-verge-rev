@@ -1,3 +1,14 @@
+## v2.4.7-fa.1040
+
+> [!IMPORTANT]
+> 这是基于上游 v2.4.7 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 拖动排序后重跑 enhance pipeline
+
+---
+
 ## v2.4.7-fa.1039
 
 > [!IMPORTANT]
