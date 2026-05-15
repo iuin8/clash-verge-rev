@@ -147,10 +147,16 @@ async function processRelease(github, options, tag, isAlpha) {
       tag: tag.name,
     })
 
-    // Strip leading 'v' for semver; Tauri updater reads 'name' as version
+    // Strip leading 'v' for semver.
+    // FORK: tauri-plugin-updater 2.10.0+ 严格读 `version` 字段,旧版本 fallback 到
+    // `name`。两个字段都输出 semverVersion (同值,无 v 前缀) 保证新老客户端都能
+    // 解析,且因为是同值不会触发 duplicate field 错误。
+    // commit be19e38f 当时移除 `version` 的理由是 `name: tag.name` (带 v) 与
+    // `version: semverVersion` (不带) 值不一致导致解析冲突,这里统一为 semver。
     const semverVersion = tag.name.replace(/^v/, '')
 
     const updateData = {
+      version: semverVersion,
       name: semverVersion,
       notes: await resolveUpdateLog(tag.name).catch(() =>
         resolveUpdateLogDefault().catch(() => 'No changelog available'),
