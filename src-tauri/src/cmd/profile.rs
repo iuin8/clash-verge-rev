@@ -117,6 +117,30 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
         Ok(_) => {
             logging!(info, Type::Cmd, "重新排序配置文件");
             Config::profiles().await.apply();
+
+            // FORK: 多激活模式下 merged 数组顺序决定 YAML 合并优先级。
+            // 仅 apply draft 不会让 mihomo 用新顺序重新合并 → runtime config
+            // 仍是旧顺序。对齐 set_merged_profiles 的做法,触发 enhance pipeline
+            // 重跑 + refresh_clash 推给 mihomo。单激活模式下 merged 为空,
+            // enhance_profiles 会走单 profile 路径,代价可接受。
+            let needs_reapply = {
+                let profiles = Config::profiles().await;
+                let data = profiles.latest_arc();
+                data.merged.as_ref().is_some_and(|m| m.len() >= 2)
+            };
+            if needs_reapply {
+                match feat::enhance_profiles().await {
+                    Ok((true, _)) => {
+                        handle::Handle::refresh_clash();
+                    }
+                    Ok((false, msg)) => {
+                        logging!(warn, Type::Cmd, "reorder 后 enhance 失败: {}", msg);
+                    }
+                    Err(e) => {
+                        logging!(warn, Type::Cmd, "reorder 后 enhance 错误: {}", e);
+                    }
+                }
+            }
             Ok(())
         }
         Err(err) => {
