@@ -132,6 +132,7 @@ export const translationKeys = [
   'profiles.page.feedback.notifications.importNeedsRefresh',
   'profiles.page.feedback.notifications.importSuccess',
   'profiles.page.feedback.notifications.profileSwitched',
+  'profiles.page.feedback.notifications.profileSwitchFailed',
   'profiles.page.feedback.notifications.profileReactivated',
   'profiles.page.feedback.notifications.switchInterrupted',
   'profiles.page.feedback.notifications.batchDeleted',

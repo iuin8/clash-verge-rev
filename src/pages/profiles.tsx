@@ -534,11 +534,27 @@ const ProfilePage = () => {
           return
         }
 
+        // 后端返回 success=false 表示验证/更新失败，已 discard draft 并 restore previous。
+        // 此时不能 closeAllConnections / 触发后台代理切换，否则会无故掐断用户连接并执行无效刷新。
+        if (!success) {
+          await mutateProfiles()
+          if (notifySuccess) {
+            showNotice.error(
+              'profiles.page.feedback.notifications.profileSwitchFailed',
+              4000,
+            )
+          }
+          debugLog(
+            `[Profile] 切换到 ${profile} 失败 (success=false)，跳过连接关闭与后台任务`,
+          )
+          return
+        }
+
         // 完成切换
         await mutateLogs()
         closeAllConnections()
 
-        if (notifySuccess && success) {
+        if (notifySuccess) {
           showNotice.success(
             'profiles.page.feedback.notifications.profileSwitched',
             1000,
@@ -594,6 +610,7 @@ const ProfilePage = () => {
       profiles,
       patchProfiles,
       mutateLogs,
+      mutateProfiles,
       executeBackgroundTasks,
       handleProfileInterrupt,
       cleanupSwitchState,
@@ -720,7 +737,18 @@ const ProfilePage = () => {
     try {
       if (newSet.size === 1) {
         const singleUid = [...newSet][0]
-        await patchProfiles({ current: singleUid })
+        // patchProfiles 在后端验证/更新失败时返回 false 而非抛异常 (use-profiles.ts)。
+        // 必须显式回滚乐观更新，否则 UI 看着像启用了，切 tab 回来 hydration
+        // useEffect 会把 selectedProfiles 重置为后端真值，造成"开关状态突变"。
+        const success = await patchProfiles({ current: singleUid })
+        if (!success) {
+          setSelectedProfiles(prevSet)
+          showNotice.error(
+            'profiles.page.feedback.notifications.profileSwitchFailed',
+            4000,
+          )
+          return
+        }
         await clearMergedProfiles()
       } else {
         await setMergedProfiles([...newSet])

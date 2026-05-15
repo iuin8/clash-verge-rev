@@ -36,6 +36,7 @@
         "importNeedsRefresh": "Profile imported but may need manual refresh",
         "importSuccess": "Profile imported successfully, please restart if not visible",
         "profileSwitched": "Profile Switched",
+        "profileSwitchFailed": "Profile switch failed",
         "profileReactivated": "Profile Reactivated",
         "switchInterrupted": "Profile switch interrupted by new selection",
         "batchDeleted": "Selected profiles deleted successfully"

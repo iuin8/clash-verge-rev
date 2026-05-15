@@ -334,9 +334,14 @@ async fn handle_validation_failure(error_msg: String, current_profile: Option<&S
     Ok(false)
 }
 
-async fn handle_update_error<E: std::fmt::Display>(e: E) -> CmdResult<bool> {
+async fn handle_update_error<E: std::fmt::Display>(e: E, current_profile: Option<&String>) -> CmdResult<bool> {
     logging!(warn, Type::Cmd, "更新过程发生错误: {}", e,);
     Config::profiles().await.discard();
+    // mihomo 可能已经接收了部分新配置；显式 restore 把之前的 profile 重新下发，
+    // 避免内存视图与 mihomo 实际运行配置不一致。
+    if let Some(prev_profile) = current_profile {
+        restore_previous_profile(prev_profile).await?;
+    }
     handle::Handle::notice_message("config_validate::boot_error", e.to_string());
     Ok(false)
 }
@@ -361,7 +366,7 @@ async fn perform_config_update(current_value: Option<&String>, current_profile: 
     match update_result {
         Ok(Ok((true, _))) => handle_success(current_value).await,
         Ok(Ok((false, error_msg))) => handle_validation_failure(error_msg, current_profile).await,
-        Ok(Err(e)) => handle_update_error(e).await,
+        Ok(Err(e)) => handle_update_error(e, current_profile).await,
         Err(_) => handle_timeout(current_profile).await,
     }
 }

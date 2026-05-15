@@ -385,6 +385,7 @@ export interface TranslationResources {
             importSuccess: string
             profileReactivated: string
             profileSwitched: string
+            profileSwitchFailed: string
             switchInterrupted: string
           }
         }

@@ -36,6 +36,7 @@
         "importNeedsRefresh": "Profile imported but may need manual refresh",
         "importSuccess": "Profile imported successfully, please restart if not visible",
         "profileSwitched": "訂閱已切換",
+        "profileSwitchFailed": "訂閱切換失敗",
         "profileReactivated": "訂閱已啟用",
         "switchInterrupted": "配置切換被新的選擇中斷",
         "batchDeleted": "選取的訂閱已成功刪除"
