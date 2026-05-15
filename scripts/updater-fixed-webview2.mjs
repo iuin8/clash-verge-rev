@@ -41,14 +41,14 @@ async function resolveUpdater() {
     tag: tagName,
   })
 
-  // FORK: tauri-plugin-updater 2.10.0+ 严格读 `version` (semver, 无 v 前缀)。
-  // 旧版本 fallback 到 `name`。两个字段输出同值的 semverVersion 兼容新老客户端,
-  // 且避免 duplicate field 解析冲突 (参见 updater.mjs 的同步说明)。
+  // FORK: tauri-plugin-updater 2.10.0 的 `version` 字段带
+  // `#[serde(alias = "name")]`,JSON 里 version 和 name 同时存在会触发
+  // `duplicate field 'version'`。只输出 `version` (semver, 无 v 前缀)。
+  // 详细背景参见 updater.mjs 的同步注释。
   const semverVersion = tagName.replace(/^v/, '')
 
   const updateData = {
     version: semverVersion,
-    name: semverVersion,
     notes: await resolveUpdateLog(tagName), // use Changelog.md
     pub_date: new Date().toISOString(),
     platforms: {

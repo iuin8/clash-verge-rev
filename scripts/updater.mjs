@@ -148,16 +148,18 @@ async function processRelease(github, options, tag, isAlpha) {
     })
 
     // Strip leading 'v' for semver.
-    // FORK: tauri-plugin-updater 2.10.0+ 严格读 `version` 字段,旧版本 fallback 到
-    // `name`。两个字段都输出 semverVersion (同值,无 v 前缀) 保证新老客户端都能
-    // 解析,且因为是同值不会触发 duplicate field 错误。
-    // commit be19e38f 当时移除 `version` 的理由是 `name: tag.name` (带 v) 与
-    // `version: semverVersion` (不带) 值不一致导致解析冲突,这里统一为 semver。
+    // FORK: tauri-plugin-updater 2.10.0 的 RemoteRelease struct 里
+    // `version` 字段带 `#[serde(alias = "name")]`,意味着 serde 把 `version`
+    // 和 `name` 视为同一个字段 — 两个同时出现在 JSON 里会触发
+    // `duplicate field 'version'` 错误(commit be19e38f 当年遇到的就是这个)。
+    // 唯一安全做法:只输出 `version`。be19e38f 反向选了只留 `name` 也能工作
+    // (alias 双向),但旧 update.json 因为 parse_version 内部细节导致 plugin
+    // 返回空版本号给前端,引发 "新版本 v" 这类显示 bug。回到 `version`
+    // 字段更贴合 plugin 的反序列化主路径,显示也才正常。
     const semverVersion = tag.name.replace(/^v/, '')
 
     const updateData = {
       version: semverVersion,
-      name: semverVersion,
       notes: await resolveUpdateLog(tag.name).catch(() =>
         resolveUpdateLogDefault().catch(() => 'No changelog available'),
       ),
