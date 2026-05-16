@@ -45,7 +45,27 @@ mod app_init {
         let mut builder = builder
             .plugin(tauri_plugin_clash_verge_sysinfo::init())
             .plugin(tauri_plugin_notification::init())
-            .plugin(tauri_plugin_updater::Builder::new().build())
+            // FORK: fork 客户端 package.json/Cargo.toml 历史 version 都是 "2.4.7" (无 -fa.N),
+            // 但 update.json 里 version 是 "2.4.7-fa.N"。semver 标准下 2.4.7-fa.N < 2.4.7,
+            // plugin-updater 默认比较 release.version > current_version 永远 false,
+            // 老客户端 (v1042 及之前) 永远收不到 fork 更新提示 (UpdateButton 红点不显示,
+            // update-viewer 拉不到 updateInfo)。重写比较:当 major.minor.patch 一致且本地
+            // 无 pre-release 时,只要远端有 pre-release 就视作 fork 升级触发更新。
+            .plugin(
+                tauri_plugin_updater::Builder::new()
+                    .default_version_comparator(|current, update| {
+                        if current.major == update.version.major
+                            && current.minor == update.version.minor
+                            && current.patch == update.version.patch
+                            && current.pre.is_empty()
+                            && !update.version.pre.is_empty()
+                        {
+                            return true;
+                        }
+                        update.version > current
+                    })
+                    .build(),
+            )
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_process::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())

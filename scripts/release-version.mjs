@@ -108,7 +108,11 @@ function generateShortTimestamp(withCommit = false, useTauriCommit = false) {
  * @returns {boolean}
  */
 function isValidVersion(version) {
-  return /^v?\d+\.\d+\.\d+(-(alpha|beta|rc)(\.\d+)?)?(\+[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$/i.test(
+  // FORK: 之前只允许 -alpha/-beta/-rc 作为 pre-release tag,fork release tag
+  // (如 v2.4.7-fa.1043) 不在白名单 → prepare-release.sh 跑 release-version 会
+  // 报 "Invalid version format"。放宽到标准 semver pre-release identifier:
+  // dot-separated alphanumeric/hyphen tokens (RFC: SemVer 2.0.0 §9)。
+  return /^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/.test(
     version,
   )
 }

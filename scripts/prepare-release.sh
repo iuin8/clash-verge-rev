@@ -211,6 +211,20 @@ mv "$TEMP_FILE" Changelog.md
 echo "✅ Changelog.md 已更新"
 echo ""
 
+# FORK: 同步 package.json / src-tauri/Cargo.toml / src-tauri/tauri.conf.json 的 version
+# 字段到 fork 版本号 (如 "2.4.7-fa.1043")。之前这几个文件长期是 "2.4.7" (上游基线),
+# 客户端编译时 plugin-updater 把 current_version 当作 "2.4.7",update.json 里的
+# "2.4.7-fa.N" 在 semver 标准下反而小于 "2.4.7" — 老客户端永远收不到更新提示。
+# release-version.mjs 已经会同步这三个文件 (剥 v 前缀),且 release.yml 的
+# check_tag_version job 会校验 tag 与 package.json 一致。
+echo "同步版本号到 package.json / Cargo.toml / tauri.conf.json..."
+if ! pnpm release-version "$TAG_NAME"; then
+  echo "❌ release-version 失败,中止"
+  exit 1
+fi
+echo "✅ 版本号已同步"
+echo ""
+
 # 询问是否提交
 if [ "$AUTO_YES" = true ]; then
   echo "非交互模式: 自动提交并创建 tag"
@@ -226,11 +240,14 @@ else
 fi
 
 if [ "$SHOULD_COMMIT" = true ]; then
-  # 提交 Changelog.md
-  git add Changelog.md
-  git commit -m "docs: 更新 Changelog.md for ${TAG_NAME}"
+  # 提交 Changelog.md + 同步后的 version 文件
+  git add Changelog.md package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+  # Cargo.lock 也会随 Cargo.toml version bump 自动更新,如果存在则一并加入
+  [ -f Cargo.lock ] && git add Cargo.lock
+  [ -f src-tauri/Cargo.lock ] && git add src-tauri/Cargo.lock
+  git commit -m "chore: release ${TAG_NAME}"
 
-  echo "✅ 已提交 Changelog.md"
+  echo "✅ 已提交 Changelog.md + version 同步"
   echo ""
 
   # 创建 tag
