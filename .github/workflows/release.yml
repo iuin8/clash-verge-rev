@@ -180,6 +180,10 @@ jobs:
     needs: [check_tag_version]
     permissions:
       contents: write
+      # 上游 v2.5.1 新增 actions/attest-build-provenance 步骤，需 id-token + attestations；
+      # 本 job 的 permissions 块会覆盖顶层 write-all（且 id-token 即便 write-all 也需显式声明）
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
