@@ -138,16 +138,36 @@ jobs:
           Created at ${{ env.BUILDTIME }}.
           EOF
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: '${{ env.TAG_NAME }}'
-          body_path: release.txt
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # generate_release_notes: true
+      # 采用上游 v2.5.1 发布机制：release job 的 tauri-action (releaseDraft: true) 先创建 draft，
+      # 此处 gh-api PATCH 翻转 draft→false 并写入 body（update_tag needs:[release] 保证顺序）。
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ contains(github.ref_name, '-rc') }}
+        run: |
+          matches=$(gh api repos/{owner}/{repo}/releases --paginate --jq '.[] | select(.tag_name == env.TAG_NAME) | [.id, .draft, (.assets | length), .html_url] | @tsv')
+          release_count=$(grep -c . <<< "$matches" || true)
+
+          if [ "$release_count" -eq 0 ]; then
+            echo "::error::No release found for $TAG_NAME."
+            exit 1
+          fi
+
+          if [ "$release_count" -gt 1 ]; then
+            printf '%s\n' "$matches"
+            echo "::error::Multiple releases found for $TAG_NAME. Merge or delete duplicate releases before rerunning."
+            exit 1
+          fi
+
+          IFS=$'\t' read -r release_id _ asset_count release_url <<< "$matches"
+          echo "Publishing release $release_id ($release_url) with $asset_count assets."
+
+          gh api --method PATCH repos/{owner}/{repo}/releases/"$release_id" \
+            -f name="Clash Verge Rev $TAG_NAME" \
+            -F body=@release.txt \
+            -F draft=false \
+            -F prerelease="$PRERELEASE" \
+            --silent
 
       - name: Force sync release body
         run: |
@@ -214,9 +234,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -260,6 +280,26 @@ jobs:
           args: --target ${{ matrix.target }}
           includeUpdaterJson: true
 
+      - name: Attest Windows bundles
+        if: matrix.os == 'windows-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+
+      - name: Attest macOS bundles
+        if: matrix.os == 'macos-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Attest Linux bundles
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+            target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+
   release-for-linux-arm:
     name: Release Build for Linux ARM
     if: false # FORK: disabled, no ARM Linux targets needed
@@ -302,10 +342,10 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           run_install: false
 
@@ -388,13 +428,21 @@ jobs:
           echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
+      - name: Attest Linux bundles
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+            target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{env.VERSION}}
           name: 'v${{env.VERSION}}'
           body: 'See release notes for detailed changelog.'
           token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
             target/${{ matrix.target }}/release/bundle/deb/*.deb
@@ -439,9 +487,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -497,13 +545,19 @@ jobs:
             Rename-Item $file.FullName $newName
           }
 
+      - name: Attest Windows bundles
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+
       - name: Upload Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{steps.build.outputs.appVersion}}
           name: 'v${{steps.build.outputs.appVersion}}'
           body: 'See release notes for detailed changelog.'
           token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
 
@@ -524,9 +578,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -551,9 +605,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -614,9 +668,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '24.14.0'
+          node-version: '24.15.0'
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false

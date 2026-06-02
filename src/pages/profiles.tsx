@@ -1,8 +1,8 @@
 import {
   closestCenter,
   DndContext,
-  DragEndEvent,
-  DragStartEvent,
+  type DragEndEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -15,32 +15,46 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
 import {
+  CheckBoxOutlineBlankRounded,
+  CheckBoxRounded,
   ClearRounded,
   ContentPasteRounded,
+  DeleteRounded,
+  IndeterminateCheckBoxRounded,
   LocalFireDepartmentRounded,
   RefreshRounded,
   TextSnippetOutlined,
 } from '@mui/icons-material'
-import { LoadingButton } from '@mui/lab'
 import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
+import { useQuery } from '@tanstack/react-query'
 import { listen, TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useLockFn } from 'ahooks'
 import { throttle } from 'lodash-es'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router'
-import useSWR, { mutate } from 'swr'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
-import { BasePage, BaseStyledTextField, DialogRef } from '@/components/base'
+import {
+  BasePage,
+  BaseStyledTextField,
+  type DialogRef,
+} from '@/components/base'
 import { ConflictViewer } from '@/components/profile/conflict-viewer'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
   ProfileViewer,
-  ProfileViewerRef,
+  type ProfileViewerRef,
 } from '@/components/profile/profile-viewer'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { useListen } from '@/hooks/use-listen'
@@ -60,6 +74,7 @@ import {
   updateProfile,
 } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
+import { queryClient } from '@/services/query-client'
 import { useSetLoadingCache, useThemeMode } from '@/services/states'
 import { debugLog } from '@/utils/debug'
 
@@ -72,7 +87,7 @@ const debugProfileSwitch = (action: string, profile: string, extra?: any) => {
 // 检查请求是否已过期
 const isRequestOutdated = (
   currentSequence: number,
-  requestSequenceRef: any,
+  requestSequenceRef: RefObject<number>,
   profile: string,
 ) => {
   if (currentSequence !== requestSequenceRef.current) {
@@ -113,6 +128,11 @@ const ProfilePage = () => {
 
   // FORK: Multi-profile merge state — selectedProfiles always mirrors active state
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
+    () => new Set(),
+  )
+  // 上游 v2.5.1 batch-select：批量删除模式的勾选集（独立于多激活 selectedProfiles）
+  const [batchMode, setBatchMode] = useState(false)
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(
     () => new Set(),
   )
   const [conflictViewerOpen, setConflictViewerOpen] = useState(false)
@@ -217,6 +237,7 @@ const ProfilePage = () => {
             await createProfile(item, data)
             await mutateProfiles()
           }
+          await enhanceProfiles()
         },
       )
 
@@ -235,14 +256,14 @@ const ProfilePage = () => {
     debugLog('[紧急刷新] 开始强制刷新所有数据')
 
     try {
-      // 清除所有SWR缓存
-      await mutate(() => true, undefined, { revalidate: false })
+      // 只失效 profiles 相关 query，不影响 WS 订阅、IP 缓存等其他 query
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['getProfiles'] }),
+        queryClient.invalidateQueries({ queryKey: ['getRuntimeLogs'] }),
+      ])
 
       // 强制重新获取配置数据
-      await mutateProfiles(undefined, {
-        revalidate: true,
-        rollbackOnError: false,
-      })
+      await mutateProfiles()
 
       // 等待状态稳定后增强配置
       await new Promise((resolve) => setTimeout(resolve, 500))
@@ -262,10 +283,10 @@ const ProfilePage = () => {
     }
   })
 
-  const { data: chainLogs = {}, mutate: mutateLogs } = useSWR(
-    'getRuntimeLogs',
-    getRuntimeLogs,
-  )
+  const { data: chainLogs = {}, refetch: mutateLogs } = useQuery({
+    queryKey: ['getRuntimeLogs'],
+    queryFn: getRuntimeLogs,
+  })
 
   const viewerRef = useRef<ProfileViewerRef>(null)
   const configRef = useRef<DialogRef>(null)
@@ -354,9 +375,10 @@ const ProfilePage = () => {
   }
 
   // 强化的刷新策略
+  // maxRetries 设为 1：useProfiles 内部 useQuery 已配置 retry:3，业务层只需 1 次额外重试
   const performRobustRefresh = async () => {
     let retryCount = 0
-    const maxRetries = 5
+    const maxRetries = 1
     const baseDelay = 200
 
     while (retryCount < maxRetries) {
@@ -364,10 +386,7 @@ const ProfilePage = () => {
         debugLog(`[导入刷新] 第${retryCount + 1}次尝试刷新配置数据`)
 
         // 强制刷新，绕过所有缓存
-        await mutateProfiles(undefined, {
-          revalidate: true,
-          rollbackOnError: false,
-        })
+        await mutateProfiles()
 
         // 等待状态稳定
         await new Promise((resolve) =>
@@ -388,8 +407,11 @@ const ProfilePage = () => {
     // 所有重试失败后的最后尝试
     console.warn(`[导入刷新] 常规刷新失败，尝试清除缓存重新获取`)
     try {
-      // 清除SWR缓存并重新获取
-      await mutate('getProfiles', getProfiles(), { revalidate: true })
+      // 清除缓存并重新获取
+      await queryClient.fetchQuery({
+        queryKey: ['getProfiles'],
+        queryFn: getProfiles,
+      })
       await onEnhance(false)
       showNotice.error(
         'profiles.page.feedback.notifications.importNeedsRefresh',
@@ -647,7 +669,7 @@ const ProfilePage = () => {
     setActivatings((prev) => [...new Set([...prev, ...currentProfiles])])
 
     try {
-      await enhanceProfiles()
+      if (!(await enhanceProfiles())) return
       mutateLogs()
       if (notifySuccess) {
         showNotice.success(
@@ -850,6 +872,65 @@ const ProfilePage = () => {
     }
   }, [])
 
+  // ── 上游 v2.5.1 batch-select：批量删除（与 fork 多激活合并并存的可切换模式）──
+  const toggleBatchMode = () => {
+    setBatchMode((prev) => !prev)
+    // 进入批量模式时清空之前的勾选
+    if (!batchMode) {
+      setBatchSelected(new Set())
+    }
+  }
+  const toggleBatchSelection = (uid: string) => {
+    setBatchSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(uid)) {
+        next.delete(uid)
+      } else {
+        next.add(uid)
+      }
+      return next
+    })
+  }
+  const selectAllProfiles = () => {
+    setBatchSelected(new Set(profileItems.map((item) => item.uid!)))
+  }
+  const clearAllSelections = () => {
+    setBatchSelected(new Set())
+  }
+  const isAllSelected = () =>
+    profileItems.length > 0 && profileItems.length === batchSelected.size
+  const getSelectionState = (): 'none' | 'partial' | 'all' => {
+    if (batchSelected.size === 0) return 'none'
+    if (batchSelected.size === profileItems.length) return 'all'
+    return 'partial'
+  }
+  const deleteSelectedProfiles = useLockFn(async () => {
+    if (batchSelected.size === 0) return
+    try {
+      const currentActivating =
+        profiles.current && batchSelected.has(profiles.current)
+          ? [profiles.current]
+          : []
+      setActivatings((prev) => [...new Set([...prev, ...currentActivating])])
+      for (const uid of batchSelected) {
+        await deleteProfile(uid)
+      }
+      await mutateProfiles()
+      await mutateLogs()
+      // 若删除的包含当前激活 profile，重跑 enhance pipeline
+      if (currentActivating.length > 0) {
+        await onEnhance(false)
+      }
+      setBatchSelected(new Set())
+      setBatchMode(false)
+      showNotice.success('profiles.page.feedback.notifications.batchDeleted')
+    } catch (err) {
+      showNotice.error(err)
+    } finally {
+      setActivatings([])
+    }
+  })
+
   return (
     <BasePage
       full
@@ -857,50 +938,103 @@ const ProfilePage = () => {
       contentStyle={{ height: '100%' }}
       header={
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <IconButton
-            size="small"
-            color="inherit"
-            title={t('profiles.page.actions.updateAll')}
-            onClick={onUpdateAll}
-          >
-            <RefreshRounded />
-          </IconButton>
+          {!batchMode ? (
+            <>
+              <IconButton
+                size="small"
+                color="inherit"
+                title={t('profiles.page.batch.title')}
+                onClick={toggleBatchMode}
+              >
+                <CheckBoxOutlineBlankRounded />
+              </IconButton>
+              <IconButton
+                size="small"
+                color="inherit"
+                title={t('profiles.page.actions.updateAll')}
+                onClick={onUpdateAll}
+              >
+                <RefreshRounded />
+              </IconButton>
 
-          <IconButton
-            size="small"
-            color="inherit"
-            title={t('profiles.page.actions.viewRuntimeConfig')}
-            onClick={() => configRef.current?.open()}
-          >
-            <TextSnippetOutlined />
-          </IconButton>
+              <IconButton
+                size="small"
+                color="inherit"
+                title={t('profiles.page.actions.viewRuntimeConfig')}
+                onClick={() => configRef.current?.open()}
+              >
+                <TextSnippetOutlined />
+              </IconButton>
 
-          <IconButton
-            size="small"
-            color="primary"
-            title={t('profiles.page.actions.reactivate')}
-            onClick={() => onEnhance(true)}
-          >
-            <LocalFireDepartmentRounded />
-          </IconButton>
+              <IconButton
+                size="small"
+                color="primary"
+                title={t('profiles.page.actions.reactivate')}
+                onClick={() => onEnhance(true)}
+              >
+                <LocalFireDepartmentRounded />
+              </IconButton>
 
-          {(error || isStale) && (
-            <IconButton
-              size="small"
-              color="warning"
-              title="数据异常，点击强制刷新"
-              onClick={onEmergencyRefresh}
-              sx={{
-                animation: 'pulse 2s infinite',
-                '@keyframes pulse': {
-                  '0%': { opacity: 1 },
-                  '50%': { opacity: 0.5 },
-                  '100%': { opacity: 1 },
-                },
-              }}
-            >
-              <ClearRounded />
-            </IconButton>
+              {(error || isStale) && (
+                <IconButton
+                  size="small"
+                  color="warning"
+                  title="数据异常，点击强制刷新"
+                  onClick={onEmergencyRefresh}
+                  sx={{
+                    animation: 'pulse 2s infinite',
+                    '@keyframes pulse': {
+                      '0%': { opacity: 1 },
+                      '50%': { opacity: 0.5 },
+                      '100%': { opacity: 1 },
+                    },
+                  }}
+                >
+                  <ClearRounded />
+                </IconButton>
+              )}
+            </>
+          ) : (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <IconButton
+                size="small"
+                color="inherit"
+                title={
+                  isAllSelected()
+                    ? t('profiles.page.batch.actions.deselectAll')
+                    : t('profiles.page.batch.actions.selectAll')
+                }
+                onClick={
+                  isAllSelected() ? clearAllSelections : selectAllProfiles
+                }
+              >
+                {getSelectionState() === 'all' ? (
+                  <CheckBoxRounded />
+                ) : getSelectionState() === 'partial' ? (
+                  <IndeterminateCheckBoxRounded />
+                ) : (
+                  <CheckBoxOutlineBlankRounded />
+                )}
+              </IconButton>
+              <IconButton
+                size="small"
+                color="error"
+                title={t('profiles.page.batch.actions.delete')}
+                onClick={deleteSelectedProfiles}
+                disabled={batchSelected.size === 0}
+              >
+                <DeleteRounded />
+              </IconButton>
+              <Button size="small" variant="outlined" onClick={toggleBatchMode}>
+                {t('profiles.page.batch.actions.done')}
+              </Button>
+              <Box
+                sx={{ flex: 1, textAlign: 'right', color: 'text.secondary' }}
+              >
+                {t('profiles.page.batch.summary.selected')} {batchSelected.size}{' '}
+                {t('profiles.page.batch.summary.items')}
+              </Box>
+            </Box>
           )}
         </Box>
       }
@@ -957,7 +1091,7 @@ const ProfilePage = () => {
             },
           }}
         />
-        <LoadingButton
+        <Button
           disabled={!url || disabled}
           loading={loading}
           variant="contained"
@@ -966,7 +1100,7 @@ const ProfilePage = () => {
           onClick={onImport}
         >
           {t('profiles.page.actions.import')}
-        </LoadingButton>
+        </Button>
         <Button
           variant="contained"
           size="small"
@@ -1008,6 +1142,7 @@ const ProfilePage = () => {
                         draggable={true}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
+                        mutateProfiles={mutateProfiles}
                         onEdit={() => viewerRef.current?.edit(item)}
                         onSave={async (prev, curr) => {
                           if (prev !== curr && profiles.current === item.uid) {
@@ -1019,6 +1154,11 @@ const ProfilePage = () => {
                         conflictCount={isPrimary ? conflicts.length : 0}
                         onShowConflicts={() => setConflictViewerOpen(true)}
                         onToggle={() => onToggleProfile(item.uid!)}
+                        batchMode={batchMode}
+                        isSelected={batchSelected.has(item.uid!)}
+                        onSelectionChange={() =>
+                          toggleBatchSelection(item.uid!)
+                        }
                       />
                     </Grid>
                   )
@@ -1047,6 +1187,7 @@ const ProfilePage = () => {
                         draggable={false}
                         activating={activatings.includes(item.uid)}
                         itemData={item}
+                        mutateProfiles={mutateProfiles}
                         onEdit={() => viewerRef.current?.edit(item)}
                         onSave={async (prev, curr) => {
                           if (prev !== curr && profiles.current === item.uid) {
@@ -1058,6 +1199,11 @@ const ProfilePage = () => {
                         conflictCount={0}
                         onShowConflicts={() => setConflictViewerOpen(true)}
                         onToggle={() => onToggleProfile(item.uid!)}
+                        batchMode={batchMode}
+                        isSelected={batchSelected.has(item.uid!)}
+                        onSelectionChange={() =>
+                          toggleBatchSelection(item.uid!)
+                        }
                       />
                     </Grid>
                   ))}

@@ -194,7 +194,7 @@ gh run view <RUN_ID> --log-failed
 | `check_tag_version` | Changelog.md 缺少当前版本条目    | 运行 `prepare-release.sh`         |
 | `check_tag_version` | package.json 版本与 tag 不符     | 更新 package.json 版本            |
 | `release`（构建）   | Rust/TS 编译错误                 | 修复代码错误后重新发布            |
-| `update_tag`        | softprops/action-gh-release 失败 | 检查权限，或手动更新 release body |
+| `update_tag`        | Publish Release (gh-api PATCH) 失败：找不到 draft / 多个重复 release / 权限不足 | 确认 `release` job 的 tauri-action 已创建 draft；删除重复 release；检查 `GITHUB_TOKEN` 权限 |
 | `release-update`    | updater release 不存在           | 检查 `updater` tag 是否存在       |
 
 ### 修复后重新发布
@@ -220,7 +220,7 @@ gh run view <RUN_ID> --log-failed
 ❌ 已尝试3次，均未成功。
 
 失败摘要：
-- v2.4.7-fa.1031: update_tag job 失败 — softprops action 权限不足
+- v2.4.7-fa.1031: update_tag job 失败 — Publish Release (gh-api PATCH) 权限不足
 - v2.4.7-fa.1032: 同上
 - v2.4.7-fa.1033: 同上
 
@@ -282,12 +282,17 @@ gh run view <RUN_ID> --log-failed
 3. 强制覆盖现有版本（不推荐）
 ```
 
-强制覆盖时：
+强制覆盖时（**必须连同旧 GitHub release 一起删，不能只删 tag**）：
 
 ```bash
-git tag -d v2.4.7-fa.1031
-git push origin :refs/tags/v2.4.7-fa.1031
-./scripts/prepare-release.sh v2.4.7-fa.1031
+# ⚠️ release.yml 的 Publish Release (gh-api PATCH) 发现同 tag 有 >1 个 release 会报
+#    "Multiple releases found" 并失败。删 tag 不会删 release —— 残留的 draft release
+#    会和重发时 tauri-action 新建的 draft 撞车。所以先删 release（含 tag），再重发。
+gh release delete v2.4.7-fa.1031 --yes --cleanup-tag   # 删 release + 关联 tag
+./scripts/prepare-release.sh v2.4.7-fa.1031            # 再重发
+
+# 若 gh release delete 报 release 不存在（只有 tag 残留），退回单独删 tag：
+#   git tag -d v2.4.7-fa.1031 && git push origin :refs/tags/v2.4.7-fa.1031
 ```
 
 ### 问题：Changelog 分类不正确
@@ -306,6 +311,12 @@ git push origin :refs/tags/v2.4.7-fa.1031
 2. **确保在正确的分支上操作**（通常在 `dev` 或 `fa/v{version}` 分支）
 
 3. **检查 GitHub Actions 权限**：需要 `contents: write`
+
+4. **发布机制（上游 v2.5.1 起）**：`release` job 的 `tauri-action` (`releaseDraft: true`) 先建 draft release
+   并上传产物，`update_tag` job 的 `Publish Release` 用 gh-api PATCH 把 draft 翻转为正式发布。
+   - 正常递增版本（每次新 tag）不受影响。
+   - **同名版本重发**：gh-api 对同 tag 的重复 release 会报错，务必按上方"强制覆盖"用
+     `gh release delete --cleanup-tag` 先清旧 release，再重发。
 
 ---
 

@@ -37,7 +37,13 @@ import { EnhancedCard } from '@/components/home/enhanced-card'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useProxySelection } from '@/hooks/use-proxy-selection'
 import { useVerge } from '@/hooks/use-verge'
-import { useAppData } from '@/providers/app-data-context'
+import {
+  useAppRefreshers,
+  useClashConfigData,
+  useCoreDataStatus,
+  useProxiesData,
+  useRulesData,
+} from '@/providers/app-data-context'
 import delayManager from '@/services/delay'
 import { debugLog } from '@/utils/debug'
 
@@ -105,7 +111,11 @@ export const CurrentProxyCard = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const theme = useTheme()
-  const { proxies, clashConfig, refreshProxy, rules } = useAppData()
+  const { proxies } = useProxiesData()
+  const { clashConfig } = useClashConfigData()
+  const { rules } = useRulesData()
+  const { refreshProxy } = useAppRefreshers()
+  const { isCoreDataPending } = useCoreDataStatus()
   const { verge } = useVerge()
   const { current: currentProfile } = useProfiles()
   const autoDelayEnabled = verge?.enable_auto_delay_detection ?? false
@@ -443,6 +453,12 @@ export const CurrentProxyCard = () => {
     },
     [setState],
   )
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   // 处理代理组变更
   const handleGroupChange = useCallback(
@@ -905,7 +921,9 @@ export const CurrentProxyCard = () => {
         </Box>
       }
     >
-      {currentProxy ? (
+      {isCoreDataPending ? (
+        <Box sx={{ py: 4 }} />
+      ) : currentProxy ? (
         <Box>
           {/* 代理节点信息显示 */}
           <Box
@@ -921,7 +939,7 @@ export const CurrentProxyCard = () => {
             }}
           >
             <Box>
-              <Typography variant="body1" fontWeight="medium">
+              <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
                 {currentProxy.name}
               </Typography>
 
@@ -1017,9 +1035,11 @@ export const CurrentProxyCard = () => {
               disabled={isDirectMode}
               renderValue={renderProxyValue}
               MenuProps={{
-                PaperProps: {
-                  style: {
-                    maxHeight: 500,
+                slotProps: {
+                  paper: {
+                    style: {
+                      maxHeight: 500,
+                    },
                   },
                 },
               }}

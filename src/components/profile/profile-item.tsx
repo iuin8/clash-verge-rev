@@ -1,35 +1,39 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { RefreshRounded, DragIndicatorRounded } from '@mui/icons-material'
+import {
+  CheckBoxOutlineBlankRounded,
+  CheckBoxRounded,
+  DragIndicatorRounded,
+  RefreshRounded,
+} from '@mui/icons-material'
 import {
   Badge,
   Box,
-  Typography,
-  LinearProgress,
+  CircularProgress,
   IconButton,
   keyframes,
-  MenuItem,
+  LinearProgress,
   Menu,
-  CircularProgress,
+  MenuItem,
+  Typography,
 } from '@mui/material'
 import { open } from '@tauri-apps/plugin-shell'
 import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { mutate } from 'swr'
 
-import { ConfirmViewer } from '@/components/profile/confirm-viewer'
+import { BaseDialog } from '@/components/base'
 import { EditorViewer } from '@/components/profile/editor-viewer'
 import { GroupsEditorViewer } from '@/components/profile/groups-editor-viewer'
 import { RulesEditorViewer } from '@/components/profile/rules-editor-viewer'
 import { useEditorDocument } from '@/hooks/use-editor-document'
 import {
-  viewProfile,
-  readProfileFile,
-  updateProfile,
-  saveProfileFile,
   getNextUpdateTime,
+  readProfileFile,
+  saveProfileFile,
+  updateProfile,
+  viewProfile,
 } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
 import { useLoadingCache, useSetLoadingCache } from '@/services/states'
@@ -39,6 +43,7 @@ import parseTraffic from '@/utils/parse-traffic'
 
 import { ProfileBox } from './profile-box'
 import { ProxiesEditorViewer } from './proxies-editor-viewer'
+import { QrViewer } from './qr-viewer'
 const round = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -50,6 +55,8 @@ interface Props {
   activating: boolean
   draggable?: boolean
   itemData: IProfileItem
+  // FORK: mutateProfiles 保留（body 的 update-refresh 逻辑用），onSelect 丢弃（fork 多激活模型不用）
+  mutateProfiles: () => Promise<void>
   onEdit: () => void
   onSave?: (prev?: string, curr?: string) => void
   onDelete: () => void
@@ -57,6 +64,10 @@ interface Props {
   isPrimary?: boolean
   conflictCount?: number
   onShowConflicts?: () => void
+  // batch-select (上游 v2.5.1 批量删除) — 与 fork 多激活合并并存的可切换模式
+  batchMode?: boolean
+  isSelected?: boolean
+  onSelectionChange?: () => void
 }
 
 export const ProfileItem = (props: Props) => {
@@ -66,6 +77,7 @@ export const ProfileItem = (props: Props) => {
     activating,
     draggable = false,
     itemData,
+    mutateProfiles,
     onEdit,
     onSave,
     onDelete,
@@ -73,6 +85,9 @@ export const ProfileItem = (props: Props) => {
     isPrimary,
     conflictCount,
     onShowConflicts,
+    batchMode,
+    isSelected,
+    onSelectionChange,
   } = props
   const {
     attributes,
@@ -94,7 +109,11 @@ export const ProfileItem = (props: Props) => {
 
   // 新增状态：是否显示下次更新时间
   const [showNextUpdate, setShowNextUpdate] = useState(false)
+  const showNextUpdateRef = useRef(false)
   const [nextUpdateTime, setNextUpdateTime] = useState('')
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  )
 
   const { uid, name = 'Profile', extra, updated = 0, option } = itemData
 
@@ -176,6 +195,10 @@ export const ProfileItem = (props: Props) => {
     setShowNextUpdate(!showNextUpdate)
   }
 
+  useEffect(() => {
+    showNextUpdateRef.current = showNextUpdate
+  }, [showNextUpdate])
+
   // 当组件加载或更新间隔变化时更新下次更新时间
   useEffect(() => {
     if (showNextUpdate) {
@@ -190,19 +213,18 @@ export const ProfileItem = (props: Props) => {
 
   // 订阅定时器更新事件
   useEffect(() => {
-    let refreshTimeout: number | undefined
     // 处理定时器更新事件 - 这个事件专门用于通知定时器变更
     const handleTimerUpdate = (event: Event) => {
       const source = event as CustomEvent<string> & { payload?: string }
       const updatedUid = source.detail ?? source.payload
 
       // 只有当更新的是当前配置时才刷新显示
-      if (updatedUid === itemData.uid && showNextUpdate) {
+      if (updatedUid === itemData.uid && showNextUpdateRef.current) {
         debugLog(`收到定时器更新事件: uid=${updatedUid}`)
-        if (refreshTimeout !== undefined) {
-          clearTimeout(refreshTimeout)
+        if (refreshTimeoutRef.current !== undefined) {
+          clearTimeout(refreshTimeoutRef.current)
         }
-        refreshTimeout = window.setTimeout(() => {
+        refreshTimeoutRef.current = window.setTimeout(() => {
           fetchNextUpdateTime(true)
         }, 1000)
       }
@@ -212,13 +234,13 @@ export const ProfileItem = (props: Props) => {
     window.addEventListener('verge://timer-updated', handleTimerUpdate)
 
     return () => {
-      if (refreshTimeout !== undefined) {
-        clearTimeout(refreshTimeout)
+      if (refreshTimeoutRef.current !== undefined) {
+        clearTimeout(refreshTimeoutRef.current)
       }
       // 清理事件监听
       window.removeEventListener('verge://timer-updated', handleTimerUpdate)
     }
-  }, [fetchNextUpdateTime, itemData.uid, showNextUpdate])
+  }, [fetchNextUpdateTime, itemData.uid])
 
   // local file mode
   // remote file mode
@@ -276,6 +298,7 @@ export const ProfileItem = (props: Props) => {
   const [mergeOpen, setMergeOpen] = useState(false)
   const [scriptOpen, setScriptOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
 
   const loadProfileDocument = useCallback(() => readProfileFile(uid), [uid])
   const loadMergeDocument = useCallback(
@@ -308,6 +331,11 @@ export const ProfileItem = (props: Props) => {
   const onEditInfo = () => {
     setAnchorEl(null)
     onEdit()
+  }
+
+  const onShareQrCode = () => {
+    setAnchorEl(null)
+    setQrOpen(true)
   }
 
   const onEditFile = () => {
@@ -377,7 +405,7 @@ export const ProfileItem = (props: Props) => {
       await updateProfile(itemData.uid, payload)
 
       // 更新成功，刷新列表
-      mutate('getProfiles')
+      void mutateProfiles()
     } catch {
       // 更新完全失败（包括后端的回退尝试）
       // 不需要做处理，后端会通过事件通知系统发送错误
@@ -394,6 +422,8 @@ export const ProfileItem = (props: Props) => {
 
   const menuLabels: Record<string, TranslationKey> = {
     home: 'profiles.components.menu.home',
+    // FORK: 保留上游 shareQrCode（菜单已引用），丢弃 select（fork 移除"使用"菜单项）
+    shareQrCode: 'profiles.components.menu.shareQrCode',
     editInfo: 'profiles.components.menu.editInfo',
     editFile: 'profiles.components.menu.editFile',
     editRules: 'profiles.components.menu.editRules',
@@ -420,6 +450,11 @@ export const ProfileItem = (props: Props) => {
     // FORK: 移除"使用"菜单项 — 与多订阅激活功能不兼容,
     // onForceSelect 会强制把当前 profile 设为唯一 current,
     // 破坏 selectedProfiles 多激活态。激活/取消请直接点击卡片 (触发 onToggle)。
+    {
+      label: menuLabels.shareQrCode,
+      handler: onShareQrCode,
+      disabled: false,
+    },
     {
       label: menuLabels.editInfo,
       handler: onEditInfo,
@@ -553,6 +588,8 @@ export const ProfileItem = (props: Props) => {
       const customEvent = event as CustomEvent<{ uid?: string }>
       if (customEvent.detail?.uid === itemData.uid) {
         setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }))
+        // 刷新 profile 数据以获取最新的 updated 时间戳
+        void mutateProfiles()
         // 更新完成后刷新显示
         if (showNextUpdate) {
           fetchNextUpdateTime()
@@ -572,11 +609,20 @@ export const ProfileItem = (props: Props) => {
         handleUpdateCompleted,
       )
     }
-  }, [fetchNextUpdateTime, itemData.uid, setLoadingCache, showNextUpdate])
+  }, [
+    fetchNextUpdateTime,
+    itemData.uid,
+    mutateProfiles,
+    setLoadingCache,
+    showNextUpdate,
+  ])
 
   const handleSaveProfileDocument = useLockFn(async () => {
     const currentValue = profileDocument.value
-    await saveProfileFile(uid, currentValue)
+    if (!(await saveProfileFile(uid, currentValue))) {
+      await profileDocument.reload()
+      return
+    }
     onSave?.(profileDocument.savedValue, currentValue)
     profileDocument.markSaved(currentValue)
   })
@@ -584,7 +630,10 @@ export const ProfileItem = (props: Props) => {
   const handleSaveMergeDocument = useLockFn(async () => {
     const mergeUid = option?.merge ?? ''
     const currentValue = mergeDocument.value
-    await saveProfileFile(mergeUid, currentValue)
+    if (!(await saveProfileFile(mergeUid, currentValue))) {
+      await mergeDocument.reload()
+      return
+    }
     onSave?.(mergeDocument.savedValue, currentValue)
     mergeDocument.markSaved(currentValue)
   })
@@ -592,7 +641,10 @@ export const ProfileItem = (props: Props) => {
   const handleSaveScriptDocument = useLockFn(async () => {
     const scriptUid = option?.script ?? ''
     const currentValue = scriptDocument.value
-    await saveProfileFile(scriptUid, currentValue)
+    if (!(await saveProfileFile(scriptUid, currentValue))) {
+      await scriptDocument.reload()
+      return
+    }
     onSave?.(scriptDocument.savedValue, currentValue)
     scriptDocument.markSaved(currentValue)
   })
@@ -615,6 +667,11 @@ export const ProfileItem = (props: Props) => {
           if (activating) {
             e.preventDefault()
             e.stopPropagation()
+            return
+          }
+          // 批量模式下点击切换勾选，否则走 fork 多激活 toggle
+          if (batchMode) {
+            onSelectionChange?.()
             return
           }
           onToggle?.()
@@ -651,8 +708,24 @@ export const ProfileItem = (props: Props) => {
             />
           </Box>
         )}
-        <Box position="relative">
+        <Box sx={{ position: 'relative' }}>
           <Box sx={{ display: 'flex', justifyContent: 'start' }}>
+            {batchMode && (
+              <IconButton
+                size="small"
+                sx={{ padding: '2px', marginRight: '4px', marginLeft: '-8px' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSelectionChange?.()
+                }}
+              >
+                {isSelected ? (
+                  <CheckBoxRounded color="primary" />
+                ) : (
+                  <CheckBoxOutlineBlankRounded />
+                )}
+              </IconButton>
+            )}
             {draggable && (
               <Box
                 sx={{
@@ -691,8 +764,12 @@ export const ProfileItem = (props: Props) => {
               }}
             >
               <Typography
-                width="100%"
-                sx={{ fontSize: '18px', fontWeight: '600', lineHeight: '26px' }}
+                sx={{
+                  width: '100%',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  lineHeight: '26px',
+                }}
                 variant="h6"
                 component="h2"
                 noWrap
@@ -763,14 +840,14 @@ export const ProfileItem = (props: Props) => {
                   <Typography
                     noWrap
                     component="span"
-                    fontSize={14}
-                    textAlign="right"
                     title={
                       showNextUpdate
                         ? t('profiles.components.profileItem.tooltips.showLast')
                         : `${t('shared.labels.updateTime')}: ${parseExpire(updated)}\n${t('profiles.components.profileItem.tooltips.showNext')}`
                     }
                     sx={{
+                      fontSize: 14,
+                      textAlign: 'right',
                       cursor: 'pointer',
                       display: 'inline-block',
                       borderBottom: '1px dashed transparent',
@@ -822,7 +899,7 @@ export const ProfileItem = (props: Props) => {
         anchorPosition={position}
         anchorReference="anchorPosition"
         transitionDuration={225}
-        MenuListProps={{ sx: { py: 0.5 } }}
+        slotProps={{ list: { sx: { py: 0.5 } } }}
         onContextMenu={(e) => {
           setAnchorEl(null)
           e.preventDefault()
@@ -925,16 +1002,30 @@ export const ProfileItem = (props: Props) => {
         />
       )}
 
-      <ConfirmViewer
+      <BaseDialog
         title={t('profiles.modals.confirmDelete.title')}
-        message={t('profiles.modals.confirmDelete.message')}
         open={confirmOpen}
+        okBtn={t('shared.actions.confirm')}
+        cancelBtn={t('shared.actions.cancel')}
+        contentSx={{ width: { xs: 320, sm: 420 }, userSelect: 'text' }}
+        onCancel={() => setConfirmOpen(false)}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={() => {
+        onOk={() => {
           onDelete()
           setConfirmOpen(false)
         }}
-      />
+      >
+        <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+          {t('profiles.modals.confirmDelete.message')}
+        </Typography>
+      </BaseDialog>
+      {qrOpen && itemData.url && (
+        <QrViewer
+          open={true}
+          value={`${itemData.url}${itemData.url.includes('?') ? '&' : '?'}name=${encodeURIComponent(name)}`}
+          onClose={() => setQrOpen(false)}
+        />
+      )}
     </Box>
   )
 }

@@ -70,6 +70,7 @@
     "menu": {
       "home": "ホーム",
       "select": "使用する",
+      "shareQrCode": "Share QR Code",
       "editInfo": "情報を編集",
       "editFile": "ファイルを編集",
       "editRules": "ルールを編集",
@@ -188,6 +189,9 @@
     },
     "logViewer": {
       "title": "スクリプトコンソール出力"
+    },
+    "qrViewer": {
+      "title": "Subscription QR Code"
     }
   }
 }

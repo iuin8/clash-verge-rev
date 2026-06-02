@@ -37,6 +37,7 @@ export default defineConfig([
           allowDefaultProject: [
             'eslint.config.ts',
             `vite.config.mts`,
+            'scripts/*.mjs',
             'src/polyfills/*.js',
           ],
         },
@@ -72,7 +73,7 @@ export default defineConfig([
       '@eslint-react/no-children-for-each': 'error',
       '@eslint-react/no-children-map': 'error',
       '@eslint-react/no-children-only': 'error',
-      '@eslint-react/no-children-prop': 'error',
+      '@eslint-react/jsx-no-children-prop': 'error',
       '@eslint-react/no-children-to-array': 'error',
       '@eslint-react/no-class-component': 'error',
       '@eslint-react/no-clone-element': 'error',
@@ -86,7 +87,7 @@ export default defineConfig([
       '@eslint-react/no-unstable-default-props': 'warn',
       '@eslint-react/no-unused-class-component-members': 'error',
       '@eslint-react/no-unused-state': 'error',
-      '@eslint-react/no-useless-fragment': 'warn',
+      '@eslint-react/jsx-no-useless-fragment': 'warn',
       '@eslint-react/prefer-destructuring-assignment': 'warn',
 
       // TypeScript
