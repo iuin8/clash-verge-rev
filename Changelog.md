@@ -1,3 +1,90 @@
+## v2.5.1-fa.1001
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.1-fa.0 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- 修复 fork 客户端版本号比较 (A 方案)
+- 只输出 version 字段避免 duplicate field 错误
+- 恢复 update.json 的 version 字段,修复更新对话框
+- 拖动排序后重跑 enhance pipeline
+- 拖动排序在切换 tab 后回退
+- 修复拖动排序失效
+- 订阅切换失败时正确回滚 UI 状态并 restore mihomo 配置
+- docs(merge): record shipped rule-provider fix state
+- harden multi-profile merge edge cases
+- harden multi-profile merge behavior
+- update build monitoring interval to every 3 minutes
+- Revert "fix: use MetaCubeX upstream for alpha mihomo sidecar prebuild"
+- use MetaCubeX upstream for alpha mihomo sidecar prebuild
+- force release body sync after publish
+- simplify update_tag job dependencies and adjust release name format
+- update_tag must wait for all release jobs to complete
+- add missing TAG_NAME env variable in update_tag job
+- add missing release body update step in update_tag job
+- update draft release body to include 'Draft' prefix for clarity
+- replace draft release update with action-gh-release for streamlined uploads
+- add make_latest parameter to force update release body
+- correct UPDATE_LOGS environment variable usage in release workflow
+- update release body generation to use environment variable for update logs
+- 简化 release 下载链接，只显示实际构建的平台（Windows x64, macOS ARM64, Linux x64）
+- 修复 release 下载链接指向错误仓库的问题，使用 github.repository 变量
+- 移除 release 名称中的 'Clash Verge Rev' 前缀，只保留版本号
+- update GitHub repository link to point to the correct owner
+- 修复版本号显示和更新链接问题
+- 移除冗余version字段，用name存semver版本号避免duplicate field错误
+- 使用releases API替代tags API，避免选中上游继承的tag
+- 更新版本标签格式以符合semver规范
+- 拖拽时过滤已失活配置，防止非激活项出现在激活区
+- 修复拖拽活动区消失和幻影现象
+- 修复拖拽和切换时的状态同步问题
+- surface conflict-load errors, stabilise primary-card identity
+- enforce drag constraint, fix Done visibility, apply active highlight to selected cards
+- spec compliance fixes for multi-select merge mode
+- ci: re-enable release-update job and fix fork updater config
+- ci: disable unused jobs (linux-arm, fixed-webview2, winget, telegram, upstream-updater)
+- 修复多配置文件合并时的格式问题
+- resolve clippy errors in multi_merge and enhance pipeline
+- docs: 修复package.md中的空格格式问题
+- 修复版本标签匹配逻辑以支持带后缀的标签
+
+### ✨ 新增功能
+
+- add upstream-sync skill and script for merging upstream changes
+- add upstream auto-sync workflow with AI assistance
+- add GitNexus skills and update AGENTS.md for enhanced code intelligence
+- 添加非交互模式支持 --yes 参数以支持 CI/CD 和 agent 自动化
+- 添加 workflow_call 支持以允许其他 workflow 调用 updater
+- add automated release process with Changelog update and tag creation
+- ci: 更新发布版本号至v2.4.7.1017并添加版本号自动更新逻辑
+- 非激活区禁止拖拽，仅支持点击切换
+- 重构拖拽排序为本地状态驱动，修复回弹问题
+- 改进拖拽交互的视觉反馈和逻辑
+- 添加多合并模式下主卡片高亮显示功能
+- docs: 更新package.md添加macOS签名问题说明
+- wire MergeOrderBar and ConflictViewer for multi-profile merge activation
+- add MergeOrderBar component for drag-to-reorder merge priority
+- add ConflictViewer dialog for merge conflict display
+- add TS types and wrappers for multi-profile merge commands
+- add set_merged_profiles, clear_merged_profiles, get_merge_conflicts IPC commands
+- wire multi-profile merge path in enhance pipeline
+- add multi_profile_merge function with conflict logging
+- add merged field to IProfiles for multi-profile activation
+- add merge activation i18n keys
+- chore: 更新.gitignore文件，添加.omc目录忽略
+- docs: 添加打包文档说明
+
+### 🚀 优化改进
+
+- 移除右键"使用"菜单项及连带 dead code
+- 重构多选和合并功能，移除批量模式
+- docs(specs): 更新多配置合并设计文档，优化UI交互和冲突处理
+- 简化平台架构映射并更新文件名格式 refactor(enhance): 优化代码格式和合并逻辑的可读性
+
+---
+
+
 ## v2.4.7-fa.1043
 
 > [!IMPORTANT]
