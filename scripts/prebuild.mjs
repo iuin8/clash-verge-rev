@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execFileSync, execSync } from 'child_process'
 import { createHash } from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
@@ -8,7 +8,6 @@ import zlib from 'zlib'
 import AdmZip from 'adm-zip'
 import { glob } from 'glob'
 import { HttpsProxyAgent } from 'https-proxy-agent'
-import fetch from 'node-fetch'
 import { extract } from 'tar'
 
 import { log_debug, log_error, log_info, log_success } from './utils.mjs'
@@ -396,7 +395,7 @@ async function resolveSidecar(binInfo) {
           throw new Error(`Expected binary not found in ${tempDir}`)
         await fsp.rename(path.join(tempDir, candidate), sidecarPath)
       }
-      if (platform !== 'win32') execSync(`chmod 755 ${sidecarPath}`)
+      if (platform !== 'win32') await fsp.chmod(sidecarPath, 0o755)
       log_success(`unzip finished: "${name}"`)
     } else if (zipFile.endsWith('.tgz')) {
       await extract({ cwd: tempDir, file: tempZip })
@@ -412,7 +411,7 @@ async function resolveSidecar(binInfo) {
       if (!extracted) extracted = files[0]
       if (!extracted) throw new Error(`Expected file not found in ${tempDir}`)
       await fsp.rename(path.join(tempDir, extracted), sidecarPath)
-      execSync(`chmod 755 ${sidecarPath}`)
+      await fsp.chmod(sidecarPath, 0o755)
       log_success(`tgz processed: "${name}"`)
     } else {
       // .gz
@@ -427,7 +426,8 @@ async function resolveSidecar(binInfo) {
           })
           .pipe(writeStream)
           .on('finish', () => {
-            if (platform !== 'win32') execSync(`chmod 755 ${sidecarPath}`)
+            if (platform !== 'win32')
+              execFileSync('chmod', ['755', sidecarPath])
             resolve()
           })
           .on('error', (e) => {

@@ -38,7 +38,7 @@
         "profileSwitched": "Profil Beralih",
         "profileSwitchFailed": "Gagal beralih profil",
         "profileReactivated": "Profil Diaktifkan Kembali",
-        "switchInterrupted": "Profile switch interrupted by new selection",
+        "switchBusy": "Profile switch is already in progress",
         "batchDeleted": "Selected profiles deleted successfully"
       },
       "notices": {

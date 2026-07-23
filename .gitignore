@@ -21,3 +21,4 @@ CLAUDE.md
 .claude/*
 !.claude/skills/
 AGENTS.md
+.zed

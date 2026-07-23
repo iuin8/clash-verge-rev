@@ -38,7 +38,7 @@
         "profileSwitched": "Suscripción cambiada",
         "profileSwitchFailed": "Error al cambiar la suscripción",
         "profileReactivated": "Suscripción reactivada",
-        "switchInterrupted": "Profile switch interrupted by new selection",
+        "switchBusy": "Profile switch is already in progress",
         "batchDeleted": "Selected profiles deleted successfully"
       },
       "notices": {

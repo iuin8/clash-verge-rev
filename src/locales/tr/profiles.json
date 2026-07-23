@@ -38,7 +38,7 @@
         "profileSwitched": "Profil Değiştirildi",
         "profileSwitchFailed": "Profil değiştirme başarısız",
         "profileReactivated": "Profil Yeniden Etkinleştirildi",
-        "switchInterrupted": "Profile switch interrupted by new selection",
+        "switchBusy": "Profil değiştirme işlemi zaten devam ediyor",
         "batchDeleted": "Seçili profiller başarıyla silindi"
       },
       "notices": {

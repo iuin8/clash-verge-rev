@@ -38,7 +38,7 @@
         "profileSwitched": "Профиль переключён",
         "profileSwitchFailed": "Не удалось переключить профиль",
         "profileReactivated": "Профиль перезапущен",
-        "switchInterrupted": "Переключение профиля прервано новым выбором",
+        "switchBusy": "Переключение профиля уже выполняется",
         "batchDeleted": "Выбранные профили удалены"
       },
       "notices": {

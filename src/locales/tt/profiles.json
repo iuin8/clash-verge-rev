@@ -38,7 +38,7 @@
         "profileSwitched": "Профиль алмаштырылды",
         "profileSwitchFailed": "Профильне күчереп булмады",
         "profileReactivated": "Профиль яңадан активлаштырылды",
-        "switchInterrupted": "Profile switch interrupted by new selection",
+        "switchBusy": "Profile switch is already in progress",
         "batchDeleted": "Selected profiles deleted successfully"
       },
       "notices": {
