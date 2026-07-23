@@ -312,14 +312,16 @@ jobs:
     if: false # FORK: disabled, no ARM Linux targets needed
     runs-on: ubuntu-latest
     steps:
-      - run: echo "FORK: Linux ARM release disabled"
+      - run: |
+          echo "FORK: Linux ARM release disabled"
 
   release-for-fixed-webview2:
     name: Release Build for Fixed WebView2
     if: false # FORK: disabled, fixed WebView2 bundle not needed
     runs-on: ubuntu-latest
     steps:
-      - run: echo "FORK: fixed WebView2 release disabled"
+      - run: |
+          echo "FORK: fixed WebView2 release disabled"
 
   release-update:
     if: ${{ !contains(github.ref_name, '-rc') }}
@@ -381,11 +383,13 @@ jobs:
     if: false # FORK: disabled, not publishing to winget
     runs-on: ubuntu-latest
     steps:
-      - run: echo "FORK: Winget submission disabled"
+      - run: |
+          echo "FORK: Winget submission disabled"
 
   notify-telegram:
     name: Notify Telegram
     if: false # FORK: disabled, no Telegram channel
     runs-on: ubuntu-latest
     steps:
-      - run: echo "FORK: Telegram notification disabled"
+      - run: |
+          echo "FORK: Telegram notification disabled"
