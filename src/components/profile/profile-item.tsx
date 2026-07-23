@@ -9,7 +9,6 @@ import {
   RefreshRounded,
 } from '@mui/icons-material'
 import {
-  Badge,
   Box,
   CircularProgress,
   IconButton,
@@ -63,22 +62,18 @@ export interface ProfileItemProps {
   activating: boolean
   itemData: IProfileItem
   mutateProfiles: () => Promise<void>
-  onSelect?: (force: boolean) => void
+  onSelect: (force: boolean) => void
   onEdit: () => void
   onSave?: (prev?: string, curr?: string) => void
   onDelete: () => void
-  onToggle?: () => void
-  isPrimary?: boolean
-  conflictCount?: number
-  onShowConflicts?: () => void
   batchMode?: boolean
   isSelected?: boolean
   onSelectionChange?: () => void
   timerUpdateRevision: number
   completedUpdateRevision: number
-  dragHandleRef?: (node: HTMLElement | null) => void
-  dragHandleAttributes?: DraggableAttributes
-  dragHandleListeners?: DraggableSyntheticListeners
+  dragHandleRef: (node: HTMLElement | null) => void
+  dragHandleAttributes: DraggableAttributes
+  dragHandleListeners: DraggableSyntheticListeners
 }
 
 const ProfileItemBase = (props: ProfileItemProps) => {
@@ -91,10 +86,6 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     onEdit,
     onSave,
     onDelete,
-    onToggle,
-    isPrimary,
-    conflictCount,
-    onShowConflicts,
     batchMode,
     isSelected,
     onSelectionChange,
@@ -384,7 +375,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const onForceSelect = () => {
     setAnchorEl(null)
-    onSelect?.(true)
+    onSelect(true)
   }
 
   const onOpenFile = useLockFn(async () => {
@@ -655,16 +646,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             e.stopPropagation()
             return
           }
-          // 批量模式下点击切换勾选，否则走 fork 多激活 toggle；无 toggle 时回退上游单选。
-          if (batchMode) {
-            onSelectionChange?.()
-            return
-          }
-          if (onToggle) {
-            onToggle()
-            return
-          }
-          onSelect?.(false)
+          onSelect(false)
         }}
         onContextMenu={(event) => {
           const { clientX, clientY } = event
@@ -718,59 +700,40 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                 )}
               </IconButton>
             )}
-            {dragHandleAttributes && dragHandleListeners && (
-              <Box
-                ref={dragHandleRef}
-                sx={{
-                  display: 'flex',
-                  margin: 'auto 0',
-                  cursor: 'move',
-                  ...(batchMode && { marginLeft: '-4px' }),
-                }}
-                {...dragHandleAttributes}
-                {...dragHandleListeners}
-              >
-                <DragIndicatorRounded
-                  sx={[
-                    { cursor: 'inherit', marginLeft: '-6px' },
-                    ({ palette: { text } }) => {
-                      return { color: text.primary }
-                    },
-                  ]}
-                />
-              </Box>
-            )}
-
-            <Badge
-              badgeContent={isPrimary && conflictCount ? conflictCount : 0}
-              color="warning"
-              max={99}
-              onClick={(e) => {
-                if (isPrimary && conflictCount && onShowConflicts) {
-                  e.stopPropagation()
-                  onShowConflicts()
-                }
+            <Box
+              ref={dragHandleRef}
+              sx={{
+                display: 'flex',
+                margin: 'auto 0',
+                ...(batchMode && { marginLeft: '-4px' }),
               }}
+              {...dragHandleAttributes}
+              {...dragHandleListeners}
+            >
+              <DragIndicatorRounded
+                sx={[
+                  { cursor: 'move', marginLeft: '-6px' },
+                  ({ palette: { text } }) => {
+                    return { color: text.primary }
+                  },
+                ]}
+              />
+            </Box>
+
+            <Typography
               sx={{
                 width: batchMode ? 'calc(100% - 56px)' : 'calc(100% - 36px)',
-                cursor: isPrimary && conflictCount ? 'pointer' : 'inherit',
+                fontSize: '18px',
+                fontWeight: '600',
+                lineHeight: '26px',
               }}
+              variant="h6"
+              component="h2"
+              noWrap
+              title={name}
             >
-              <Typography
-                sx={{
-                  width: '100%',
-                  fontSize: '18px',
-                  fontWeight: '600',
-                  lineHeight: '26px',
-                }}
-                variant="h6"
-                component="h2"
-                noWrap
-                title={name}
-              >
-                {name}
-              </Typography>
-            </Badge>
+              {name}
+            </Typography>
           </Box>
 
           {/* only if has url can it be updated */}

@@ -26,7 +26,15 @@ import {
   RefreshRounded,
   TextSnippetOutlined,
 } from '@mui/icons-material'
-import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
+import {
+  Badge,
+  Box,
+  Button,
+  Divider,
+  Grid,
+  IconButton,
+  Stack,
+} from '@mui/material'
 import { listen, TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
@@ -43,7 +51,6 @@ import {
   type DialogRef,
 } from '@/components/base'
 import { ConflictViewer } from '@/components/profile/conflict-viewer'
-import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
   ProfileViewer,
@@ -567,10 +574,6 @@ const ProfilePage = () => {
     },
     [runProfileSwitchQueue],
   )
-
-  const onSelect = async (profile: string, force: boolean) => {
-    await activateProfile(profile, true, force)
-  }
 
   const onToggleProfile = useLockFn(async (uid: string) => {
     const newSet = new Set(selectedProfiles)
@@ -1111,39 +1114,51 @@ const ProfilePage = () => {
                   const isPrimary = primaryUid === item.uid
                   return (
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
-                      <SortableProfileItem
-                        id={item.uid!}
-                        selected={true}
-                        activating={
-                          activatings.includes(item.uid!) ||
-                          visibleSwitchingProfile === item.uid
-                        }
-                        itemData={item}
-                        timerUpdateRevision={
-                          timerUpdateRevisions.get(item.uid!) ?? 0
-                        }
-                        completedUpdateRevision={
-                          completedUpdateRevisions.get(item.uid!) ?? 0
-                        }
-                        mutateProfiles={mutateProfiles}
-                        onSelect={(f) => onSelect(item.uid!, f)}
-                        onEdit={() => viewerRef.current?.edit(item)}
-                        onSave={async (prev, curr) => {
-                          if (prev !== curr && profiles.current === item.uid) {
-                            await onEnhance(false)
+                      <Badge
+                        badgeContent={isPrimary ? conflicts.length : 0}
+                        color="warning"
+                        max={99}
+                        onClick={(e) => {
+                          if (isPrimary && conflicts.length > 0) {
+                            e.stopPropagation()
+                            setConflictViewerOpen(true)
                           }
                         }}
-                        onDelete={() => onDelete(item.uid!)}
-                        onToggle={() => onToggleProfile(item.uid!)}
-                        isPrimary={isPrimary}
-                        conflictCount={isPrimary ? conflicts.length : 0}
-                        onShowConflicts={() => setConflictViewerOpen(true)}
-                        batchMode={batchMode}
-                        isSelected={batchSelected.has(item.uid!)}
-                        onSelectionChange={() =>
-                          toggleProfileSelection(item.uid!)
-                        }
-                      />
+                        sx={{ width: '100%' }}
+                      >
+                        <SortableProfileItem
+                          id={item.uid!}
+                          selected={true}
+                          activating={
+                            activatings.includes(item.uid!) ||
+                            visibleSwitchingProfile === item.uid
+                          }
+                          itemData={item}
+                          timerUpdateRevision={
+                            timerUpdateRevisions.get(item.uid!) ?? 0
+                          }
+                          completedUpdateRevision={
+                            completedUpdateRevisions.get(item.uid!) ?? 0
+                          }
+                          mutateProfiles={mutateProfiles}
+                          onSelect={() => onToggleProfile(item.uid!)}
+                          onEdit={() => viewerRef.current?.edit(item)}
+                          onSave={async (prev, curr) => {
+                            if (
+                              prev !== curr &&
+                              profiles.current === item.uid
+                            ) {
+                              await onEnhance(false)
+                            }
+                          }}
+                          onDelete={() => onDelete(item.uid!)}
+                          batchMode={batchMode}
+                          isSelected={batchSelected.has(item.uid!)}
+                          onSelectionChange={() =>
+                            toggleProfileSelection(item.uid!)
+                          }
+                        />
+                      </Badge>
                     </Grid>
                   )
                 })}
@@ -1165,7 +1180,8 @@ const ProfilePage = () => {
                 <Grid container spacing={{ xs: 1, lg: 1 }}>
                   {inactiveProfiles.map((item) => (
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
-                      <ProfileItem
+                      <SortableProfileItem
+                        id={item.uid!}
                         selected={false}
                         activating={activatings.includes(item.uid!)}
                         itemData={item}
@@ -1176,7 +1192,7 @@ const ProfilePage = () => {
                           completedUpdateRevisions.get(item.uid!) ?? 0
                         }
                         mutateProfiles={mutateProfiles}
-                        onSelect={(f) => onSelect(item.uid!, f)}
+                        onSelect={() => onToggleProfile(item.uid!)}
                         onEdit={() => viewerRef.current?.edit(item)}
                         onSave={async (prev, curr) => {
                           if (prev !== curr && profiles.current === item.uid) {
@@ -1184,10 +1200,6 @@ const ProfilePage = () => {
                           }
                         }}
                         onDelete={() => onDelete(item.uid!)}
-                        onToggle={() => onToggleProfile(item.uid!)}
-                        isPrimary={false}
-                        conflictCount={0}
-                        onShowConflicts={() => setConflictViewerOpen(true)}
                         batchMode={batchMode}
                         isSelected={batchSelected.has(item.uid!)}
                         onSelectionChange={() =>
