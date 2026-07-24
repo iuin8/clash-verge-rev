@@ -590,6 +590,12 @@ function parseServiceVersionFromUrl(url) {
 }
 
 async function getLatestServiceVersion() {
+  SERVICE_VERSION = process.env.CLASH_VERGE_SERVICE_VERSION
+  if (SERVICE_VERSION) {
+    log_info(`Using service version from CLASH_VERGE_SERVICE_VERSION: ${SERVICE_VERSION}`)
+    return
+  }
+
   if (!FORCE) {
     const cached = await getCachedVersion('SERVICE_VERSION')
     if (cached) {

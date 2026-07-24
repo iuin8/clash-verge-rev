@@ -252,6 +252,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
+          export CLASH_VERGE_SERVICE_VERSION="$(node scripts/resolve-service-ipc-version.mjs)"
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Add Rust Target
