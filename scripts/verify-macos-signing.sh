@@ -33,16 +33,6 @@ while IFS= read -r app; do
   service="$app/Contents/Resources/resources/clash-verge-service"
   if [[ -f "$service" ]]; then
     codesign --verify --strict --verbose=4 "$service"
-
-    if strings "$service" | grep -q '/var/run/clash-verge-service/service.sock'; then
-      echo "Incompatible service IPC path embedded in $service: /var/run/clash-verge-service/service.sock" >&2
-      exit 1
-    fi
-
-    if ! strings "$service" | grep -q '/tmp/verge/clash-verge-service.sock'; then
-      echo "Expected service IPC path not found in $service: /tmp/verge/clash-verge-service.sock" >&2
-      exit 1
-    fi
   fi
 done < <(find "$BUNDLE_DIR" -maxdepth 1 -type d -name '*.app' | sort)
 

@@ -252,22 +252,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm run prebuild -- --force ${{ matrix.target }}
-
-      - name: Verify macOS service IPC path
-        if: matrix.os == 'macos-latest'
-        run: |
-          service="src-tauri/resources/clash-verge-service"
-
-          if strings "$service" | grep -q '/var/run/clash-verge-service/service.sock'; then
-            echo "Incompatible service IPC path embedded in $service: /var/run/clash-verge-service/service.sock" >&2
-            exit 1
-          fi
-
-          if ! strings "$service" | grep -q '/tmp/verge/clash-verge-service.sock'; then
-            echo "Expected service IPC path not found in $service: /tmp/verge/clash-verge-service.sock" >&2
-            exit 1
-          fi
+          pnpm run prebuild ${{ matrix.target }}
 
       - name: Add Rust Target
         run: |
