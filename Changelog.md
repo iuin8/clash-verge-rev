@@ -1,3 +1,15 @@
+## v2.5.2-fa.1002
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1001 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- ad-hoc sign macOS release bundles
+
+---
+
+
 ## v2.5.2-fa.1001
 
 > [!IMPORTANT]
