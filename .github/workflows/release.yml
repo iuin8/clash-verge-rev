@@ -249,10 +249,13 @@ jobs:
         with:
           run_install: false
 
+      - name: Resolve service IPC version
+        run: echo "CLASH_VERGE_SERVICE_VERSION=$(node scripts/resolve-service-ipc-version.mjs)" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Pnpm install and check
         run: |
           pnpm i
-          export CLASH_VERGE_SERVICE_VERSION="$(node scripts/resolve-service-ipc-version.mjs)"
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Add Rust Target
