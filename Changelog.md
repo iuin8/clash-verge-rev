@@ -1,3 +1,17 @@
+## v2.5.2-fa.1003
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1002 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- align service binary version with IPC client
+- Revert "fix: pin service IPC binary version"
+- pin service IPC binary version
+
+---
+
+
 ## v2.5.2-fa.1002
 
 > [!IMPORTANT]
