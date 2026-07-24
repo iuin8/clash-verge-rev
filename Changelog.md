@@ -1,3 +1,15 @@
+## v2.5.2-fa.1004
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1003 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- resolve service version before prebuild on Windows
+
+---
+
+
 ## v2.5.2-fa.1003
 
 > [!IMPORTANT]
