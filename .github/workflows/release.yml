@@ -287,6 +287,10 @@ jobs:
           args: --target ${{ matrix.target }}
           includeUpdaterJson: true
 
+      - name: Verify macOS signing
+        if: matrix.os == 'macos-latest'
+        run: bash scripts/verify-macos-signing.sh ${{ matrix.target }}
+
       - name: Attest Windows bundles
         if: matrix.os == 'windows-latest'
         uses: actions/attest-build-provenance@v4
