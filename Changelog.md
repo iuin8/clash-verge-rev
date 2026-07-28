@@ -1,3 +1,15 @@
+## v2.5.2-fa.1005
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1004 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- preserve selected card width
+
+---
+
+
 ## v2.5.2-fa.1004
 
 > [!IMPORTANT]
