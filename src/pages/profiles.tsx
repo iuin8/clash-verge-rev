@@ -25,16 +25,9 @@ import {
   LocalFireDepartmentRounded,
   RefreshRounded,
   TextSnippetOutlined,
+  WarningAmberRounded,
 } from '@mui/icons-material'
-import {
-  Badge,
-  Box,
-  Button,
-  Divider,
-  Grid,
-  IconButton,
-  Stack,
-} from '@mui/material'
+import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
 import { listen, TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
@@ -318,9 +311,6 @@ const ProfilePage = () => {
     [profileItems, selectedProfiles],
   )
 
-  const primaryUid =
-    selectedProfiles.size >= 2 ? (activeProfiles[0]?.uid ?? null) : null
-
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
   }
@@ -453,6 +443,8 @@ const ProfilePage = () => {
     try {
       await reorderProfile(activeUid, overUid)
       await mutateProfiles()
+      const c = await getMergeConflicts()
+      setConflicts(c)
     } catch {
       setLocalActiveOrder(oldOrder)
     }
@@ -599,6 +591,7 @@ const ProfilePage = () => {
           return
         }
         await clearMergedProfiles()
+        setConflicts([])
       } else {
         await setMergedProfiles([...newSet])
         const c = await getMergeConflicts()
@@ -616,17 +609,25 @@ const ProfilePage = () => {
   )
   const currentUid = profiles?.current ?? ''
   useEffect(() => {
+    let cancelled = false
     const uids = mergedUidsKey ? mergedUidsKey.split(',') : []
     void Promise.resolve().then(() => {
+      if (cancelled) return
       if (uids.length >= 2) {
         setSelectedProfiles(new Set(uids))
         getMergeConflicts()
-          .then(setConflicts)
+          .then((nextConflicts) => {
+            if (!cancelled) setConflicts(nextConflicts)
+          })
           .catch((e) => console.error('[merge] failed to load conflicts', e))
       } else if (currentUid) {
         setSelectedProfiles(new Set([currentUid]))
+        setConflicts([])
       }
     })
+    return () => {
+      cancelled = true
+    }
   }, [mergedUidsKey, currentUid])
 
   useEffect(() => {
@@ -1105,29 +1106,31 @@ const ProfilePage = () => {
         >
           {/* Active zone — drag to reorder merge priority */}
           <Box sx={{ mb: 1.5 }}>
+            {conflicts.length > 0 && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                <Button
+                  color="warning"
+                  size="small"
+                  startIcon={<WarningAmberRounded />}
+                  variant="outlined"
+                  onClick={() => setConflictViewerOpen(true)}
+                >
+                  {t('profiles.merge.conflicts.badge')} ({conflicts.length})
+                </Button>
+              </Box>
+            )}
             <Grid container spacing={{ xs: 1, lg: 1 }}>
               <SortableContext
                 strategy={profileRectSortingStrategy}
                 items={activeProfiles.map((p) => p.uid!)}
               >
                 {activeProfiles.map((item) => {
-                  const isPrimary = primaryUid === item.uid
                   return (
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
-                      <Badge
-                        badgeContent={isPrimary ? conflicts.length : 0}
-                        color="warning"
-                        max={99}
-                        onClick={(e) => {
-                          if (isPrimary && conflicts.length > 0) {
-                            e.stopPropagation()
-                            setConflictViewerOpen(true)
-                          }
-                        }}
+                      <Box
                         sx={{
                           width: '100%',
                           minWidth: 0,
-                          display: 'block',
                           boxSizing: 'border-box',
                           // FORK: ProfileBox selected cards shift 3px left; keep them inside grid columns.
                           pl: '3px',
@@ -1165,7 +1168,7 @@ const ProfilePage = () => {
                             toggleProfileSelection(item.uid!)
                           }
                         />
-                      </Badge>
+                      </Box>
                     </Grid>
                   )
                 })}
