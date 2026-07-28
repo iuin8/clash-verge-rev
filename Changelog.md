@@ -1,3 +1,19 @@
+## v2.5.2-fa.1006
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1005 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- restore merge conflict trigger
+
+### ✨ 新增功能
+
+- highlight primary merge profile
+
+---
+
+
 ## v2.5.2-fa.1005
 
 > [!IMPORTANT]
