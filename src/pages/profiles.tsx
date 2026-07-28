@@ -27,7 +27,15 @@ import {
   TextSnippetOutlined,
   WarningAmberRounded,
 } from '@mui/icons-material'
-import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
+import {
+  alpha,
+  Box,
+  Button,
+  Divider,
+  Grid,
+  IconButton,
+  Stack,
+} from '@mui/material'
 import { listen, TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
@@ -1124,17 +1132,27 @@ const ProfilePage = () => {
                 strategy={profileRectSortingStrategy}
                 items={activeProfiles.map((p) => p.uid!)}
               >
-                {activeProfiles.map((item) => {
+                {activeProfiles.map((item, index) => {
+                  const isPrimaryMergeProfile =
+                    activeProfiles.length >= 2 && index === 0
                   return (
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
                       <Box
-                        sx={{
+                        sx={(theme) => ({
                           width: '100%',
                           minWidth: 0,
                           boxSizing: 'border-box',
                           // FORK: ProfileBox selected cards shift 3px left; keep them inside grid columns.
                           pl: '3px',
-                        }}
+                          ...(isPrimaryMergeProfile && {
+                            borderRadius: '10px',
+                            boxShadow: `0 0 0 2px ${theme.palette.warning.main}`,
+                            backgroundColor: alpha(
+                              theme.palette.warning.main,
+                              theme.palette.mode === 'dark' ? 0.16 : 0.1,
+                            ),
+                          }),
+                        })}
                       >
                         <SortableProfileItem
                           id={item.uid!}
