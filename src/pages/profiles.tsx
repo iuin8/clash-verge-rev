@@ -1124,7 +1124,14 @@ const ProfilePage = () => {
                             setConflictViewerOpen(true)
                           }
                         }}
-                        sx={{ width: '100%' }}
+                        sx={{
+                          width: '100%',
+                          minWidth: 0,
+                          display: 'block',
+                          boxSizing: 'border-box',
+                          // FORK: ProfileBox selected cards shift 3px left; keep them inside grid columns.
+                          pl: '3px',
+                        }}
                       >
                         <SortableProfileItem
                           id={item.uid!}
