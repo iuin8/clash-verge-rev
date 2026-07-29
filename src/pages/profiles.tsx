@@ -925,6 +925,18 @@ const ProfilePage = () => {
                 <CheckBoxOutlineBlankRounded />
               </IconButton>
 
+              {conflicts.length > 0 && (
+                <IconButton
+                  size="small"
+                  color="warning"
+                  title={t('profiles.merge.conflicts.badge')}
+                  aria-label={`${t('profiles.merge.conflicts.badge')} (${conflicts.length})`}
+                  onClick={() => setConflictViewerOpen(true)}
+                >
+                  <WarningAmberRounded />
+                </IconButton>
+              )}
+
               <IconButton
                 size="small"
                 color="inherit"
@@ -1106,19 +1118,6 @@ const ProfilePage = () => {
         >
           {/* Active zone — drag to reorder merge priority */}
           <Box sx={{ mb: 1.5 }}>
-            {conflicts.length > 0 && (
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-                <Button
-                  color="warning"
-                  size="small"
-                  startIcon={<WarningAmberRounded />}
-                  variant="outlined"
-                  onClick={() => setConflictViewerOpen(true)}
-                >
-                  {t('profiles.merge.conflicts.badge')} ({conflicts.length})
-                </Button>
-              </Box>
-            )}
             <Grid container spacing={{ xs: 1, lg: 1 }}>
               <SortableContext
                 strategy={profileRectSortingStrategy}
@@ -1131,20 +1130,15 @@ const ProfilePage = () => {
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.uid}>
                       <Box
                         sx={(theme) => ({
-                          position: 'relative',
                           width: '100%',
                           minWidth: 0,
                           boxSizing: 'border-box',
                           // FORK: ProfileBox selected cards shift 3px left; keep them inside grid columns.
                           pl: '3px',
                           ...(isPrimaryMergeProfile && {
-                            '&::after': {
-                              content: '""',
-                              position: 'absolute',
-                              inset: 0,
-                              pointerEvents: 'none',
-                              borderRadius: '10px',
-                              boxShadow: `0 0 0 2px ${theme.palette.warning.main}`,
+                            '& [aria-selected="true"]': {
+                              borderLeftColor: theme.palette.warning.main,
+                              '& h2': { color: theme.palette.warning.main },
                             },
                           }),
                         })}
