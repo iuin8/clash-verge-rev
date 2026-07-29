@@ -420,6 +420,37 @@ fn merge_proxy_providers(
     merge_named_mapping(base, supp, "proxy-providers", supp_name, primary_name, conflicts);
 }
 
+fn log_top_level_key_conflicts(
+    base: &Mapping,
+    supp: &Mapping,
+    supp_name: &str,
+    primary_name: &str,
+    conflicts: &mut Vec<ConflictEntry>,
+) {
+    const MERGED_FIELDS: [&str; 5] = ["proxies", "proxy-providers", "proxy-groups", "rules", "rule-providers"];
+
+    for (key, value) in supp {
+        let Some(key_str) = key.as_str() else {
+            continue;
+        };
+        if MERGED_FIELDS.contains(&key_str) {
+            continue;
+        }
+        match base.get(key) {
+            Some(existing) if existing == value => {}
+            _ => {
+                push_conflict(
+                    conflicts,
+                    "top-level",
+                    key_str,
+                    supp_name,
+                    format!("already exists in {primary_name}; kept primary value"),
+                );
+            }
+        }
+    }
+}
+
 /// Merge an ordered list of YAML configs.
 /// Supplementary profiles can contribute proxies, proxy-providers, proxy-groups, rules, and rule-providers.
 /// All other top-level keys come from primary (index 0).
@@ -439,6 +470,7 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
         merge_proxy_groups(&mut base, supp, supp_name, primary_name, &mut conflicts);
         merge_rules(&mut base, supp, primary_name, &mut conflicts);
         merge_rule_providers(&mut base, supp, supp_name, primary_name, &mut conflicts);
+        log_top_level_key_conflicts(&base, supp, supp_name, primary_name, &mut conflicts);
     }
 
     (base, conflicts)
@@ -512,12 +544,20 @@ mod tests {
     }
 
     #[test]
-    fn top_level_keys_from_primary_are_preserved() {
+    fn top_level_key_conflicts_are_logged_and_primary_wins() {
         let primary = mapping("dns:\n  enable: true\nproxies:\n  - name: p1\n    type: ss");
-        let supp = mapping("dns:\n  enable: false\nproxies:\n  - name: p2\n    type: vmess");
-        let (result, _) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+        let supp = mapping("dns:\n  enable: false\ninterface-name: utun9\nproxies:\n  - name: p2\n    type: vmess");
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
         let dns = result.get("dns").unwrap().as_mapping().unwrap();
         assert!(dns.get("enable").unwrap().as_bool().unwrap());
+        assert!(result.get("interface-name").is_none());
+        assert_eq!(conflicts.len(), 2);
+        assert_eq!(conflicts[0].field, "top-level");
+        assert_eq!(conflicts[0].name, "dns");
+        assert_eq!(conflicts[0].source, "supp");
+        assert_eq!(conflicts[1].field, "top-level");
+        assert_eq!(conflicts[1].name, "interface-name");
+        assert_eq!(conflicts[1].source, "supp");
     }
 
     #[test]
@@ -541,7 +581,9 @@ mod tests {
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
-        assert!(conflicts.is_empty());
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].field, "top-level");
+        assert_eq!(conflicts[0].name, "mixed-port");
         let rule_providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
         let local_lan = rule_providers.get("Local-LAN").unwrap().as_mapping().unwrap();
         let payload = local_lan.get("payload").unwrap().as_sequence().unwrap();
@@ -560,7 +602,9 @@ mod tests {
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
-        assert!(conflicts.is_empty());
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].field, "top-level");
+        assert_eq!(conflicts[0].name, "mixed-port");
         let rule_providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
         assert!(rule_providers.get("Local-LAN").is_some());
     }
