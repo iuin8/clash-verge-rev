@@ -1,3 +1,15 @@
+## v2.5.2-fa.1009
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1008 的个人 fork 版本。
+
+### ✨ 新增功能
+
+- manage system SSH config via ssh-config YAML key
+
+---
+
+
 ## v2.5.2-fa.1008
 
 > [!IMPORTANT]
