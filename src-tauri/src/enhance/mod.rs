@@ -54,6 +54,7 @@ struct ProfileItems {
     global_merge: ChainItem,
     global_script: ChainItem,
     profile_name: String,
+    current_uid: String,
     // FORK: multi-profile merge conflicts (empty when not in merged mode)
     merge_conflicts: Vec<multi_merge::ConflictEntry>,
 }
@@ -63,6 +64,7 @@ impl Default for ProfileItems {
         Self {
             config: Default::default(),
             profile_name: Default::default(),
+            current_uid: Default::default(),
             merge_conflicts: vec![],
             merge_item: ChainItem {
                 uid: "".into(),
@@ -293,6 +295,7 @@ async fn collect_profile_items() -> Result<ProfileItems> {
         global_merge,
         global_script,
         profile_name: name,
+        current_uid: current_profile_uid,
         merge_conflicts: multi_merge_result.map(|(_, conflicts)| conflicts).unwrap_or_default(),
     })
 }
@@ -736,6 +739,7 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
     config
 }
 
+/// 注入 `ssh-config-path` 到所有 `type: ssh` 的代理项中
 /// Enhance mode
 /// 返回最终订阅、该订阅包含的键、和script执行的结果
 // FORK: returns Result<(config, exists_keys, chain_logs, merge_conflicts)>
@@ -830,6 +834,9 @@ pub async fn enhance() -> Result<(
 
     let config = cleanup_proxy_groups(config);
     let config = use_sort(config);
+
+    // FORK: inject ssh-config-path for SSH type proxies from the managed SSH config file
+    let config = crate::module::ssh_config::inject_paths(config, &profile.current_uid);
 
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);

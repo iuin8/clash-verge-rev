@@ -192,7 +192,7 @@ impl PrfItem {
         file_data: Option<String>,
         option: Option<&PrfOption>,
     ) -> Result<Self> {
-        let uid = help::get_uid("L").into();
+        let uid: String = help::get_uid("L").into();
         let file = format!("{uid}.yaml").into();
         let opt_ref = option.as_ref();
         let update_interval = opt_ref.and_then(|o| o.update_interval);
@@ -227,6 +227,15 @@ impl PrfItem {
             profiles::profiles_append_item_safe(groups_item).await?;
             groups = groups_item.uid.clone();
         }
+        // extract ssh-config and sync to managed directory (FORK: one-call integration)
+        let raw_data = file_data.unwrap_or_else(|| tmpl::ITEM_LOCAL.into());
+        let (clash_data, _has_ssh) = crate::module::ssh_config::extract_and_sync(&raw_data, &uid)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("SSH config sync failed, keeping original data: {e}");
+                (raw_data, false)
+            });
+
         Ok(Self {
             uid: Some(uid),
             itype: Some("local".into()),
@@ -247,7 +256,7 @@ impl PrfItem {
             }),
             home: None,
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(file_data.unwrap_or_else(|| tmpl::ITEM_LOCAL.into())),
+            file_data: Some(clash_data),
         })
     }
 
@@ -374,7 +383,7 @@ impl PrfItem {
             None => None,
         };
 
-        let uid = help::get_uid("R").into();
+        let uid: String = help::get_uid("R").into();
         let file = format!("{uid}.yaml").into();
         let name = name
             .map(|s| s.to_owned())
@@ -384,10 +393,16 @@ impl PrfItem {
         // process the charset "UTF-8 with BOM"
         let data = data.trim_start_matches('\u{feff}');
 
-        // check the data whether the valid yaml format
-        let yaml = serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
+        // extract ssh-config and sync to managed directory (FORK: one-call integration)
+        let (clash_data, has_ssh) = crate::module::ssh_config::extract_and_sync(data, &uid)
+            .await
+            .context("failed to process SSH config")?;
 
-        if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
+        // check the data whether the valid yaml format
+        let yaml =
+            serde_yaml_ng::from_str::<Mapping>(&clash_data).context("the remote profile data is invalid yaml")?;
+
+        if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") && !has_ssh {
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }
 
@@ -438,7 +453,7 @@ impl PrfItem {
             }),
             home,
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(data.into()),
+            file_data: Some(clash_data),
         })
     }
 

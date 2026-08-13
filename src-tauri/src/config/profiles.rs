@@ -363,6 +363,16 @@ impl IProfiles {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
 
+        // delete associated SSH config if exists
+        if let Err(e) = crate::module::ssh_config::remove_ssh_config(uid).await {
+            logging!(
+                warn,
+                Type::Config,
+                "Failed to remove SSH config for profile '{}': {e}",
+                uid
+            );
+        }
+
         for delete_uid in delete_uids {
             if let Some(file) = Self::take_item_file_by_uid(&mut items, delete_uid.as_deref()) {
                 let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
@@ -505,6 +515,18 @@ impl IProfiles {
             result.deleted_files,
             result.failed_deletions
         );
+
+        // also clean orphaned SSH config files
+        let valid_uids: std::collections::HashSet<String> = self
+            .items
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(|item| item.uid.clone())
+            .collect();
+        if let Err(e) = crate::module::ssh_config::cleanup_orphaned(&valid_uids).await {
+            logging!(warn, Type::Config, "SSH config orphan cleanup failed: {e}");
+        }
 
         Ok(())
     }
