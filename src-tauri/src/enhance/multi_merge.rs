@@ -66,14 +66,14 @@ fn renamed_target<'a>(renames: &'a HashMap<String, String>, name: &'a str) -> Co
 
 /// 重写 `RULE-SET,<name>,...` 中的 rule-provider 名（若被重命名）。
 fn rewrite_rule_set(rule: &str, renames: &HashMap<String, String>) -> String {
-    if let Some(rest) = rule.strip_prefix("RULE-SET,") {
-        if let Some(provider_name) = rest.split(',').next() {
-            return format!(
-                "RULE-SET,{}{}",
-                renamed_target(renames, provider_name),
-                &rest[provider_name.len()..]
-            );
-        }
+    if let Some(rest) = rule.strip_prefix("RULE-SET,")
+        && let Some(provider_name) = rest.split(',').next()
+    {
+        return format!(
+            "RULE-SET,{}{}",
+            renamed_target(renames, provider_name),
+            &rest[provider_name.len()..]
+        );
     }
     rule.to_owned()
 }
@@ -625,9 +625,8 @@ fn deep_merge_mapping(base: &mut Mapping, supp: &Mapping, ctx: &mut MergeContext
 }
 
 fn deep_merge_field(base: &mut Mapping, supp: &Mapping, field: &str, ctx: &mut MergeContext) {
-    match (base.get_mut(field), supp.get(field)) {
-        (Some(Value::Mapping(b)), Some(Value::Mapping(s))) => deep_merge_mapping(b, s, ctx),
-        _ => {}
+    if let (Some(Value::Mapping(b)), Some(Value::Mapping(s))) = (base.get_mut(field), supp.get(field)) {
+        deep_merge_mapping(b, s, ctx);
     }
 }
 
@@ -695,7 +694,7 @@ mod tests {
         let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
         let dns = result.get("dns").unwrap().as_mapping().unwrap();
-        assert_eq!(dns.get("enable").unwrap().as_bool().unwrap(), true);
+        assert!(dns.get("enable").unwrap().as_bool().unwrap());
         assert_eq!(dns.get("nameserver").unwrap().as_sequence().unwrap().len(), 1);
         assert_eq!(dns.get("fallback").unwrap().as_sequence().unwrap().len(), 1);
     }
