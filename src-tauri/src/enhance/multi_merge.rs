@@ -504,6 +504,85 @@ fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Mapping, supp:
     }
 }
 
+/// 合并完成后校验所有 group 的 proxies/use 成员引用是否存在于最终 config，
+/// 不存在的记 conflict 并从成员中移除（降级，不阻断）。
+fn verify_reference_integrity(base: &mut Mapping, conflicts: &mut Vec<ConflictEntry>) {
+    let proxy_names: HashSet<String> = base
+        .get("proxies")
+        .and_then(Value::as_sequence)
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            p.as_mapping()
+                .and_then(|m| m.get("name"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect();
+    let provider_names: HashSet<String> = base
+        .get("proxy-providers")
+        .and_then(Value::as_mapping)
+        .into_iter()
+        .flat_map(|m| m.iter())
+        .filter_map(|(k, _)| k.as_str().map(str::to_owned))
+        .collect();
+    let group_names: HashSet<String> = base
+        .get("proxy-groups")
+        .and_then(Value::as_sequence)
+        .into_iter()
+        .flatten()
+        .filter_map(|g| {
+            g.as_mapping()
+                .and_then(|m| m.get("name"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect();
+
+    let Some(Value::Sequence(groups)) = base.get_mut("proxy-groups") else {
+        return;
+    };
+    for group in groups.iter_mut() {
+        let Some(group_map) = group.as_mapping_mut() else {
+            continue;
+        };
+        let group_name = group_map
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_default();
+        for field in ["proxies", "use"] {
+            let Some(Value::Sequence(members)) = group_map.get_mut(field) else {
+                continue;
+            };
+            let valid: Vec<Value> = members
+                .iter()
+                .filter(|m| {
+                    let Some(name) = m.as_str() else {
+                        return true;
+                    };
+                    let ok = proxy_names.contains(name)
+                        || provider_names.contains(name)
+                        || group_names.contains(name)
+                        || name == "DIRECT";
+                    if !ok {
+                        push_conflict(
+                            conflicts,
+                            "proxy-groups",
+                            name,
+                            &group_name,
+                            format!("references missing proxy/provider/group {name}; dropped"),
+                        );
+                    }
+                    ok
+                })
+                .cloned()
+                .collect();
+            *members = valid;
+        }
+    }
+}
+
 /// Merge an ordered list of YAML configs.
 /// Supplementary profiles can contribute proxies, proxy-providers, proxy-groups, rules, and rule-providers.
 /// All other top-level keys come from primary (index 0).
@@ -530,6 +609,8 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
         all_conflicts.extend(ctx.conflicts);
     }
 
+    verify_reference_integrity(&mut base, &mut all_conflicts);
+
     (base, all_conflicts)
 }
 
@@ -547,6 +628,14 @@ mod tests {
 
     fn mapping(yaml: &str) -> Mapping {
         serde_yaml_ng::from_str(yaml).expect("test YAML is valid")
+    }
+
+    /// 注入占位符 proxy/provider 定义，让 group 测试里的 `a`/`b`/`provider-a` 引用真实存在，
+    /// 避免层 3 引用完整性校验把它们当作无效引用移除。
+    fn group_mapping(yaml: &str) -> Mapping {
+        mapping(&format!(
+            "proxies:\n  - name: a\n    type: ss\n  - name: b\n    type: ss\nproxy-providers:\n  provider-a:\n    type: http\n    url: https://a.example\n  provider-b:\n    type: http\n    url: https://b.example\n{yaml}"
+        ))
     }
 
     #[test]
@@ -611,6 +700,26 @@ mod tests {
         let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
         let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
         assert_eq!(proxies.len(), 1);
+    }
+
+    #[test]
+    fn group_referencing_missing_proxy_is_dropped_with_conflict() {
+        let primary = mapping(
+            "proxies:\n  - name: p1\n    type: ss\nproxy-groups:\n  - name: g\n    type: select\n    proxies:\n      - p1\n      - ghost",
+        );
+        let supp = mapping("rules:\n  - MATCH,DIRECT");
+        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        assert!(conflicts.iter().any(|c| c.name == "ghost"));
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let members = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("proxies")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert!(!members.iter().any(|m| m.as_str() == Some("ghost")));
     }
 
     #[test]
@@ -761,8 +870,8 @@ mod tests {
 
     #[test]
     fn duplicate_proxy_groups_inside_same_supplement_are_deduped() {
-        let primary = mapping("proxy-groups: []");
-        let supp = mapping(
+        let primary = group_mapping("proxy-groups: []");
+        let supp = group_mapping(
             "proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a\n  - name: auto\n    type: select\n    proxies:\n      - a",
         );
 
@@ -775,10 +884,10 @@ mod tests {
 
     #[test]
     fn duplicate_proxy_group_settings_keep_existing_members() {
-        let primary = mapping(
+        let primary = group_mapping(
             "proxy-groups:\n  - name: auto\n    type: select\n    url: https://a.example/test\n    proxies:\n      - a",
         );
-        let supp = mapping(
+        let supp = group_mapping(
             "proxy-groups:\n  - name: auto\n    type: url-test\n    url: https://b.example/test\n    proxies:\n      - b",
         );
 
@@ -828,8 +937,8 @@ mod tests {
 
     #[test]
     fn empty_primary_proxy_group_members_can_be_filled_by_supplement() {
-        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
-        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let primary = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
+        let supp = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -848,8 +957,9 @@ mod tests {
 
     #[test]
     fn empty_primary_proxy_group_use_members_can_be_filled_by_supplement() {
-        let primary = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
-        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let primary = group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
+        let supp =
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -905,8 +1015,8 @@ mod tests {
 
     #[test]
     fn malformed_primary_proxy_groups_are_replaced_during_merge() {
-        let primary = mapping("proxy-groups: invalid");
-        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let primary = group_mapping("proxy-groups: invalid");
+        let supp = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -933,8 +1043,8 @@ mod tests {
 
     #[test]
     fn malformed_primary_proxy_group_members_are_repaired_during_merge() {
-        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: invalid");
-        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let primary = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: invalid");
+        let supp = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -954,8 +1064,9 @@ mod tests {
 
     #[test]
     fn malformed_primary_proxy_group_use_members_are_repaired_during_merge() {
-        let primary = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: invalid");
-        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let primary = group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: invalid");
+        let supp =
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1023,8 +1134,8 @@ mod tests {
 
     #[test]
     fn missing_supplementary_proxy_group_members_do_not_create_conflict() {
-        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
-        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select");
+        let primary = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let supp = group_mapping("proxy-groups:\n  - name: auto\n    type: select");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1043,8 +1154,8 @@ mod tests {
 
     #[test]
     fn empty_supplementary_proxy_group_members_do_not_create_conflict() {
-        let primary = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
-        let supp = mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
+        let primary = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies:\n      - a");
+        let supp = group_mapping("proxy-groups:\n  - name: auto\n    type: select\n    proxies: []");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1064,8 +1175,8 @@ mod tests {
     #[test]
     fn empty_supplementary_proxy_group_use_members_do_not_create_conflict() {
         let primary =
-            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
-        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let supp = group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use: []");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1084,11 +1195,11 @@ mod tests {
 
     #[test]
     fn duplicate_proxy_group_merge_rejects_invalid_untouched_use_members() {
-        let primary = mapping(
+        let primary = group_mapping(
             "proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - a\n    use: invalid",
         );
         let expected = primary.clone();
-        let supp = mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - b");
+        let supp = group_mapping("proxy-groups:\n  - name: mixed-group\n    type: select\n    proxies:\n      - b");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1100,8 +1211,8 @@ mod tests {
     #[test]
     fn empty_proxy_group_members_do_not_force_incompatible_mode_conflict() {
         let primary =
-            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
-        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    proxies: []");
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let supp = group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    proxies: []");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
@@ -1185,8 +1296,9 @@ mod tests {
     #[test]
     fn duplicate_proxy_group_use_members_are_merged() {
         let primary =
-            mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
-        let supp = mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-b");
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-a");
+        let supp =
+            group_mapping("proxy-groups:\n  - name: provider-group\n    type: select\n    use:\n      - provider-b");
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
