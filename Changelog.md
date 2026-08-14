@@ -1,3 +1,27 @@
+## v2.5.2-fa.1010
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.2-fa.1009 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- clean merged list when deleting a profile
+- tolerate stale merged entries in multi-merge
+
+### ✨ 新增功能
+
+- deep merge for self-contained dns/tun/hosts/profile fields
+- reference integrity check drops dangling group members
+- definition-aware dedup with rename fallback for proxies/providers
+
+### 🚀 优化改进
+
+- docs: add multi-merge refactor spec and implementation plan
+- declarative merge step pipeline in multi_merge
+
+---
+
+
 ## v2.5.2-fa.1009
 
 > [!IMPORTANT]
