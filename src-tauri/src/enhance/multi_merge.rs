@@ -489,6 +489,10 @@ fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Mapping, supp:
         if MERGED_FIELDS.contains(&key_str) {
             continue;
         }
+        if DEEP_MERGE_FIELDS.contains(&key_str) {
+            deep_merge_field(base, supp, key_str, ctx);
+            continue;
+        }
         match base.get(key) {
             Some(existing) if existing == value => {}
             _ => {
@@ -583,6 +587,50 @@ fn verify_reference_integrity(base: &mut Mapping, conflicts: &mut Vec<ConflictEn
     }
 }
 
+/// 自包含 mapping 字段，做递归合并（叶子 primary 赢，sequence/标量整块 primary 赢）。
+const DEEP_MERGE_FIELDS: &[&str] = &["dns", "tun", "hosts", "profile"];
+
+fn deep_merge_mapping(base: &mut Mapping, supp: &Mapping, ctx: &mut MergeContext) {
+    for (k, v) in supp {
+        match base.get_mut(k) {
+            Some(Value::Mapping(b)) => {
+                if let Value::Mapping(s) = v {
+                    deep_merge_mapping(b, s, ctx);
+                } else {
+                    push_conflict(
+                        &mut ctx.conflicts,
+                        "top-level",
+                        k.as_str().unwrap_or("<non-string>"),
+                        &ctx.supp_name,
+                        format!("already exists in {}; kept primary value", ctx.primary_name),
+                    );
+                }
+            }
+            Some(existing) => {
+                if existing != v {
+                    push_conflict(
+                        &mut ctx.conflicts,
+                        "top-level",
+                        k.as_str().unwrap_or("<non-string>"),
+                        &ctx.supp_name,
+                        format!("already exists in {}; kept primary value", ctx.primary_name),
+                    );
+                }
+            }
+            None => {
+                base.insert(k.clone(), v.clone());
+            }
+        }
+    }
+}
+
+fn deep_merge_field(base: &mut Mapping, supp: &Mapping, field: &str, ctx: &mut MergeContext) {
+    match (base.get_mut(field), supp.get(field)) {
+        (Some(Value::Mapping(b)), Some(Value::Mapping(s))) => deep_merge_mapping(b, s, ctx),
+        _ => {}
+    }
+}
+
 /// Merge an ordered list of YAML configs.
 /// Supplementary profiles can contribute proxies, proxy-providers, proxy-groups, rules, and rule-providers.
 /// All other top-level keys come from primary (index 0).
@@ -636,6 +684,20 @@ mod tests {
         mapping(&format!(
             "proxies:\n  - name: a\n    type: ss\n  - name: b\n    type: ss\nproxy-providers:\n  provider-a:\n    type: http\n    url: https://a.example\n  provider-b:\n    type: http\n    url: https://b.example\n{yaml}"
         ))
+    }
+
+    #[test]
+    fn dns_nested_fields_are_deep_merged() {
+        let primary =
+            mapping("dns:\n  enable: true\n  nameserver:\n    - 1.1.1.1\nproxies:\n  - name: p\n    type: ss");
+        let supp =
+            mapping("dns:\n  enable: false\n  fallback:\n    - 8.8.8.8\nproxies:\n  - name: p2\n    type: vmess");
+        let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        let dns = result.get("dns").unwrap().as_mapping().unwrap();
+        assert_eq!(dns.get("enable").unwrap().as_bool().unwrap(), true);
+        assert_eq!(dns.get("nameserver").unwrap().as_sequence().unwrap().len(), 1);
+        assert_eq!(dns.get("fallback").unwrap().as_sequence().unwrap().len(), 1);
     }
 
     #[test]
@@ -742,7 +804,7 @@ mod tests {
         assert!(result.get("interface-name").is_none());
         assert_eq!(conflicts.len(), 2);
         assert_eq!(conflicts[0].field, "top-level");
-        assert_eq!(conflicts[0].name, "dns");
+        assert_eq!(conflicts[0].name, "enable");
         assert_eq!(conflicts[0].source, "supp");
         assert_eq!(conflicts[1].field, "top-level");
         assert_eq!(conflicts[1].name, "interface-name");
