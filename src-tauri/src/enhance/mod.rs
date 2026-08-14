@@ -165,6 +165,8 @@ async fn collect_profile_items() -> Result<ProfileItems> {
     drop(profiles);
 
     // FORK: multi-profile merge — load and merge all profiles in the merged list.
+    // Tracks the first successfully-loaded uid as the merge primary (merged[0] may be stale).
+    let mut primary_uid: Option<String> = None;
     let multi_merge_result: Option<(Mapping, Vec<multi_merge::ConflictEntry>)> =
         if let Some(merged_uids) = profiles_arc.merged.as_deref() {
             if !merged_uids.is_empty() {
@@ -181,6 +183,9 @@ async fn collect_profile_items() -> Result<ProfileItems> {
                         };
                         match crate::utils::help::read_mapping(&path).await {
                             Ok(mapping) => {
+                                if primary_uid.is_none() {
+                                    primary_uid = Some(uid.to_string().into());
+                                }
                                 let display_name = item.name.as_deref().unwrap_or(uid.as_str()).to_owned();
                                 configs.push(mapping);
                                 names.push(display_name);
@@ -204,13 +209,10 @@ async fn collect_profile_items() -> Result<ProfileItems> {
             None
         };
 
-    let current_profile_uid = match profiles_arc
-        .merged
-        .as_deref()
-        .and_then(|merged| merged.first())
-        .cloned()
-        .or_else(|| profiles_arc.get_current().cloned())
-    {
+    // Use the first successfully-loaded merged profile as primary; fall back to the
+    // current profile when merged is empty or all its entries are stale. This avoids
+    // bailing when merged[0] references a profile that no longer exists.
+    let current_profile_uid = match primary_uid.clone().or_else(|| profiles_arc.get_current().cloned()) {
         Some(uid) => uid,
         None => {
             drop(profiles_arc);
@@ -218,7 +220,7 @@ async fn collect_profile_items() -> Result<ProfileItems> {
         }
     };
 
-    // FORK: prefer multi-merge result when active, and use merged[0] as the primary profile's extensions.
+    // FORK: prefer multi-merge result when active, and use the primary profile's extensions.
     let current = if let Some((ref merged_config, _)) = multi_merge_result {
         merged_config.clone()
     } else {
