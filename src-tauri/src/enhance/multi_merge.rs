@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -39,11 +40,63 @@ type MergeStep = fn(&mut MergeContext, &mut Mapping, &Mapping);
 const MERGE_STEPS: &[MergeStep] = &[
     merge_proxies,
     merge_proxy_providers,
+    merge_rule_providers,
     merge_proxy_groups,
     merge_rules,
-    merge_rule_providers,
     log_top_level_key_conflicts,
 ];
+
+/// 返回去掉 `name` 键的浅拷贝，用于「重名但定义是否相同」的比较。
+fn strip_name(mapping: &Mapping) -> Mapping {
+    mapping
+        .iter()
+        .filter(|(k, _)| k.as_str() != Some("name"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+/// 命中 `renames` 则返回重命名后的名字，否则原样返回。
+fn renamed_target<'a>(renames: &'a HashMap<String, String>, name: &'a str) -> Cow<'a, str> {
+    if let Some(new_name) = renames.get(name) {
+        Cow::Borrowed(new_name.as_str())
+    } else {
+        Cow::Borrowed(name)
+    }
+}
+
+/// 重写 `RULE-SET,<name>,...` 中的 rule-provider 名（若被重命名）。
+fn rewrite_rule_set(rule: &str, renames: &HashMap<String, String>) -> String {
+    if let Some(rest) = rule.strip_prefix("RULE-SET,") {
+        if let Some(provider_name) = rest.split(',').next() {
+            return format!(
+                "RULE-SET,{}{}",
+                renamed_target(renames, provider_name),
+                &rest[provider_name.len()..]
+            );
+        }
+    }
+    rule.to_owned()
+}
+
+/// 重写 group 自身的 `proxies`/`use` 成员引用（用于全新 group，无需与 primary 合并）。
+fn rewrite_group_members(group: &mut Value, renames: &HashMap<String, String>) {
+    let Some(group_map) = group.as_mapping_mut() else {
+        return;
+    };
+    for field in ["proxies", "use"] {
+        let Some(Value::Sequence(members)) = group_map.get_mut(field) else {
+            continue;
+        };
+        for member in members.iter_mut() {
+            if let Some(name) = member.as_str() {
+                let resolved = renamed_target(renames, name);
+                if resolved != name {
+                    *member = Value::String(resolved.into_owned());
+                }
+            }
+        }
+    }
+}
 
 fn ensure_sequence_field<'a>(
     base: &'a mut Mapping,
@@ -103,34 +156,37 @@ fn merge_proxies(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
             return;
         }
         let base_seq = ensure_sequence_field(base, "proxies", &ctx.primary_name, &mut ctx.conflicts);
-        let mut existing_names: HashSet<String> = base_seq
+        let mut existing: HashMap<String, Mapping> = base_seq
             .iter()
-            .filter_map(|p| {
-                p.as_mapping()
-                    .and_then(|m| m.get("name"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-            })
+            .filter_map(|p| p.as_mapping())
+            .filter_map(|m| m.get("name").and_then(Value::as_str).map(|n| (n.to_owned(), m.clone())))
             .collect();
 
         let mut to_prepend: Vec<Value> = vec![];
         for proxy in supp_proxies {
-            let proxy_name = proxy
-                .as_mapping()
-                .and_then(|m| m.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !existing_names.insert(proxy_name.to_string()) {
-                push_conflict(
-                    &mut ctx.conflicts,
-                    "proxies",
-                    proxy_name,
-                    &ctx.supp_name,
-                    format!("already exists in {}", ctx.primary_name),
-                );
+            let Some(proxy_map) = proxy.as_mapping() else { continue };
+            let Some(proxy_name) = proxy_map.get("name").and_then(Value::as_str) else {
                 continue;
+            };
+            let existing_def = existing.get(proxy_name).cloned();
+            match existing_def {
+                None => {
+                    existing.insert(proxy_name.to_owned(), proxy_map.clone());
+                    to_prepend.push(proxy.clone());
+                }
+                Some(primary_def) => {
+                    if strip_name(&primary_def) == strip_name(proxy_map) {
+                        continue; // 真重复，安全丢弃
+                    }
+                    // 定义不同：重命名保底，避免 group 静默指向 primary 的同名但不同定义节点
+                    let new_name = format!("{proxy_name} [{}]", ctx.supp_name);
+                    ctx.renames.insert(proxy_name.to_owned(), new_name.clone());
+                    existing.insert(new_name.clone(), proxy_map.clone());
+                    let mut renamed = proxy_map.clone();
+                    renamed.insert(Value::String("name".into()), Value::String(new_name));
+                    to_prepend.push(Value::Mapping(renamed));
+                }
             }
-            to_prepend.push(proxy.clone());
         }
 
         for item in to_prepend.into_iter().rev() {
@@ -151,6 +207,7 @@ fn filtered_group_settings(mapping: &Mapping) -> Mapping {
 }
 
 fn merge_group_member_list(
+    renames: &HashMap<String, String>,
     existing_map: &mut Mapping,
     incoming_map: &Mapping,
     field: &str,
@@ -191,8 +248,9 @@ fn merge_group_member_list(
     let mut members_to_prepend: Vec<Value> = vec![];
     for member in &supp_members {
         let member_name = member.as_str().unwrap_or("");
-        if seen_members.insert(member_name.to_string()) {
-            members_to_prepend.push(member.clone());
+        let resolved = renamed_target(renames, member_name);
+        if seen_members.insert(resolved.to_string()) {
+            members_to_prepend.push(Value::String(resolved.into_owned()));
         }
     }
     for item in members_to_prepend.into_iter().rev() {
@@ -201,6 +259,7 @@ fn merge_group_member_list(
 }
 
 fn merge_group_members(
+    renames: &HashMap<String, String>,
     existing_group: &mut Value,
     incoming_group: &Value,
     primary_name: &str,
@@ -221,6 +280,7 @@ fn merge_group_members(
         .to_string();
 
     merge_group_member_list(
+        renames,
         existing_map,
         incoming_map,
         "proxies",
@@ -228,7 +288,15 @@ fn merge_group_members(
         primary_name,
         conflicts,
     );
-    merge_group_member_list(existing_map, incoming_map, "use", &group_name, primary_name, conflicts);
+    merge_group_member_list(
+        renames,
+        existing_map,
+        incoming_map,
+        "use",
+        &group_name,
+        primary_name,
+        conflicts,
+    );
 }
 
 fn has_non_empty_group_members(mapping: &Mapping, field: &str) -> bool {
@@ -302,7 +370,9 @@ fn merge_proxy_groups(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             if existing_group_names.insert(group_name.to_string()) {
-                groups_to_prepend.push(group.clone());
+                let mut new_group = group.clone();
+                rewrite_group_members(&mut new_group, &ctx.renames);
+                groups_to_prepend.push(new_group);
                 continue;
             }
 
@@ -344,7 +414,7 @@ fn merge_proxy_groups(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping
                 continue;
             }
 
-            merge_group_members(target_group, group, &ctx.primary_name, &mut ctx.conflicts);
+            merge_group_members(&ctx.renames, target_group, group, &ctx.primary_name, &mut ctx.conflicts);
         }
 
         for item in groups_to_prepend.into_iter().rev() {
@@ -366,8 +436,9 @@ fn merge_rules(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
         let mut rules_to_prepend: Vec<Value> = vec![];
         for rule in supp_rules {
             let rule_str = rule.as_str().unwrap_or("");
-            if existing_rules.insert(rule_str.to_string()) {
-                rules_to_prepend.push(rule.clone());
+            let rewritten = rewrite_rule_set(rule_str, &ctx.renames);
+            if existing_rules.insert(rewritten.clone()) {
+                rules_to_prepend.push(Value::String(rewritten));
             }
         }
         for item in rules_to_prepend.into_iter().rev() {
@@ -390,13 +461,10 @@ fn merge_named_mapping(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mappin
                 }
                 Some(existing) if existing == value => {}
                 Some(_) => {
-                    push_conflict(
-                        &mut ctx.conflicts,
-                        field,
-                        name_str,
-                        &ctx.supp_name,
-                        format!("already exists in {} with different definition", ctx.primary_name),
-                    );
+                    // 同名不同定义：重命名保底，避免 group `use` 静默指向 primary 版
+                    let new_name = format!("{name_str} [{}]", ctx.supp_name);
+                    ctx.renames.insert(name_str.clone(), new_name.clone());
+                    base_map.insert(Value::String(new_name), value.clone());
                 }
             }
         }
@@ -482,6 +550,32 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_proxy_name_with_different_definition_is_renamed_not_dropped() {
+        let primary = mapping("proxies:\n  - name: dup\n    type: ss\n    server: a.com");
+        let supp = mapping(
+            "proxies:\n  - name: dup\n    type: vmess\n    server: b.com\nproxy-groups:\n  - name: g\n    type: select\n    proxies:\n      - dup",
+        );
+        let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+        let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
+        assert_eq!(proxies.len(), 2);
+        assert_eq!(
+            proxies[0].as_mapping().unwrap().get("name").unwrap().as_str().unwrap(),
+            "dup [supp]"
+        );
+
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let members = groups[0]
+            .as_mapping()
+            .unwrap()
+            .get("proxies")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert!(members.iter().any(|m| m.as_str() == Some("dup [supp]")));
+    }
+
+    #[test]
     fn empty_configs_returns_empty_mapping() {
         let (result, conflicts) = multi_profile_merge(&[], &[]);
         assert!(result.is_empty());
@@ -511,13 +605,10 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_proxy_name_logged_as_conflict() {
+    fn duplicate_proxy_name_with_same_definition_is_dropped() {
         let primary = mapping("proxies:\n  - name: dup\n    type: ss");
-        let supp = mapping("proxies:\n  - name: dup\n    type: vmess");
-        let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].name, "dup");
-        assert_eq!(conflicts[0].field, "proxies");
+        let supp = mapping("proxies:\n  - name: dup\n    type: ss");
+        let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
         let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
         assert_eq!(proxies.len(), 1);
     }
@@ -624,7 +715,7 @@ mod tests {
     }
 
     #[test]
-    fn conflicting_rule_provider_definitions_are_logged_and_primary_wins() {
+    fn conflicting_rule_provider_definitions_are_renamed() {
         let primary = mapping(
             "rule-providers:\n  Local-LAN:\n    type: inline\n    behavior: classical\n    payload:\n      - IP-CIDR,192.168.0.0/16,DIRECT",
         );
@@ -634,13 +725,13 @@ mod tests {
 
         let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "rule-providers");
-        assert_eq!(conflicts[0].name, "Local-LAN");
+        assert!(conflicts.is_empty());
         let rule_providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
-        let provider = rule_providers.get("Local-LAN").unwrap().as_mapping().unwrap();
-        let payload = provider.get("payload").unwrap().as_sequence().unwrap();
-        assert_eq!(payload[0].as_str().unwrap(), "IP-CIDR,192.168.0.0/16,DIRECT");
+        assert_eq!(rule_providers.len(), 2);
+        assert!(rule_providers.get("Local-LAN").is_some());
+        let renamed = rule_providers.get("Local-LAN [supp]").unwrap().as_mapping().unwrap();
+        let payload = renamed.get("payload").unwrap().as_sequence().unwrap();
+        assert_eq!(payload[0].as_str().unwrap(), "IP-CIDR,10.0.0.0/8,DIRECT");
     }
 
     #[test]
@@ -665,9 +756,7 @@ mod tests {
 
         let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
         assert_eq!(proxies.len(), 1);
-        assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].field, "proxies");
-        assert_eq!(conflicts[0].name, "dup");
+        assert!(conflicts.is_empty());
     }
 
     #[test]
