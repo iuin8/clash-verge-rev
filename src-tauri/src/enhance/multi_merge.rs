@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::{Mapping, Value};
@@ -25,6 +25,25 @@ fn push_conflict(
         reason: reason.into(),
     });
 }
+
+/// 跨合并步骤共享的状态：renames 在 proxies/providers 步骤产出、在 groups/rules 步骤消费。
+struct MergeContext {
+    primary_name: String,
+    supp_name: String,
+    conflicts: Vec<ConflictEntry>,
+    renames: HashMap<String, String>,
+}
+
+type MergeStep = fn(&mut MergeContext, &mut Mapping, &Mapping);
+
+const MERGE_STEPS: &[MergeStep] = &[
+    merge_proxies,
+    merge_proxy_providers,
+    merge_proxy_groups,
+    merge_rules,
+    merge_rule_providers,
+    log_top_level_key_conflicts,
+];
 
 fn ensure_sequence_field<'a>(
     base: &'a mut Mapping,
@@ -78,18 +97,12 @@ fn ensure_mapping_field<'a>(
     mapping
 }
 
-fn merge_proxies(
-    base: &mut Mapping,
-    supp: &Mapping,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
+fn merge_proxies(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
     if let Some(Value::Sequence(supp_proxies)) = supp.get("proxies") {
         if supp_proxies.is_empty() {
             return;
         }
-        let base_seq = ensure_sequence_field(base, "proxies", primary_name, conflicts);
+        let base_seq = ensure_sequence_field(base, "proxies", &ctx.primary_name, &mut ctx.conflicts);
         let mut existing_names: HashSet<String> = base_seq
             .iter()
             .filter_map(|p| {
@@ -109,11 +122,11 @@ fn merge_proxies(
                 .unwrap_or("");
             if !existing_names.insert(proxy_name.to_string()) {
                 push_conflict(
-                    conflicts,
+                    &mut ctx.conflicts,
                     "proxies",
                     proxy_name,
-                    supp_name,
-                    format!("already exists in {primary_name}"),
+                    &ctx.supp_name,
+                    format!("already exists in {}", ctx.primary_name),
                 );
                 continue;
             }
@@ -264,18 +277,12 @@ fn can_merge_group_members(existing_group: &Value, incoming_group: &Value) -> bo
     existing_mode == incoming_mode || existing_mode == "none" || incoming_mode == "none"
 }
 
-fn merge_proxy_groups(
-    base: &mut Mapping,
-    supp: &Mapping,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
+fn merge_proxy_groups(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
     if let Some(Value::Sequence(supp_groups)) = supp.get("proxy-groups") {
         if supp_groups.is_empty() {
             return;
         }
-        let base_seq = ensure_sequence_field(base, "proxy-groups", primary_name, conflicts);
+        let base_seq = ensure_sequence_field(base, "proxy-groups", &ctx.primary_name, &mut ctx.conflicts);
         let mut existing_group_names: HashSet<String> = base_seq
             .iter()
             .filter_map(|group| {
@@ -325,16 +332,19 @@ fn merge_proxy_groups(
             let incoming_settings = group.as_mapping().map(filtered_group_settings).unwrap_or_default();
             if existing_settings != incoming_settings || !can_merge_group_members(target_group, group) {
                 push_conflict(
-                    conflicts,
+                    &mut ctx.conflicts,
                     "proxy-groups",
                     group_name,
-                    supp_name,
-                    format!("already exists in {primary_name} with incompatible settings; kept existing group"),
+                    &ctx.supp_name,
+                    format!(
+                        "already exists in {} with incompatible settings; kept existing group",
+                        ctx.primary_name
+                    ),
                 );
                 continue;
             }
 
-            merge_group_members(target_group, group, primary_name, conflicts);
+            merge_group_members(target_group, group, &ctx.primary_name, &mut ctx.conflicts);
         }
 
         for item in groups_to_prepend.into_iter().rev() {
@@ -343,12 +353,12 @@ fn merge_proxy_groups(
     }
 }
 
-fn merge_rules(base: &mut Mapping, supp: &Mapping, primary_name: &str, conflicts: &mut Vec<ConflictEntry>) {
+fn merge_rules(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
     if let Some(Value::Sequence(supp_rules)) = supp.get("rules") {
         if supp_rules.is_empty() {
             return;
         }
-        let base_seq = ensure_sequence_field(base, "rules", primary_name, conflicts);
+        let base_seq = ensure_sequence_field(base, "rules", &ctx.primary_name, &mut ctx.conflicts);
         let mut existing_rules: HashSet<String> = base_seq
             .iter()
             .filter_map(|rule| rule.as_str().map(String::from))
@@ -366,19 +376,12 @@ fn merge_rules(base: &mut Mapping, supp: &Mapping, primary_name: &str, conflicts
     }
 }
 
-fn merge_named_mapping(
-    base: &mut Mapping,
-    supp: &Mapping,
-    field: &str,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
+fn merge_named_mapping(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping, field: &str) {
     if let Some(Value::Mapping(supp_map)) = supp.get(field) {
         if supp_map.is_empty() {
             return;
         }
-        let base_map = ensure_mapping_field(base, field, primary_name, conflicts);
+        let base_map = ensure_mapping_field(base, field, &ctx.primary_name, &mut ctx.conflicts);
         for (name, value) in supp_map {
             let name_str = name.as_str().map(str::to_owned).unwrap_or_else(|| format!("{name:?}"));
             match base_map.get(name) {
@@ -388,11 +391,11 @@ fn merge_named_mapping(
                 Some(existing) if existing == value => {}
                 Some(_) => {
                     push_conflict(
-                        conflicts,
+                        &mut ctx.conflicts,
                         field,
                         name_str,
-                        supp_name,
-                        format!("already exists in {primary_name} with different definition"),
+                        &ctx.supp_name,
+                        format!("already exists in {} with different definition", ctx.primary_name),
                     );
                 }
             }
@@ -400,33 +403,15 @@ fn merge_named_mapping(
     }
 }
 
-fn merge_rule_providers(
-    base: &mut Mapping,
-    supp: &Mapping,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
-    merge_named_mapping(base, supp, "rule-providers", supp_name, primary_name, conflicts);
+fn merge_rule_providers(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
+    merge_named_mapping(ctx, base, supp, "rule-providers");
 }
 
-fn merge_proxy_providers(
-    base: &mut Mapping,
-    supp: &Mapping,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
-    merge_named_mapping(base, supp, "proxy-providers", supp_name, primary_name, conflicts);
+fn merge_proxy_providers(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
+    merge_named_mapping(ctx, base, supp, "proxy-providers");
 }
 
-fn log_top_level_key_conflicts(
-    base: &Mapping,
-    supp: &Mapping,
-    supp_name: &str,
-    primary_name: &str,
-    conflicts: &mut Vec<ConflictEntry>,
-) {
+fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
     const MERGED_FIELDS: [&str; 5] = ["proxies", "proxy-providers", "proxy-groups", "rules", "rule-providers"];
 
     for (key, value) in supp {
@@ -440,11 +425,11 @@ fn log_top_level_key_conflicts(
             Some(existing) if existing == value => {}
             _ => {
                 push_conflict(
-                    conflicts,
+                    &mut ctx.conflicts,
                     "top-level",
                     key_str,
-                    supp_name,
-                    format!("already exists in {primary_name}; kept primary value"),
+                    &ctx.supp_name,
+                    format!("already exists in {}; kept primary value", ctx.primary_name),
                 );
             }
         }
@@ -461,19 +446,23 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
 
     let mut base = configs[0].clone();
     let primary_name = names.first().copied().unwrap_or("primary");
-    let mut conflicts: Vec<ConflictEntry> = vec![];
+    let mut all_conflicts: Vec<ConflictEntry> = vec![];
 
     for (i, supp) in configs[1..].iter().enumerate() {
         let supp_name = names.get(i + 1).copied().unwrap_or("unknown");
-        merge_proxies(&mut base, supp, supp_name, primary_name, &mut conflicts);
-        merge_proxy_providers(&mut base, supp, supp_name, primary_name, &mut conflicts);
-        merge_proxy_groups(&mut base, supp, supp_name, primary_name, &mut conflicts);
-        merge_rules(&mut base, supp, primary_name, &mut conflicts);
-        merge_rule_providers(&mut base, supp, supp_name, primary_name, &mut conflicts);
-        log_top_level_key_conflicts(&base, supp, supp_name, primary_name, &mut conflicts);
+        let mut ctx = MergeContext {
+            primary_name: primary_name.into(),
+            supp_name: supp_name.into(),
+            conflicts: vec![],
+            renames: HashMap::new(),
+        };
+        for step in MERGE_STEPS {
+            step(&mut ctx, &mut base, supp);
+        }
+        all_conflicts.extend(ctx.conflicts);
     }
 
-    (base, conflicts)
+    (base, all_conflicts)
 }
 
 #[cfg(test)]
