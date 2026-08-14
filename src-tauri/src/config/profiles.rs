@@ -358,6 +358,12 @@ impl IProfiles {
         };
         let mut items = self.items.take().unwrap_or_default();
 
+        // 同步清理 merged，避免残留已删除 profile 的 uid
+        let removed: HashSet<String> = std::iter::once(uid.to_string().into())
+            .chain(delete_uids.iter().filter_map(|u| u.clone()))
+            .collect();
+        self.merged = retain_merged_after_delete(self.merged.take(), &removed);
+
         // remove the main item (if exists) and delete its file
         if let Some(file) = Self::take_item_file_by_uid(&mut items, Some(uid.as_str())) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
@@ -631,6 +637,13 @@ pub async fn profiles_patch_item_safe(index: &String, item: &PrfItem) -> Result<
             Ok((profiles, ()))
         })
         .await
+}
+
+/// 删除 profile 后同步清理 merged：移除被删 uid 及其关联 uid，全空时置 None。
+fn retain_merged_after_delete(merged: Option<Vec<String>>, removed: &HashSet<String>) -> Option<Vec<String>> {
+    let mut merged = merged?;
+    merged.retain(|u| !removed.contains(u));
+    if merged.is_empty() { None } else { Some(merged) }
 }
 
 pub async fn profiles_delete_item_safe(index: &String) -> Result<bool> {
@@ -1060,6 +1073,24 @@ pub fn activate_selected_nodes() -> Result<()> {
 mod tests {
     use super::*;
     use tauri_plugin_mihomo::models::Proxy;
+
+    #[test]
+    fn retain_merged_after_delete_removes_deleted_uids() {
+        use std::collections::HashSet;
+
+        let merged = Some(vec!["a".into(), "b".into(), "c".into()]);
+        let removed: HashSet<String> = ["a".into(), "c".into()].into_iter().collect();
+        assert_eq!(retain_merged_after_delete(merged, &removed), Some(vec!["b".into()]));
+    }
+
+    #[test]
+    fn retain_merged_after_delete_nones_when_all_removed() {
+        use std::collections::HashSet;
+
+        let merged = Some(vec!["a".into(), "b".into()]);
+        let removed: HashSet<String> = ["a".into(), "b".into()].into_iter().collect();
+        assert_eq!(retain_merged_after_delete(merged, &removed), None);
+    }
 
     fn selected(group: &str, node: &str) -> PrfSelected {
         PrfSelected {
