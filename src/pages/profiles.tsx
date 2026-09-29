@@ -567,8 +567,10 @@ const ProfilePage = () => {
         }
         await clearMergedProfiles()
         setConflicts([])
+        await mutateProfiles()
       } else {
         await setMergedProfiles([...next])
+        await mutateProfiles()
         refreshMergeConflicts()
       }
     } catch (err: any) {

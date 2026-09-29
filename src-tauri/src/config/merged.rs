@@ -54,6 +54,49 @@ pub async fn clear() -> Result<()> {
     save(&[]).await
 }
 
+/// 把 `active` 挪到 `over` 的位置（与 fork 原先 `IProfiles::reorder` 对合并数组的做法一致）。
+/// 返回是否发生变化。
+fn reorder_uids(uids: &mut Vec<String>, active: &str, over: &str) -> bool {
+    let (Some(from), Some(to)) = (
+        uids.iter().position(|uid| uid == active),
+        uids.iter().position(|uid| uid == over),
+    ) else {
+        return false;
+    };
+    if from == to {
+        return false;
+    }
+    let uid = uids.remove(from);
+    uids.insert(to, uid);
+    true
+}
+
+/// 剔除指定 uid（删除 profile 后调用）。返回是否发生变化。
+fn prune_uids(uids: &mut Vec<String>, removed: &str) -> bool {
+    let before = uids.len();
+    uids.retain(|uid| uid != removed);
+    uids.len() != before
+}
+
+/// profile 重排后同步合并顺序。不同步的话，前端切回订阅页会看到旧顺序，
+/// 而配置生成用的是文件里的旧顺序（primary = 第一项），两边就对不上了。
+pub async fn reorder(active: &str, over: &str) -> Result<()> {
+    let mut uids = load().await;
+    if reorder_uids(&mut uids, active, over) {
+        save(&uids).await?;
+    }
+    Ok(())
+}
+
+/// 删除 profile 后把它的 uid 从合并列表里剔除。
+pub async fn remove(uid: &str) -> Result<()> {
+    let mut uids = load().await;
+    if prune_uids(&mut uids, uid) {
+        save(&uids).await?;
+    }
+    Ok(())
+}
+
 async fn read_store() -> Result<Option<Vec<String>>> {
     let path = store_path()?;
     if !fs::try_exists(&path).await.unwrap_or(false) {
@@ -109,5 +152,49 @@ async fn migrate_legacy() -> Vec<String> {
             logging!(warn, Type::Config, "failed to migrate merged uids: {error:#}");
             Vec::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).into()).collect()
+    }
+
+    #[test]
+    fn reorder_moves_active_to_over_position() {
+        let mut list = uids(&["a", "b", "c"]);
+        assert!(reorder_uids(&mut list, "a", "c"));
+        assert_eq!(list, uids(&["b", "c", "a"]));
+
+        // 反向：把末位挪到首位
+        let mut list = uids(&["a", "b", "c"]);
+        assert!(reorder_uids(&mut list, "c", "a"));
+        assert_eq!(list, uids(&["c", "a", "b"]));
+    }
+
+    #[test]
+    fn reorder_ignores_unknown_or_identical_uids() {
+        let mut list = uids(&["a", "b"]);
+        assert!(!reorder_uids(&mut list, "a", "missing"));
+        assert!(!reorder_uids(&mut list, "missing", "b"));
+        assert!(!reorder_uids(&mut list, "a", "a"));
+        assert_eq!(list, uids(&["a", "b"]));
+    }
+
+    #[test]
+    fn prune_removes_only_the_deleted_uid() {
+        let mut list = uids(&["a", "b", "c"]);
+        assert!(prune_uids(&mut list, "b"));
+        assert_eq!(list, uids(&["a", "c"]));
+
+        assert!(!prune_uids(&mut list, "missing"));
+        assert_eq!(list, uids(&["a", "c"]));
+
+        assert!(prune_uids(&mut list, "a"));
+        assert!(prune_uids(&mut list, "c"));
+        assert!(list.is_empty());
     }
 }

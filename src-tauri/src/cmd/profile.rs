@@ -15,7 +15,7 @@ use crate::{
     feat,
     utils::{dirs, help},
 };
-use clash_verge_draft::{Draft, SharedDraft};
+use clash_verge_draft::Draft;
 use clash_verge_logging::{Type, logging, logging_error};
 use scopeguard::defer;
 use smartstring::alias::String;
@@ -31,11 +31,26 @@ fn profile_import_error(err: &anyhow::Error) -> std::string::String {
     format!("导入订阅失败: {err:#}")
 }
 
+/// FORK: `get_profiles` 的返回体。
+///
+/// 合并列表存在独立文件（`crate::config::merged`），不在上游 `IProfiles` 里。若只让配置
+/// 生成读到它、IPC 仍旧只回 `IProfiles`，前端与后端就各读一个真相源——表现就是「代理页
+/// 已按合并生效，订阅页却只剩一个订阅选中」。这里用 flatten 把两者并进**同一个** payload：
+/// 上游字段照旧透传（将来上游加字段也不会被吞掉），fork 的合并列表额外附上。
+#[derive(serde::Serialize)]
+pub struct ProfilesPayload {
+    #[serde(flatten)]
+    profiles: IProfiles,
+    merged: Vec<String>,
+}
+
 #[tauri::command]
-pub async fn get_profiles() -> CmdResult<SharedDraft<IProfiles>> {
+pub async fn get_profiles() -> CmdResult<ProfilesPayload> {
     let draft = Config::profiles().await;
-    let data = draft.data_arc();
-    Ok(data)
+    let shared = draft.data_arc();
+    let profiles: IProfiles = (**shared).clone();
+    let merged = crate::config::merged::load().await;
+    Ok(ProfilesPayload { profiles, merged })
 }
 
 #[tauri::command]
@@ -97,6 +112,11 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
     match profiles_reorder_safe(&active_id, &over_id).await {
         Ok(_) => {
             logging!(info, Type::Cmd, "重新排序配置文件: {} -> {}", active_id, over_id);
+            // FORK: 合并顺序跟着一起重排；它在独立文件里（见 crate::config::merged），
+            // 不同步的话切回订阅页/重新生成配置会看到与拖拽结果不符的顺序。
+            if let Err(error) = crate::config::merged::reorder(&active_id, &over_id).await {
+                logging!(warn, Type::Cmd, "failed to reorder merged list: {error:#}");
+            }
             Ok(())
         }
         Err(err) => {
@@ -167,6 +187,10 @@ pub async fn delete_profile(index: String) -> CmdResult {
             // inside plan_delete_item would orphan the config when validation rolls back.
             if let Err(error) = crate::module::ssh_config::remove_ssh_config(&index).await {
                 logging!(warn, Type::Cmd, "Failed to remove SSH config for '{index}': {error}");
+            }
+            // FORK: 同步把该 profile 从合并列表里剔除，避免 merged.json 里留下幽灵 uid
+            if let Err(error) = crate::config::merged::remove(&index).await {
+                logging!(warn, Type::Cmd, "failed to prune merged list: {error:#}");
             }
             Ok((candidate, Ok((should_update, current, guard))))
         })
