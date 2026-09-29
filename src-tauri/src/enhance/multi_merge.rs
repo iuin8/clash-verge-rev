@@ -661,6 +661,20 @@ pub fn multi_profile_merge(configs: &[Mapping], names: &[&str]) -> (Mapping, Vec
     (base, all_conflicts)
 }
 
+/// FORK: 最近一次配置生成得到的合并冲突快照（前端 ConflictViewer 读取）。
+///
+/// 与上游 `DISCARDED_KEYS_NOTICE` 的一次性 take 不同，这里保留快照：前端会重复拉取
+/// 用来渲染冲突徽标与详情，take 掉第二次就空了。
+static MERGE_CONFLICTS: parking_lot::Mutex<Vec<ConflictEntry>> = parking_lot::Mutex::new(Vec::new());
+
+pub fn publish_conflicts(entries: Vec<ConflictEntry>) {
+    *MERGE_CONFLICTS.lock() = entries;
+}
+
+pub fn conflicts() -> Vec<ConflictEntry> {
+    MERGE_CONFLICTS.lock().clone()
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

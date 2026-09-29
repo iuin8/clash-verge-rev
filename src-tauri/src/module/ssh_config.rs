@@ -210,31 +210,6 @@ pub async fn remove_ssh_config(uid: &str) -> Result<()> {
     Ok(())
 }
 
-/// 清理无对应 profile 的孤立 SSH config 文件
-pub async fn cleanup_orphaned(valid_uids: &HashSet<String>) -> Result<()> {
-    let ssh_configs_dir = dirs::app_home_dir()?.join("ssh-configs");
-    if !ssh_configs_dir.exists() {
-        return Ok(());
-    }
-
-    let mut entries = fs::read_dir(&ssh_configs_dir)
-        .await
-        .with_context(|| format!("failed to read ssh-configs dir: {}", ssh_configs_dir.display()))?;
-
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        if let Some(stem) = path.file_stem().and_then(|n| n.to_str())
-            && !valid_uids.contains(stem)
-        {
-            let cleanup_path = format!("{}", path.display());
-            fs::remove_file(&path).await?;
-            log::info!("Orphaned SSH config cleaned up: {cleanup_path}");
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

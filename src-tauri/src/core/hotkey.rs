@@ -146,8 +146,9 @@ impl Hotkey {
             }
             HotkeyFunction::ToggleSystemProxy => {
                 AsyncHandler::spawn(async move || {
-                    let is_proxy_enabled = feat::toggle_system_proxy().await;
-                    notify_event(NotificationEvent::SystemProxyToggled(is_proxy_enabled)).await;
+                    if let Some(is_proxy_enabled) = feat::toggle_system_proxy().await {
+                        notify_event(NotificationEvent::SystemProxyToggled(is_proxy_enabled)).await;
+                    }
                 });
             }
             HotkeyFunction::ToggleTunMode => {
@@ -199,7 +200,6 @@ impl Hotkey {
             HotkeyFunction::Hide => {
                 AsyncHandler::spawn(async move || {
                     feat::hide().await;
-                    notify_event(NotificationEvent::AppHidden).await;
                 });
             }
         }

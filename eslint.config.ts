@@ -43,7 +43,9 @@ export default defineConfig([
             'eslint.config.ts',
             `vite.config.mts`,
             'scripts/*.mjs',
+            'tests/*.ts',
             'src/polyfills/*.js',
+            'tests/*.mjs',
           ],
         },
       },
@@ -147,6 +149,16 @@ export default defineConfig([
       globals: {
         ...globals.browser,
         ...globals.node,
+      },
+    },
+  },
+  {
+    files: ['scripts/perf/*.{mjs,mts}'],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        projectService: false,
+        project: './scripts/perf/tsconfig.node.json',
       },
     },
   },

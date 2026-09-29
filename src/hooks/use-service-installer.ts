@@ -3,19 +3,18 @@ import { useCallback } from 'react'
 import { installService, restartCore } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
 
-import { useSystemState } from './use-system-state'
-
-const executeWithErrorHandling = async (
-  operation: () => Promise<void>,
+const executeWithErrorHandling = async <T>(
+  operation: () => Promise<T>,
   loadingKey: string,
   successKey?: string,
 ) => {
   try {
     showNotice.info(loadingKey)
-    await operation()
+    const result = await operation()
     if (successKey) {
       showNotice.success(successKey)
     }
+    return result
   } catch (err) {
     showNotice.error(err)
     throw err
@@ -23,12 +22,20 @@ const executeWithErrorHandling = async (
 }
 
 export const useServiceInstaller = () => {
-  const { mutateSystemState } = useSystemState()
-
   const installServiceAndRestartCore = useCallback(async () => {
-    await executeWithErrorHandling(
+    const outcome = await executeWithErrorHandling(
       () => installService(),
       'settings.statuses.clashService.installing',
+    )
+    if (outcome.status === 'sidecar') {
+      showNotice.warning(
+        'settings.feedback.notifications.clashService.permissionFallback',
+        { reason: outcome.reason },
+        0,
+      )
+      return
+    }
+    showNotice.success(
       'settings.feedback.notifications.clashService.installSuccess',
     )
 
@@ -37,8 +44,6 @@ export const useServiceInstaller = () => {
       'settings.statuses.clash.restarting',
       'settings.feedback.notifications.clash.restartSuccess',
     )
-
-    await mutateSystemState()
-  }, [mutateSystemState])
+  }, [])
   return { installServiceAndRestartCore }
 }
