@@ -23,7 +23,7 @@ use std::{
 };
 
 const RELEASE_VERSION_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
-const ALPHA_BASE_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha";
+const ALPHA_BASE_URL: &str = "https://github.com/iuin8/mihomo/releases/download/Prerelease-Alpha";
 const RELEASE_DOWNLOAD_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/download";
 const VERSION_TIMEOUT_SECS: u64 = 20;
 const PACKAGE_TIMEOUT_SECS: u64 = 300;
@@ -194,32 +194,26 @@ fn package_url(alpha: bool, version: &str) -> Result<std::string::String> {
 
 /// Mirrors the asset map in `scripts/prebuild.mjs` so an upgrade keeps the build variant
 /// the bundled sidecar was taken from.
-fn asset_base_name(alpha: bool) -> Result<&'static str> {
+fn asset_base_name(_alpha: bool) -> Result<&'static str> {
     let arch = std::env::consts::ARCH;
     let unsupported = || anyhow!("no mihomo release asset for {}-{arch}", std::env::consts::OS);
 
+    // Keep this in step with META_ALPHA_MAP / META_MAP in scripts/prebuild.mjs: the
+    // upgrade must fetch the same asset the bundled sidecar was taken from.
     let name = if cfg!(target_os = "windows") {
         match arch {
-            "x86_64" => "mihomo-windows-amd64-v2",
-            "x86" => "mihomo-windows-386",
-            "aarch64" => "mihomo-windows-arm64",
+            "x86_64" => "mihomo-windows-amd64",
             _ => return Err(unsupported()),
         }
     } else if cfg!(target_os = "macos") {
         match arch {
-            "x86_64" if alpha => "mihomo-darwin-amd64-v1-go122",
-            "x86_64" => "mihomo-darwin-amd64-v2-go122",
-            "aarch64" => "mihomo-darwin-arm64-go122",
+            "aarch64" => "mihomo-darwin-arm64",
             _ => return Err(unsupported()),
         }
     } else {
         match arch {
-            "x86_64" => "mihomo-linux-amd64-v2",
-            "x86" => "mihomo-linux-386",
+            "x86_64" => "mihomo-linux-amd64-v3",
             "aarch64" => "mihomo-linux-arm64",
-            "arm" => "mihomo-linux-armv7",
-            "riscv64" => "mihomo-linux-riscv64",
-            "loongarch64" => "mihomo-linux-loong64",
             _ => return Err(unsupported()),
         }
     };
