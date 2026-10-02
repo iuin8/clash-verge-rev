@@ -7,6 +7,10 @@ description: >-
   v*-fa.*。DO NOT TRIGGER when: 仅查询版本、查看 Changelog、同步上游。
 ---
 
+> **发布线**：本 fork 的默认分支是 **`fa/trunk`**（fork 的发布主线，2026-10-03 从 `fa/v2.5.6-fa.0` 建立）—— 发布/构建类触发一律
+> 以 `fa/trunk` 为目标 ✓；feature 线先合进 `fa/trunk` ✓ 再打 `v*-fa.*` tag ✓。`dev` 保留为上游 `dev` 的镜像（领先上游 0 个提交）✓。
+> 注意：工作流文件**必须存在于默认分支**才能被 `workflow_dispatch` 触发 ✓，而**执行的是被触发 ref 那份定义** ✓（可见性/显示名来自默认分支 ✓）。
+
 # Release — clash-verge-rev
 
 ## 边界
