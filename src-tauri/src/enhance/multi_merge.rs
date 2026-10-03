@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::{Mapping, Value};
 
+use clash_verge_logging::{Type, logging};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConflictEntry {
     pub field: String,
@@ -495,13 +497,32 @@ fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Mapping, supp:
         }
         match base.get(key) {
             Some(existing) if existing == value => {}
-            _ => {
+            Some(_) => {
                 push_conflict(
                     &mut ctx.conflicts,
                     "top-level",
                     key_str,
                     &ctx.supp_name,
                     format!("already exists in {}; kept primary value", ctx.primary_name),
+                );
+            }
+            // FORK: the primary has no such key, so no value is kept at all. Reporting
+            // "kept primary value" here was untrue and hid the fact that the key is dropped.
+            None => {
+                push_conflict(
+                    &mut ctx.conflicts,
+                    "top-level",
+                    key_str,
+                    &ctx.supp_name,
+                    format!("not merged: only {} may define this key", ctx.primary_name),
+                );
+                logging!(
+                    warn,
+                    Type::Config,
+                    "profile '{}' defines top-level '{}', which is not merged across profiles; primary '{}' does not define it, so it is ignored",
+                    ctx.supp_name,
+                    key_str,
+                    ctx.primary_name
                 );
             }
         }

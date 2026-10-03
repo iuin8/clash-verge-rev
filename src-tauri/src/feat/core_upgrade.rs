@@ -194,26 +194,52 @@ fn package_url(alpha: bool, version: &str) -> Result<std::string::String> {
 
 /// Mirrors the asset map in `scripts/prebuild.mjs` so an upgrade keeps the build variant
 /// the bundled sidecar was taken from.
-fn asset_base_name(_alpha: bool) -> Result<&'static str> {
+fn asset_base_name(alpha: bool) -> Result<&'static str> {
     let arch = std::env::consts::ARCH;
     let unsupported = || anyhow!("no mihomo release asset for {}-{arch}", std::env::consts::OS);
 
-    // Keep this in step with META_ALPHA_MAP / META_MAP in scripts/prebuild.mjs: the
-    // upgrade must fetch the same asset the bundled sidecar was taken from.
-    let name = if cfg!(target_os = "windows") {
+    // The alpha channel is this fork's release, so it must use the same asset names as
+    // META_ALPHA_MAP in scripts/prebuild.mjs, which is what the bundled sidecar came from.
+    // The stable channel is upstream's release and keeps upstream's wider map.
+    let name = if alpha {
+        if cfg!(target_os = "windows") {
+            match arch {
+                "x86_64" => "mihomo-windows-amd64",
+                _ => return Err(unsupported()),
+            }
+        } else if cfg!(target_os = "macos") {
+            match arch {
+                "aarch64" => "mihomo-darwin-arm64",
+                _ => return Err(unsupported()),
+            }
+        } else {
+            match arch {
+                "x86_64" => "mihomo-linux-amd64-v3",
+                "aarch64" => "mihomo-linux-arm64",
+                _ => return Err(unsupported()),
+            }
+        }
+    } else if cfg!(target_os = "windows") {
         match arch {
-            "x86_64" => "mihomo-windows-amd64",
+            "x86_64" => "mihomo-windows-amd64-v2",
+            "x86" => "mihomo-windows-386",
+            "aarch64" => "mihomo-windows-arm64",
             _ => return Err(unsupported()),
         }
     } else if cfg!(target_os = "macos") {
         match arch {
-            "aarch64" => "mihomo-darwin-arm64",
+            "x86_64" => "mihomo-darwin-amd64-v2-go122",
+            "aarch64" => "mihomo-darwin-arm64-go122",
             _ => return Err(unsupported()),
         }
     } else {
         match arch {
-            "x86_64" => "mihomo-linux-amd64-v3",
+            "x86_64" => "mihomo-linux-amd64-v2",
+            "x86" => "mihomo-linux-386",
             "aarch64" => "mihomo-linux-arm64",
+            "arm" => "mihomo-linux-armv7",
+            "riscv64" => "mihomo-linux-riscv64",
+            "loongarch64" => "mihomo-linux-loong64",
             _ => return Err(unsupported()),
         }
     };
