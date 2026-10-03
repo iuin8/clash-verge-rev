@@ -31,7 +31,7 @@ jobs:
 
           TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
           MAIN_COMMITS=$(git rev-list origin/main)
-          FA_COMMITS=$(git rev-list --remotes='origin/fa/v*' 2>/dev/null || true)
+          FA_COMMITS=$(git rev-list --remotes='origin/fa/*' 2>/dev/null || true)
 
           if echo "$MAIN_COMMITS" | grep -q "$TAG_COMMIT"; then
             echo "✅ Tag $TAG_REF is from main branch"
