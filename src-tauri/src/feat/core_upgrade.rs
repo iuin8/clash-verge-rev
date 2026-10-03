@@ -61,7 +61,7 @@ pub async fn upgrade_core(force: bool) -> Result<CoreUpgradeReport> {
     span.record("to", tracing::field::display(&latest));
     logging!(debug, Type::Core, "core upgrade: latest version resolved via {proxy:?}");
 
-    if !force && installed == latest {
+    if should_skip_upgrade(force, alpha, &installed, &latest) {
         return Ok(CoreUpgradeReport {
             upgraded: false,
             from: installed,
@@ -247,6 +247,7 @@ fn asset_base_name(alpha: bool) -> Result<&'static str> {
 }
 
 /// Returns the proxy that reached GitHub so the package download reuses it.
+
 #[tracing::instrument(skip_all, level = "debug", fields(alpha))]
 async fn resolve_latest_version(alpha: bool) -> Result<(ProxyType, std::string::String)> {
     let url = if alpha {
@@ -518,5 +519,43 @@ mod tests {
             "{release}"
         );
         assert!(alpha.contains("/Prerelease-Alpha/"), "{alpha}");
+    }
+}
+
+/// 是否"版本相同就跳过"✓ —— 抽成纯函数便于测试 ✓（规则本身很微妙 ✓）。
+///
+/// **alpha 通道例外** ✗✓：它是 **rolling tag** ✓ —— `version.txt` 恒为 `Prerelease-Alpha` ✓，
+/// 与新构建的版本串**永远相同** ✓ → 若参与比较，`installed == latest` 恒成立 ✓ →
+/// 点「升级内核」会**静默不下载** ✗（实测：资产已是 12:48:37 构建 ✓，本机运行物仍是 06:35:36 ✗）。
+/// 因此 alpha **每次都要真去取** ✓；稳定通道版本号唯一 ✓，保留原来的跳过逻辑 ✓。
+fn should_skip_upgrade(force: bool, alpha: bool, installed: &str, latest: &str) -> bool {
+    !force && !alpha && installed == latest
+}
+
+#[cfg(test)]
+mod upgrade_decision_tests {
+    use super::should_skip_upgrade;
+
+    #[test]
+    fn alpha_never_skips_even_when_versions_match() {
+        // 复现实测现场 ✓：资产与已安装都叫 Prerelease-Alpha ✗ → 必须**不跳过** ✓
+        assert!(!should_skip_upgrade(
+            false,
+            true,
+            "Prerelease-Alpha",
+            "Prerelease-Alpha"
+        ));
+    }
+
+    #[test]
+    fn stable_still_skips_on_equal_version() {
+        assert!(should_skip_upgrade(false, false, "v1.19.32", "v1.19.32"));
+        assert!(!should_skip_upgrade(false, false, "v1.19.31", "v1.19.32"));
+    }
+
+    #[test]
+    fn force_always_upgrades() {
+        assert!(!should_skip_upgrade(true, false, "v1.19.32", "v1.19.32"));
+        assert!(!should_skip_upgrade(true, true, "Prerelease-Alpha", "Prerelease-Alpha"));
     }
 }
