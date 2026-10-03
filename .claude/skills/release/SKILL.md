@@ -112,6 +112,46 @@ gh release view "$TAG" --json isDraft,isPrerelease,body,assets,url \
 - body 有实质内容且包含当前 tag
 - assets 至少包含 Windows / macOS / Linux 产物；当前 fork 预期约 10 个 assets（含 `.sig` 和 `latest.json`）
 
+## 本仓库实测坑位（每次发布都会遇到 ✓ 2026-10-03 实测）
+
+### `prepare-release.sh` 会**自己推送**提交与 tag ✗✓
+
+脚本不只是"准备" ✗ —— 它**改三处版本号 → 提交 → 打 tag → 推送** 一气呵成 ✓。因此：
+
+- **Changelog 整理只能发生在推送之后** ✗ —— 想在 tag 之前整理是做不到的 ✓；
+- tag 一旦推出去 ✓，**Release 正文就固定为 tag 那次提交里的 Changelog** ✗ → 正文**只能事后改** ✓（`gh release edit` ✓，被拦就让用户手改 ✓）；
+- 想避免这一点 ✗：**先手动改好 Changelog 再跑脚本**是无效的 ✓（`--yes` 覆盖同名段落 ✓）→ 接受"事后改正文"这条路径即可 ✓。
+
+### 脚本生成的段落有两处固定问题 ✗（都要手工改）
+
+| 问题 | 生成的样子 | 应改成 |
+| --- | --- | --- |
+| 条目 = **英文 commit 主题原文** ✗ | `- the alpha channel must not skip an upgrade because…` | 面向使用者的中文说明（一行一条 ✓、不写内部实现 ✓）|
+| **base 版本号取的是"上一个 tag"** ✗✓ | `> 这是基于上游 **v2.5.7-fa.1002** 的个人 fork 版本` | 上游基线 ✓，如 `v2.5.7` |
+
+### tag 必须落在 `origin/fa/*` 上 ✗✓
+
+`release.yml` 第一个 gate 用 `git rev-list --remotes='origin/fa/*'` 判定 ✓ —— 分支命名或默认分支一变 ✗，
+**所有 tag 都会在第一个 job 被拒** ✗（2026-10-03 真实事故：`fa/v*` 过期后 `-fa.1001` 被拒 ✓）。
+改分支命名/默认分支后，**先检查这个 gate** ✓。
+
+### 验收要**打开产物** ✓，不要只看 assets 名字 ✗
+
+`isDraft/isPrerelease/资产数` 只是第一层 ✓；至少再做一件"打开产物"的验证 ✓ ✓（2026-10-03 实测有效）：
+
+```bash
+TAG=vX.Y.Z-fa.NNNN
+gh release download "$TAG" --pattern '*aarch64.dmg' --dir /tmp/rc
+MP=$(hdiutil attach -nobrowse -quiet /tmp/rc/*.dmg | tail -1 | awk '{print $NF}')
+APP=$(ls -d "$MP"/*.app | head -1)
+strings "$APP/Contents/MacOS/clash-verge" | grep -oE '2\.5\.7-fa\.[0-9]+' | sort -u   # 版本串 ✓
+"$APP/Contents/MacOS/verge-mihomo-alpha" -v | head -1                                     # 打包进去的内核 ✓
+strings "$APP/Contents/MacOS/verge-mihomo-alpha" | grep -c host-id                         # 内核修复指纹 ✓
+hdiutil detach -quiet "$MP"
+```
+
+**理由** ✓：assets 名字与内容可以不一致 ✗（内核曾被静默换成上游版 ✓、bundle 里的内核可能落后于刚发布的 alpha ✓）。
+
 ## 失败诊断不变量
 
 - 失败必须引用具体 job、step、原始错误片段；不要只按 job 名猜。

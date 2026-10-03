@@ -15,5 +15,7 @@ scripts/_env.sh
 target
 .vfox.toml
 .vfox
-.claude
+# 只忽略本地状态，不忽略技能本身 ✓（与 mihomo 仓一致 —— 技能属于 fork 内容 ✓）
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 .zed
