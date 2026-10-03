@@ -1,3 +1,15 @@
+## v2.5.7-fa.1002
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.7-fa.1001 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- accept tags from fa/trunk, not only fa/v*
+
+---
+
+
 
 
 ## v2.5.6-fa.1002
