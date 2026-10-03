@@ -1,3 +1,15 @@
+## v2.5.7-fa.1003
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.7-fa.1002 的个人 fork 版本。
+
+### 🐞 修复问题
+
+- the alpha channel must not skip an upgrade because the version string matches
+
+---
+
+
 ## v2.5.7-fa.1002
 
 > [!IMPORTANT]
