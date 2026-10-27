@@ -580,8 +580,7 @@ mod legacy_ssh_config_tests {
 
     #[test]
     fn rejects_legacy_ssh_config_key() -> Result<()> {
-        let yaml: Mapping =
-            serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n")?;
+        let yaml: Mapping = serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n")?;
         let err = match reject_legacy_ssh_config(&yaml) {
             Ok(()) => bail!("legacy ssh-config was accepted"),
             Err(err) => err.to_string(),
