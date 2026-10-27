@@ -371,8 +371,7 @@ impl PrfItem {
         let data = data.trim_start_matches('\u{feff}');
 
         // check the data whether the valid yaml format
-        let yaml =
-            serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
+        let yaml = serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
         reject_legacy_ssh_config(&yaml)?;
 
         if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
@@ -581,10 +580,7 @@ mod legacy_ssh_config_tests {
 
     #[test]
     fn rejects_legacy_ssh_config_key() {
-        let yaml: Mapping = serde_yaml_ng::from_str(
-            "proxies: []\nssh-config: |\n  Host example\n",
-        )
-        .unwrap();
+        let yaml: Mapping = serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n").unwrap();
         let err = reject_legacy_ssh_config(&yaml).unwrap_err().to_string();
         assert!(err.contains("ssh-config"), "unexpected error: {err}");
         assert!(err.contains("type: ssh"), "unexpected error: {err}");

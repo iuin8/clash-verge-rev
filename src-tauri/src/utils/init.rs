@@ -496,9 +496,7 @@ async fn archive_legacy_ssh_configs_at(dir: &Path, suffix: &str) -> Result<Optio
     }
     let archived = dir.with_file_name(format!(
         "{}.legacy-{suffix}",
-        dir.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("ssh-configs")
+        dir.file_name().and_then(|n| n.to_str()).unwrap_or("ssh-configs")
     ));
     fs::rename(dir, &archived).await?;
     logging!(
@@ -782,10 +780,8 @@ mod legacy_ssh_tests {
 
     #[test]
     fn flags_legacy_key_and_incomplete_ssh_fields() {
-        let legacy: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
-            "proxies: []\nssh-config: |\n  Host example\n",
-        )
-        .unwrap();
+        let legacy: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n").unwrap();
         assert!(profile_needs_ssh_migration(&legacy));
 
         let complete: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
