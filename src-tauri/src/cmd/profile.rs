@@ -183,11 +183,6 @@ pub async fn delete_profile(index: String) -> CmdResult {
             };
             let current = candidate.current.clone();
             plan.cleanup().await;
-            // FORK: drop the managed ssh config only after the delete is committed; doing it
-            // inside plan_delete_item would orphan the config when validation rolls back.
-            if let Err(error) = crate::module::ssh_config::remove_ssh_config(&index).await {
-                logging!(warn, Type::Cmd, "Failed to remove SSH config for '{index}': {error}");
-            }
             // FORK: 同步把该 profile 从合并列表里剔除，避免 merged.json 里留下幽灵 uid
             if let Err(error) = crate::config::merged::remove(&index).await {
                 logging!(warn, Type::Cmd, "failed to prune merged list: {error:#}");

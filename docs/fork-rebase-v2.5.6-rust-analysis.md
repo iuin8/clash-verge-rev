@@ -1,3 +1,7 @@
+> 历史分析（2026-10-27 更新）：`module/ssh_config.rs` 及其三处 hook 已删除。内核已不再支持
+> `ssh-config-path`；本文中关于 SSH 配置重植的部分仅用于理解历史，**不要按本文重新引入**。
+> SSH 代理请使用内置 `type: ssh` 标准字段。
+
 # fork Rust 侧 vs 上游 v2.5.6：可替代 / 需重植 / 冲突面 结论
 
 基线：fork `HEAD` = `c75c5b02`（tag `v2.5.2-fa.1010`），上游 `v2.5.6`，merge-base `28f2efc5`。

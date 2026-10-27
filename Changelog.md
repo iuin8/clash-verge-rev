@@ -1,3 +1,12 @@
+## 未发布
+
+### 🧹 清理
+
+- 移除 fork 的 `ssh-config` profile 注入功能：内核已不再支持 `ssh-config-path`，客户端继续注入会生成无效配置；SSH 代理改用内核内置 `type: ssh` 的标准字段（server/port/username/password/private-key 等）
+- 含 `ssh-config` 的本地/远程 profile 导入会**明确报错**并给出迁移指引，不再静默保留内核不认的键
+- 启动时把旧 fork 生成的 `~/.clash-verge-rev/ssh-configs/` 归档为 `ssh-configs.legacy-<timestamp>` 并告警（这些文件是旧 profile 的托管副本，可能含私钥；源 profile 不受影响，不删除）
+- 同步删除对应 Rust 模块、三处调用点与设计文档，避免后续重新引入
+
 ## v2.5.7-fa.1003
 
 > [!IMPORTANT]

@@ -16,6 +16,15 @@ use tokio::fs;
 use reqwest_dav::re_exports::url::form_urlencoded;
 use tauri::Url;
 
+const LEGACY_SSH_CONFIG_ERROR: &str = "`ssh-config` 已移除；请将 SSH 配置改为内核内置 `type: ssh` 代理的标准字段（server/port/username/password/private-key 等），并删除 profile 中的 `ssh-config` 键";
+
+fn reject_legacy_ssh_config(yaml: &Mapping) -> Result<()> {
+    if yaml.contains_key("ssh-config") {
+        bail!("{LEGACY_SSH_CONFIG_ERROR}");
+    }
+    Ok(())
+}
+
 pub(super) fn normalize_profile_home_url(raw: &str) -> Option<String> {
     let url = Url::parse(raw.trim()).ok()?;
 
@@ -210,14 +219,9 @@ impl PrfItem {
             profiles::profiles_append_item_safe(groups_item).await?;
             groups = groups_item.uid.clone();
         }
-        // extract ssh-config and sync to managed directory (FORK: one-call integration)
-        let raw_data = file_data.unwrap_or_else(|| tmpl::ITEM_LOCAL.into());
-        let (clash_data, _has_ssh) = crate::module::ssh_config::extract_and_sync(&raw_data, &uid)
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("SSH config sync failed, keeping original data: {e}");
-                (raw_data, false)
-            });
+        let clash_data = file_data.unwrap_or_else(|| tmpl::ITEM_LOCAL.into());
+        let yaml = serde_yaml_ng::from_str::<Mapping>(&clash_data).context("the local profile data is invalid yaml")?;
+        reject_legacy_ssh_config(&yaml)?;
 
         Ok(Self {
             uid: Some(uid),
@@ -366,16 +370,12 @@ impl PrfItem {
 
         let data = data.trim_start_matches('\u{feff}');
 
-        // extract ssh-config and sync to managed directory (FORK: one-call integration)
-        let (clash_data, has_ssh) = crate::module::ssh_config::extract_and_sync(data, &uid)
-            .await
-            .context("failed to process SSH config")?;
-
         // check the data whether the valid yaml format
         let yaml =
-            serde_yaml_ng::from_str::<Mapping>(&clash_data).context("the remote profile data is invalid yaml")?;
+            serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
+        reject_legacy_ssh_config(&yaml)?;
 
-        if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") && !has_ssh {
+        if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }
 
@@ -426,7 +426,7 @@ impl PrfItem {
             }),
             home,
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(clash_data),
+            file_data: Some(data.to_owned().into()),
         })
     }
 
@@ -573,4 +573,30 @@ fn fix_dirty_url(input: &str) -> Result<Url> {
     }
 
     Ok(url)
+}
+
+#[cfg(test)]
+mod legacy_ssh_config_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_legacy_ssh_config_key() {
+        let yaml: Mapping = serde_yaml_ng::from_str(
+            "proxies: []\nssh-config: |\n  Host example\n",
+        )
+        .unwrap();
+        let err = reject_legacy_ssh_config(&yaml).unwrap_err().to_string();
+        assert!(err.contains("ssh-config"), "unexpected error: {err}");
+        assert!(err.contains("type: ssh"), "unexpected error: {err}");
+        assert!(err.contains("username"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn accepts_standard_ssh_proxy() {
+        let yaml: Mapping = serde_yaml_ng::from_str(
+            "proxies:\n  - name: example\n    type: ssh\n    server: 203.0.113.10\n    port: 22\n    username: user\n",
+        )
+        .unwrap();
+        reject_legacy_ssh_config(&yaml).unwrap();
+    }
 }

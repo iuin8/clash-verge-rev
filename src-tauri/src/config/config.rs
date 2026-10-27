@@ -231,10 +231,6 @@ impl Config {
 
         resolve_provider_path_conflicts(&mut config, &dirs::app_home_dir()?)?;
         sanitize_tunnels_proxy(&mut config);
-        // FORK: point SSH proxies at the managed ssh config written by the profile importer
-        if let Some(uid) = profiles.current.as_deref() {
-            config = crate::module::ssh_config::inject_paths(config, uid);
-        }
         // Apply only to generated core config so the saved choice survives the next launch.
         if let Some(port) = MixedPort::session_fallback() {
             config.insert(MIXED_PORT_KEY.into(), port.into());
