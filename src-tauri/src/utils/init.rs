@@ -753,64 +753,62 @@ mod legacy_ssh_tests {
     use super::*;
 
     #[tokio::test]
-    async fn archives_legacy_ssh_dir_without_deleting() {
+    async fn archives_legacy_ssh_dir_without_deleting() -> Result<()> {
         let base = std::env::temp_dir().join(format!(
             "cvr-legacy-ssh-{}-{}",
             std::process::id(),
             Local::now().timestamp_nanos_opt().unwrap_or_default()
         ));
         let dir = base.join("ssh-configs");
-        fs::create_dir_all(&dir).await.unwrap();
-        fs::write(dir.join("abc.conf"), "Host example\n  HostName 203.0.113.10\n")
-            .await
-            .unwrap();
+        fs::create_dir_all(&dir).await?;
+        fs::write(dir.join("abc.conf"), "Host example\n  HostName 203.0.113.10\n").await?;
 
         let archived = archive_legacy_ssh_configs_at(&dir, "test")
-            .await
-            .unwrap()
-            .expect("legacy directory should be archived");
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("legacy directory was not archived"))?;
         assert!(!dir.exists());
         assert!(archived.join("abc.conf").exists());
         assert_eq!(
-            fs::read_to_string(archived.join("abc.conf")).await.unwrap(),
+            fs::read_to_string(archived.join("abc.conf")).await?,
             "Host example\n  HostName 203.0.113.10\n"
         );
-        fs::remove_dir_all(base).await.unwrap();
+        fs::remove_dir_all(base).await?;
+        Ok(())
     }
 
     #[test]
-    fn flags_legacy_key_and_incomplete_ssh_fields() {
+    fn flags_legacy_key_and_incomplete_ssh_fields() -> Result<()> {
         let legacy: serde_yaml_ng::Mapping =
-            serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n").unwrap();
+            serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n")?;
         assert!(profile_needs_ssh_migration(&legacy));
 
         let complete: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
             "proxies:\n  - name: example\n    type: ssh\n    server: 203.0.113.10\n    port: 22\n    username: user\n",
-        )
-        .unwrap();
+        )?;
         assert!(!profile_needs_ssh_migration(&complete));
         for missing in ["server", "port", "username"] {
             let mut candidate = complete.clone();
-            candidate
+            let proxy = candidate
                 .get_mut("proxies")
                 .and_then(|v| v.as_sequence_mut())
                 .and_then(|v| v.first_mut())
                 .and_then(|v| v.as_mapping_mut())
-                .unwrap()
-                .remove(missing);
+                .ok_or_else(|| anyhow::anyhow!("test fixture is missing the proxy mapping"))?;
+            proxy.remove(missing);
             assert!(
                 profile_needs_ssh_migration(&candidate),
                 "missing {missing} should be flagged"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn accepts_complete_standard_ssh_proxy() {
+    fn accepts_complete_standard_ssh_proxy() -> Result<()> {
         let yaml: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
             "proxies:\n  - name: example\n    type: ssh\n    server: 203.0.113.10\n    port: 22\n    username: user\n",
-        )
-        .unwrap();
+        )?;
         assert!(!profile_needs_ssh_migration(&yaml));
+        Ok(())
     }
 }

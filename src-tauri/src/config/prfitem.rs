@@ -579,20 +579,25 @@ mod legacy_ssh_config_tests {
     use super::*;
 
     #[test]
-    fn rejects_legacy_ssh_config_key() {
-        let yaml: Mapping = serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n").unwrap();
-        let err = reject_legacy_ssh_config(&yaml).unwrap_err().to_string();
+    fn rejects_legacy_ssh_config_key() -> Result<()> {
+        let yaml: Mapping =
+            serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n")?;
+        let err = match reject_legacy_ssh_config(&yaml) {
+            Ok(()) => bail!("legacy ssh-config was accepted"),
+            Err(err) => err.to_string(),
+        };
         assert!(err.contains("ssh-config"), "unexpected error: {err}");
         assert!(err.contains("type: ssh"), "unexpected error: {err}");
         assert!(err.contains("username"), "unexpected error: {err}");
+        Ok(())
     }
 
     #[test]
-    fn accepts_standard_ssh_proxy() {
+    fn accepts_standard_ssh_proxy() -> Result<()> {
         let yaml: Mapping = serde_yaml_ng::from_str(
             "proxies:\n  - name: example\n    type: ssh\n    server: 203.0.113.10\n    port: 22\n    username: user\n",
-        )
-        .unwrap();
-        reject_legacy_ssh_config(&yaml).unwrap();
+        )?;
+        reject_legacy_ssh_config(&yaml)?;
+        Ok(())
     }
 }
