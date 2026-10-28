@@ -16,15 +16,6 @@ use tokio::fs;
 use reqwest_dav::re_exports::url::form_urlencoded;
 use tauri::Url;
 
-const LEGACY_SSH_CONFIG_ERROR: &str = "`ssh-config` 已移除；请将 SSH 配置改为内核内置 `type: ssh` 代理的标准字段（server/port/username/password/private-key 等），并删除 profile 中的 `ssh-config` 键";
-
-fn reject_legacy_ssh_config(yaml: &Mapping) -> Result<()> {
-    if yaml.contains_key("ssh-config") {
-        bail!("{LEGACY_SSH_CONFIG_ERROR}");
-    }
-    Ok(())
-}
-
 pub(super) fn normalize_profile_home_url(raw: &str) -> Option<String> {
     let url = Url::parse(raw.trim()).ok()?;
 
@@ -220,8 +211,6 @@ impl PrfItem {
             groups = groups_item.uid.clone();
         }
         let clash_data = file_data.unwrap_or_else(|| tmpl::ITEM_LOCAL.into());
-        let yaml = serde_yaml_ng::from_str::<Mapping>(&clash_data).context("the local profile data is invalid yaml")?;
-        reject_legacy_ssh_config(&yaml)?;
 
         Ok(Self {
             uid: Some(uid),
@@ -372,8 +361,6 @@ impl PrfItem {
 
         // check the data whether the valid yaml format
         let yaml = serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
-        reject_legacy_ssh_config(&yaml)?;
-
         if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }
@@ -572,31 +559,4 @@ fn fix_dirty_url(input: &str) -> Result<Url> {
     }
 
     Ok(url)
-}
-
-#[cfg(test)]
-mod legacy_ssh_config_tests {
-    use super::*;
-
-    #[test]
-    fn rejects_legacy_ssh_config_key() -> Result<()> {
-        let yaml: Mapping = serde_yaml_ng::from_str("proxies: []\nssh-config: |\n  Host example\n")?;
-        let err = match reject_legacy_ssh_config(&yaml) {
-            Ok(()) => bail!("legacy ssh-config was accepted"),
-            Err(err) => err.to_string(),
-        };
-        assert!(err.contains("ssh-config"), "unexpected error: {err}");
-        assert!(err.contains("type: ssh"), "unexpected error: {err}");
-        assert!(err.contains("username"), "unexpected error: {err}");
-        Ok(())
-    }
-
-    #[test]
-    fn accepts_standard_ssh_proxy() -> Result<()> {
-        let yaml: Mapping = serde_yaml_ng::from_str(
-            "proxies:\n  - name: example\n    type: ssh\n    server: 203.0.113.10\n    port: 22\n    username: user\n",
-        )?;
-        reject_legacy_ssh_config(&yaml)?;
-        Ok(())
-    }
 }
