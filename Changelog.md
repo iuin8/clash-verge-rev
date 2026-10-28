@@ -1,3 +1,13 @@
+## v2.5.7-fa.1005
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.7 的个人 fork 版本。
+
+### 🚀 优化改进
+
+- 随应用打包的核心更新到 `1.10.0-fa.1030`：包含上游 EasyTier #2754 的 Rust TCP teardown 与 fork 的 auto-release headroom 修复
+- 移除 fork 的 `ssh-config` profile 注入与托管，SSH 代理统一使用内核内置 `type: ssh` 标准字段
+
 ## v2.5.7-fa.1004
 
 > [!IMPORTANT]
