@@ -117,7 +117,7 @@ fn group_referencing_missing_proxy_is_dropped_with_conflict() {
 #[test]
 fn builtin_policy_members_survive_reference_integrity() {
     let primary = mapping(
-        "proxies:\n  - name: p1\n    type: ss\nproxy-groups:\n  - name: g\n    type: select\n    proxies:\n      - p1\n      - REJECT\n      - REJECT-DROP\n      - COMPATIBLE\n      - PASS\n      - PASS-RULE\n      - GLOBAL",
+        "proxies:\n  - name: p1\n    type: ss\nproxy-groups:\n  - name: g\n    type: select\n    proxies:\n      - p1\n      - REJECT\n      - REJECT-DROP\n      - COMPATIBLE\n      - PASS\n      - PASS-RULE",
     );
     let supp = mapping("rules:\n  - MATCH,DIRECT");
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
@@ -131,7 +131,7 @@ fn builtin_policy_members_survive_reference_integrity() {
         .unwrap()
         .as_sequence()
         .unwrap();
-    for name in ["REJECT", "REJECT-DROP", "COMPATIBLE", "PASS", "PASS-RULE", "GLOBAL"] {
+    for name in ["REJECT", "REJECT-DROP", "COMPATIBLE", "PASS", "PASS-RULE"] {
         assert!(
             members.iter().any(|m| m.as_str() == Some(name)),
             "missing {name}: {members:?}"

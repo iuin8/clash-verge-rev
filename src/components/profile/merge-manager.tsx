@@ -30,7 +30,7 @@ import { showNotice } from '@/services/notice-service'
 
 export function MergeManager() {
   const { t } = useTranslation()
-  const { profiles, mutateProfiles } = useProfiles()
+  const { profiles } = useProfiles()
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [conflicts, setConflicts] = useState<ConflictEntry[]>([])
@@ -85,9 +85,8 @@ export function MergeManager() {
       await mutate(() => setMergedProfiles(selected), {
         id: 'set-merged-profiles',
         revalidate: [['getProfiles']],
+        errorNotice: false,
       })
-      await mutateProfiles()
-      await load()
       const nextConflicts = await getMergeConflicts()
       setConflicts(nextConflicts)
       showNotice.success(t('profiles.page.merge.saved'))
@@ -105,8 +104,8 @@ export function MergeManager() {
       await mutate(() => clearMergedProfiles(), {
         id: 'clear-merged-profiles',
         revalidate: [['getProfiles']],
+        errorNotice: false,
       })
-      await mutateProfiles()
       setSelected([])
       setConflicts([])
     } catch (error) {

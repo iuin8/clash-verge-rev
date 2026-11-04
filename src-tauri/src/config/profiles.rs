@@ -401,6 +401,7 @@ impl IProfiles {
             crate::enhance::multi_merge::publish_conflicts(Vec::new());
             return self.current_mapping().await;
         }
+        crate::enhance::multi_merge::publish_conflicts(Vec::new());
         let Some(items) = self.items.as_ref() else {
             bail!("multi-merge: profiles are unavailable");
         };

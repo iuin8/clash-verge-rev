@@ -158,6 +158,12 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
 
     let profiles = Config::profiles().await;
     let previous_merged = crate::config::merged::load().await;
+    let deleted_was_merged = previous_merged.iter().any(|uid| uid == &merged_uid);
+    let remaining_merged: Vec<String> = previous_merged
+        .iter()
+        .filter(|uid| *uid != &merged_uid)
+        .cloned()
+        .collect();
     let update_result = profiles
         .with_data_modify(|mut candidate| async move {
             let original = candidate.clone();
@@ -165,7 +171,19 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             // Remove the uid before generating: a fail-closed merge resolver must
             // not try to load the profile that is being deleted.
             crate::config::merged::remove(&merged_uid).await?;
-            let guard = if should_update {
+            if !remaining_merged.is_empty()
+                && candidate
+                    .current
+                    .as_ref()
+                    .is_none_or(|current| !remaining_merged.contains(current))
+            {
+                candidate.patch_config(&IProfiles {
+                    current: remaining_merged.first().cloned(),
+                    items: None,
+                });
+            }
+            let needs_runtime_update = should_update || deleted_was_merged;
+            let guard = if needs_runtime_update {
                 match CoreManager::global()
                     .update_config_forced_with_profiles(&candidate, &original)
                     .await?
@@ -179,7 +197,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             };
             let current = candidate.current.clone();
             plan.cleanup().await;
-            Ok((candidate, Ok((should_update, current, guard))))
+            Ok((candidate, Ok((needs_runtime_update, current, guard))))
         })
         .await;
     let result = match update_result {
@@ -191,7 +209,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             return Err(coded_error("PROFILE_DELETE_FAILED", error));
         }
     };
-    let (should_update, current, config_update_guard) = match result {
+    let (needs_runtime_update, current, config_update_guard) = match result {
         Ok(result) => result,
         Err(outcome) => {
             if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
@@ -201,7 +219,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             return Err(coded_error("PROFILE_DELETE_FAILED", outcome));
         }
     };
-    if should_update {
+    if needs_runtime_update {
         profiles::activate_selected_nodes();
     }
     drop(config_update_guard);
@@ -214,7 +232,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     if let Err(e) = Tray::global().update_menu().await {
         logging!(warn, Type::Cmd, "异步更新托盘菜单失败: {e:#}");
     }
-    if should_update {
+    if needs_runtime_update {
         handle::Handle::refresh_clash();
         if let Some(current) = current.as_ref() {
             handle::Handle::notify_profile_changed(current);
@@ -429,16 +447,16 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
 
     let previous_profile = Config::profiles().await.data_arc().current.clone();
 
-    Config::profiles().await.edit_draft(|d| {
-        d.patch_config(&profiles);
-    });
-
     let previous_merged = crate::config::merged::load().await;
     let clears_merge = target_profile
         .is_some_and(|target| !previous_merged.is_empty() && !previous_merged.iter().any(|uid| uid == target));
     if clears_merge && let Err(error) = crate::config::merged::clear().await {
         return Err(coded_error("PROFILE_SWITCH_FAILED", error));
     }
+
+    Config::profiles().await.edit_draft(|d| {
+        d.patch_config(&profiles);
+    });
 
     let outcome = perform_config_update(target_profile, previous_profile.as_ref()).await;
     if clears_merge
@@ -589,13 +607,19 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     {
         let snapshot = profiles.latest_arc();
         for uid in &next {
-            snapshot
+            let item = snapshot
                 .get_item(uid.as_str())
                 .with_error_code("MERGED_PROFILE_INVALID")?;
+            if !matches!(item.itype.as_deref(), Some("local" | "remote")) || item.file.is_none() {
+                return Err(coded_error(
+                    "MERGED_PROFILE_INVALID",
+                    format!("profile {uid} is not a subscription"),
+                ));
+            }
         }
     }
 
-    let result = profiles
+    let update_result = profiles
         .with_data_modify(|mut candidate| async move {
             let original = candidate.clone();
             if let Some(primary) = next.first().cloned() {
@@ -615,8 +639,17 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
                 Err(outcome) => Ok((original, Err(coded_error("MERGED_PROFILE_FAILED", outcome)))),
             }
         })
-        .await
-        .with_error_code("MERGED_PROFILE_FAILED")?;
+        .await;
+
+    let result = match update_result {
+        Ok(result) => result,
+        Err(error) => {
+            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
+                logging!(warn, Type::Cmd, "failed to roll back merged list: {rollback:#}");
+            }
+            return Err(coded_error("MERGED_PROFILE_FAILED", error));
+        }
+    };
 
     let config_update_guard = match result {
         Ok(guard) => guard,

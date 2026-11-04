@@ -610,15 +610,7 @@ fn verify_reference_integrity(base: &mut Mapping, conflicts: &mut Vec<ConflictEn
 
 /// Names mihomo resolves from its built-in `proxies` map, not from a profile's
 /// `proxies`/`proxy-providers` lists.
-const BUILTIN_POLICY_MEMBERS: &[&str] = &[
-    "DIRECT",
-    "REJECT",
-    "REJECT-DROP",
-    "COMPATIBLE",
-    "PASS",
-    "PASS-RULE",
-    "GLOBAL",
-];
+const BUILTIN_POLICY_MEMBERS: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "COMPATIBLE", "PASS", "PASS-RULE"];
 
 /// 自包含 mapping 字段，做递归合并（叶子 primary 赢，sequence/标量整块 primary 赢）。
 const DEEP_MERGE_FIELDS: &[&str] = &["dns", "tun", "hosts", "profile"];
