@@ -19,6 +19,16 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
+## v2.5.10-fa.0
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.10 的个人 fork 版本。
+
+### 🚀 优化改进
+
+- 在 v2.5.10 新架构上重做多订阅合并：订阅管理页可选择、排序并应用多份配置，冲突集中展示
+- 随应用打包的 alpha 内核继续使用本 fork 的发布资产，升级逻辑不再因 rolling tag 被静默跳过
+
 ## v2.5.10
 
 <details>
