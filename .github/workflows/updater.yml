@@ -1,6 +1,8 @@
 name: Updater CI
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  workflow_call:
 permissions: write-all
 env:
   HUSKY: 0
