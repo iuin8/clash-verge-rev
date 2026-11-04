@@ -486,7 +486,6 @@ export interface TranslationResources {
           conflicts: string
           description: string
           empty: string
-          failed: string
           save: string
           saved: string
           selectHint: string

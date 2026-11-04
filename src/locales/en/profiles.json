@@ -67,8 +67,7 @@
       "conflicts": "Conflicts",
       "empty": "No profiles available.",
       "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "failed": "Failed to update merge."
+      "saved": "Merge applied."
     }
   },
   "components": {

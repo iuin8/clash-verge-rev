@@ -201,7 +201,6 @@ export const translationKeys = [
   'profiles.page.merge.empty',
   'profiles.page.merge.selectHint',
   'profiles.page.merge.saved',
-  'profiles.page.merge.failed',
   'profiles.components.card.labels.clickToImport',
   'profiles.components.fileInput.chooseFile',
   'profiles.components.menu.home',

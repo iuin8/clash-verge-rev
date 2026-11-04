@@ -67,8 +67,7 @@
       "conflicts": "冲突",
       "empty": "没有可用订阅。",
       "selectHint": "至少选择两个订阅。",
-      "saved": "合并已应用。",
-      "failed": "更新合并失败。"
+      "saved": "合并已应用。"
     }
   },
   "components": {

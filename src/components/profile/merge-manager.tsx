@@ -25,6 +25,7 @@ import {
   getMergedProfiles,
   setMergedProfiles,
 } from '@/services/cmds'
+import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 
 export function MergeManager() {
@@ -51,7 +52,9 @@ export function MergeManager() {
   const items = useMemo(
     () =>
       (profiles?.items ?? []).filter(
-        (item): item is typeof item & { uid: string } => Boolean(item?.uid),
+        (item): item is typeof item & { uid: string } =>
+          Boolean(item?.uid) &&
+          (item.type === 'local' || item.type === 'remote'),
       ),
     [profiles?.items],
   )
@@ -79,11 +82,16 @@ export function MergeManager() {
     if (selected.length < 2) return
     setSaving(true)
     try {
-      await setMergedProfiles(selected)
+      await mutate(() => setMergedProfiles(selected), {
+        id: 'set-merged-profiles',
+        revalidate: [['getProfiles']],
+      })
       await mutateProfiles()
       await load()
+      const nextConflicts = await getMergeConflicts()
+      setConflicts(nextConflicts)
       showNotice.success(t('profiles.page.merge.saved'))
-      setOpen(false)
+      if (nextConflicts.length === 0) setOpen(false)
     } catch (error) {
       showNotice.error(error)
     } finally {
@@ -94,7 +102,10 @@ export function MergeManager() {
   const clear = async () => {
     setSaving(true)
     try {
-      await clearMergedProfiles()
+      await mutate(() => clearMergedProfiles(), {
+        id: 'clear-merged-profiles',
+        revalidate: [['getProfiles']],
+      })
       await mutateProfiles()
       setSelected([])
       setConflicts([])
