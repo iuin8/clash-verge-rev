@@ -6,6 +6,8 @@ mod encrypt;
 mod mixed_port;
 mod port;
 mod prfitem;
+// FORK: multi-subscription merge selection
+pub mod merged;
 pub mod profiles;
 pub mod runtime;
 pub(crate) mod snapshot;

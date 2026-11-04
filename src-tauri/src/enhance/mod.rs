@@ -2,6 +2,7 @@ use crate::core::notify::NoticeStatus;
 mod chain;
 pub mod field;
 mod merge;
+pub mod multi_merge;
 mod script;
 pub mod seq;
 mod tun;
@@ -171,7 +172,7 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
     };
 
     let current = profiles
-        .current_mapping()
+        .current_mapping_resolved()
         .await
         .with_context(|| format!("failed to read current profile \"{current_profile_uid}\""))?;
 

@@ -1,0 +1,19 @@
+# Minimal valid fixture: RULE-SET references an existing inline rule-provider.
+mixed-port: 7890
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rule-providers:
+  Local-LAN:
+    type: inline
+    behavior: classical
+    payload:
+      - IP-CIDR,192.168.0.0/16,DIRECT
+      - DOMAIN-SUFFIX,lan,DIRECT
+
+rules:
+  - RULE-SET,Local-LAN,DIRECT
+  - MATCH,DIRECT

@@ -98,6 +98,13 @@ pub async fn get_runtime_proxy_chain_config(
     }
 }
 
+// FORK: conflicts from the latest multi-profile merge.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_merge_conflicts() -> CmdResult<Vec<crate::enhance::multi_merge::ConflictEntry>> {
+    Ok(crate::enhance::multi_merge::conflicts())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn update_proxy_chain_config_in_runtime(

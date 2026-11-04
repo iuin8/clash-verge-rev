@@ -481,6 +481,17 @@ export interface TranslationResources {
           }
           placeholder: string
         }
+        merge: {
+          clear: string
+          conflicts: string
+          description: string
+          empty: string
+          failed: string
+          save: string
+          saved: string
+          selectHint: string
+          title: string
+        }
         title: string
       }
     }
@@ -1589,6 +1600,7 @@ export interface TranslationResources {
           noDisney: string
           originalsOnly: string
           pending: string
+          risky: string
           unsupportedRegion: string
           yes: string
         }

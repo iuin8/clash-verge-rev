@@ -23,7 +23,7 @@ use std::{
 };
 
 const RELEASE_VERSION_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
-const ALPHA_BASE_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha";
+const ALPHA_BASE_URL: &str = "https://github.com/iuin8/mihomo/releases/download/Prerelease-Alpha";
 const RELEASE_DOWNLOAD_URL: &str = "https://github.com/MetaCubeX/mihomo/releases/download";
 const VERSION_TIMEOUT_SECS: u64 = 20;
 const PACKAGE_TIMEOUT_SECS: u64 = 300;
@@ -59,7 +59,7 @@ pub async fn upgrade_core(force: bool) -> Result<CoreUpgradeReport> {
     span.record("to", tracing::field::display(&latest));
     logging!(debug, Type::Core, "core upgrade: latest version resolved via {proxy:?}");
 
-    if !force && installed == latest {
+    if should_skip_upgrade(force, alpha, &installed, &latest) {
         return Ok(CoreUpgradeReport { upgraded: false });
     }
 
@@ -188,7 +188,27 @@ fn asset_base_name(alpha: bool) -> Result<&'static str> {
     let arch = std::env::consts::ARCH;
     let unsupported = || anyhow!("no mihomo release asset for {}-{arch}", std::env::consts::OS);
 
-    let name = if cfg!(target_os = "windows") {
+    let name = if alpha {
+        // The alpha channel is this fork's release; its assets use the same names as
+        // META_ALPHA_MAP in scripts/prebuild.mjs (the bundled sidecar origin).
+        if cfg!(target_os = "windows") {
+            match arch {
+                "x86_64" => "mihomo-windows-amd64",
+                _ => return Err(unsupported()),
+            }
+        } else if cfg!(target_os = "macos") {
+            match arch {
+                "aarch64" => "mihomo-darwin-arm64",
+                _ => return Err(unsupported()),
+            }
+        } else {
+            match arch {
+                "x86_64" => "mihomo-linux-amd64-v3",
+                "aarch64" => "mihomo-linux-arm64",
+                _ => return Err(unsupported()),
+            }
+        }
+    } else if cfg!(target_os = "windows") {
         match arch {
             "x86_64" => "mihomo-windows-amd64-v2",
             "x86" => "mihomo-windows-386",
@@ -197,7 +217,6 @@ fn asset_base_name(alpha: bool) -> Result<&'static str> {
         }
     } else if cfg!(target_os = "macos") {
         match arch {
-            "x86_64" if alpha => "mihomo-darwin-amd64-v1-go122",
             "x86_64" => "mihomo-darwin-amd64-v2-go122",
             "aarch64" => "mihomo-darwin-arm64-go122",
             _ => return Err(unsupported()),
@@ -462,6 +481,12 @@ fn read_core_version(path: &Path) -> Result<std::string::String> {
         .nth(2)
         .map(str::to_owned)
         .with_context(|| format!("unexpected version output from {}: {stdout}", path.display()))
+}
+
+fn should_skip_upgrade(force: bool, alpha: bool, installed: &str, latest: &str) -> bool {
+    // The alpha channel is a rolling tag: version.txt stays "Prerelease-Alpha", so
+    // installed == latest would always skip and silently never download a new build.
+    !force && !alpha && installed == latest
 }
 
 #[cfg(test)]

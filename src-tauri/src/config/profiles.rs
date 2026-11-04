@@ -394,6 +394,55 @@ impl IProfiles {
         }
     }
 
+    /// FORK: resolve the current profile plus the ordered merged profiles.
+    pub async fn current_mapping_resolved(&self) -> Result<Mapping> {
+        let uids = crate::config::merged::load().await;
+        if uids.is_empty() {
+            return self.current_mapping().await;
+        }
+        let Some(items) = self.items.as_ref() else {
+            return self.current_mapping().await;
+        };
+
+        let mut configs: Vec<Mapping> = Vec::with_capacity(uids.len());
+        let mut names: Vec<&str> = Vec::with_capacity(uids.len());
+        for uid in &uids {
+            let Some(item) = items.iter().find(|e| e.uid.as_deref() == Some(uid.as_str())) else {
+                logging!(
+                    warn,
+                    Type::Config,
+                    "multi-merge: profile uid '{uid}' no longer exists, skipped"
+                );
+                continue;
+            };
+            let Some(file) = item.file.as_ref() else {
+                continue;
+            };
+            let path = dirs::app_profiles_dir()?.join(file.as_str());
+            match help::read_mapping(&path).await {
+                Ok(mapping) => {
+                    configs.push(mapping);
+                    names.push(item.name.as_deref().unwrap_or_default());
+                }
+                Err(error) => logging!(
+                    warn,
+                    Type::Config,
+                    "multi-merge: failed to load profile '{uid}': {error:#}"
+                ),
+            }
+        }
+
+        match configs.len() {
+            0 => Ok(Mapping::new()),
+            1 => Ok(configs.remove(0)),
+            _ => {
+                let (merged, conflicts) = crate::enhance::multi_merge::multi_profile_merge(&configs, &names);
+                crate::enhance::multi_merge::publish_conflicts(conflicts);
+                Ok(merged)
+            }
+        }
+    }
+
     pub fn profiles_preview(&self) -> Option<Vec<IProfilePreview<'_>>> {
         self.items.as_ref().map(|items| {
             items

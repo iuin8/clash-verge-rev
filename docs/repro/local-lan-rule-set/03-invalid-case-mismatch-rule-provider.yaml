@@ -1,0 +1,18 @@
+# Minimal broken fixture: provider exists, but the RULE-SET name does not match its key.
+mixed-port: 7890
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rule-providers:
+  local-lan:
+    type: inline
+    behavior: classical
+    payload:
+      - IP-CIDR,192.168.0.0/16,DIRECT
+
+rules:
+  - RULE-SET,Local-LAN,DIRECT
+  - MATCH,DIRECT

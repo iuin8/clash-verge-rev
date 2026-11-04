@@ -139,6 +139,15 @@ export const commands = {
   getNetworkInterfacesInfo: () =>
     __TAURI_INVOKE<NetworkInterfaceView[]>('get_network_interfaces_info'),
   getProfiles: () => __TAURI_INVOKE<IProfiles_Serialize>('get_profiles'),
+  /**  FORK: read the ordered merged profile UIDs. */
+  getMergedProfiles: () => __TAURI_INVOKE<string[]>('get_merged_profiles'),
+  /**  FORK: set the ordered list of profile UIDs to merge. */
+  setMergedProfiles: (uids: string[]) =>
+    __TAURI_INVOKE<null>('set_merged_profiles', { uids }),
+  /**  FORK: clear the merged list and return to single-profile mode. */
+  clearMergedProfiles: () => __TAURI_INVOKE<null>('clear_merged_profiles'),
+  getMergeConflicts: () =>
+    __TAURI_INVOKE<ConflictEntry[]>('get_merge_conflicts'),
   enhanceProfiles: () => __TAURI_INVOKE<ValidationOutcome>('enhance_profiles'),
   patchProfilesConfig: (profiles: ProfileSelection) =>
     __TAURI_INVOKE<ValidationOutcome>('patch_profiles_config', { profiles }),
@@ -268,6 +277,13 @@ export type CommandFailure_Serialize = {
   detail: string
   /**  Requested operation when known by the command. */
   operation?: FailedOperation | null
+}
+
+export type ConflictEntry = {
+  field: string
+  name: string
+  source: string
+  reason: string
 }
 
 /**  Why the Core is not running, kept until a Core starts again. */

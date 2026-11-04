@@ -32,6 +32,7 @@ import {
   BaseStyledTextField,
   type DialogRef,
 } from '@/components/base'
+import { MergeManager } from '@/components/profile/merge-manager'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
@@ -709,6 +710,8 @@ const ProfilePage = () => {
               >
                 <CheckBoxOutlineBlankRounded />
               </IconButton>
+
+              <MergeManager />
 
               <IconButton
                 size="small"

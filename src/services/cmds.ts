@@ -38,6 +38,23 @@ export async function getProfiles(): Promise<IProfilesConfig> {
   return commands.getProfiles()
 }
 
+// FORK: multi-profile merge
+export async function getMergedProfiles(): Promise<string[]> {
+  return commands.getMergedProfiles()
+}
+
+export async function setMergedProfiles(uids: string[]) {
+  return commands.setMergedProfiles(uids)
+}
+
+export async function clearMergedProfiles() {
+  return commands.clearMergedProfiles()
+}
+
+export async function getMergeConflicts() {
+  return commands.getMergeConflicts()
+}
+
 export async function enhanceProfiles() {
   return (await commands.enhanceProfiles()).status === 'valid'
 }

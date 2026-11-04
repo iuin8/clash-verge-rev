@@ -58,7 +58,18 @@
         "forceRefreshStaleData": "订阅数据异常，点击强制刷新"
       }
     },
-    "title": "订阅"
+    "title": "订阅",
+    "merge": {
+      "title": "多订阅合并",
+      "description": "把多个订阅合并成一份生效配置。",
+      "save": "应用合并",
+      "clear": "清除合并",
+      "conflicts": "冲突",
+      "empty": "没有可用订阅。",
+      "selectHint": "至少选择两个订阅。",
+      "saved": "合并已应用。",
+      "failed": "更新合并失败。"
+    }
   },
   "components": {
     "card": {

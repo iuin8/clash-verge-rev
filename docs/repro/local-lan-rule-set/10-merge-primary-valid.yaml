@@ -1,0 +1,11 @@
+# Merge repro: primary profile stays valid alone and contributes no rule-providers.
+# Put this profile FIRST in clash-verge multi-profile merge mode.
+mixed-port: 7890
+mode: rule
+log-level: info
+
+proxies: []
+proxy-groups: []
+
+rules:
+  - MATCH,DIRECT

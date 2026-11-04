@@ -58,7 +58,18 @@
         "forceRefreshStaleData": "Los datos de la suscripción no están disponibles; haz clic para forzar una actualización"
       }
     },
-    "title": "Suscripciones"
+    "title": "Suscripciones",
+    "merge": {
+      "title": "Merge profiles",
+      "description": "Merge multiple profiles into one effective config.",
+      "save": "Apply merge",
+      "clear": "Clear merge",
+      "conflicts": "Conflicts",
+      "empty": "No profiles available.",
+      "selectHint": "Select at least two profiles.",
+      "saved": "Merge applied.",
+      "failed": "Failed to update merge."
+    }
   },
   "components": {
     "card": {
