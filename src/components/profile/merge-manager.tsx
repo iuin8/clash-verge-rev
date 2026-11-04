@@ -155,6 +155,8 @@ export function MergeManager() {
                       <Stack direction="row" spacing={0.25}>
                         <IconButton
                           size="small"
+                          title="Move up"
+                          aria-label="Move up"
                           disabled={order === 0}
                           onClick={() => move(item.uid, -1)}
                         >
@@ -162,6 +164,8 @@ export function MergeManager() {
                         </IconButton>
                         <IconButton
                           size="small"
+                          title="Move down"
+                          aria-label="Move down"
                           disabled={order === selected.length - 1}
                           onClick={() => move(item.uid, 1)}
                         >
@@ -173,6 +177,9 @@ export function MergeManager() {
                 >
                   <Checkbox
                     edge="start"
+                    slotProps={{
+                      input: { 'aria-label': item.name || item.uid },
+                    }}
                     checked={order >= 0}
                     onChange={() => toggle(item.uid)}
                   />
