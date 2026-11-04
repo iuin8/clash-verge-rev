@@ -39,7 +39,7 @@ pub async fn set_dns_override(
     );
     let source = dns_override_source(
         profiles.current.as_deref().unwrap_or_default(),
-        &profiles.current_mapping().await?,
+        &profiles.current_mapping_resolved().await?,
     )?;
     if enabled && let Some(source) = source.as_ref().filter(|source| Some(*source) != confirmation.as_ref()) {
         return Ok(DnsOverrideOutcome::ConfirmationRequired { source: source.clone() });

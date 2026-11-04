@@ -104,10 +104,6 @@ pub async fn reorder_profile(active_id: std::string::String, over_id: std::strin
     match profiles_reorder_safe(&active_id, &over_id).await {
         Ok(_) => {
             logging!(info, Type::Cmd, "重新排序配置文件: {} -> {}", active_id, over_id);
-            // FORK: keep merge priority aligned with profile order.
-            if let Err(error) = crate::config::merged::reorder(&active_id, &over_id).await {
-                logging!(warn, Type::Cmd, "failed to reorder merged list: {error:#}");
-            }
             Ok(())
         }
         Err(err) => {
@@ -157,13 +153,18 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
 #[specta::specta]
 pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let index: String = index.into();
+    let merged_uid = index.clone();
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
 
     let profiles = Config::profiles().await;
-    let result = profiles
+    let previous_merged = crate::config::merged::load().await;
+    let update_result = profiles
         .with_data_modify(|mut candidate| async move {
             let original = candidate.clone();
             let (should_update, plan) = candidate.plan_delete_item(&index)?;
+            // Remove the uid before generating: a fail-closed merge resolver must
+            // not try to load the profile that is being deleted.
+            crate::config::merged::remove(&merged_uid).await?;
             let guard = if should_update {
                 match CoreManager::global()
                     .update_config_forced_with_profiles(&candidate, &original)
@@ -180,11 +181,22 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             plan.cleanup().await;
             Ok((candidate, Ok((should_update, current, guard))))
         })
-        .await
-        .with_error_code("PROFILE_DELETE_FAILED")?;
+        .await;
+    let result = match update_result {
+        Ok(result) => result,
+        Err(error) => {
+            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
+                logging!(warn, Type::Cmd, "failed to restore merged list: {rollback:#}");
+            }
+            return Err(coded_error("PROFILE_DELETE_FAILED", error));
+        }
+    };
     let (should_update, current, config_update_guard) = match result {
         Ok(result) => result,
         Err(outcome) => {
+            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
+                logging!(warn, Type::Cmd, "failed to restore merged list: {rollback:#}");
+            }
             handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
             return Err(coded_error("PROFILE_DELETE_FAILED", outcome));
         }
@@ -421,9 +433,21 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
         d.patch_config(&profiles);
     });
 
-    perform_config_update(target_profile, previous_profile.as_ref())
-        .await
-        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
+    let previous_merged = crate::config::merged::load().await;
+    let clears_merge = target_profile
+        .is_some_and(|target| !previous_merged.is_empty() && !previous_merged.iter().any(|uid| uid == target));
+    if clears_merge && let Err(error) = crate::config::merged::clear().await {
+        return Err(coded_error("PROFILE_SWITCH_FAILED", error));
+    }
+
+    let outcome = perform_config_update(target_profile, previous_profile.as_ref()).await;
+    if clears_merge
+        && !matches!(outcome, Ok(ValidationOutcome::Valid))
+        && let Err(error) = crate::config::merged::save(&previous_merged).await
+    {
+        logging!(warn, Type::Cmd, "failed to restore merged list: {error:#}");
+    }
+    outcome.map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
 }
 
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<ValidationOutcome> {
