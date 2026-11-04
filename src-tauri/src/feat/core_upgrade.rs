@@ -511,6 +511,21 @@ mod tests {
     }
 
     #[test]
+    fn upgrade_skip_only_applies_to_stable_versions() {
+        use super::should_skip_upgrade;
+
+        assert!(should_skip_upgrade(false, false, "v1.19.30", "v1.19.30"));
+        assert!(!should_skip_upgrade(true, false, "v1.19.30", "v1.19.30"));
+        assert!(!should_skip_upgrade(false, false, "v1.19.29", "v1.19.30"));
+        assert!(!should_skip_upgrade(
+            false,
+            true,
+            "Prerelease-Alpha",
+            "Prerelease-Alpha"
+        ));
+    }
+
+    #[test]
     fn package_urls_pin_the_resolved_version() {
         let release = package_url(false, "v1.19.30").unwrap_or_default();
         let alpha = package_url(true, "alpha-c0e43eb").unwrap_or_default();
