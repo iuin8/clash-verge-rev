@@ -23,6 +23,21 @@ pub(crate) fn repaired_current(current: Option<&String>, remaining: &[String]) -
     remaining.first().cloned()
 }
 
+pub(crate) fn validate_merged_members(profiles: &IProfiles, uids: &[String]) -> CmdResult<()> {
+    for uid in uids {
+        let item = profiles
+            .get_item(uid.as_str())
+            .with_error_code("MERGED_PROFILE_INVALID")?;
+        if !matches!(item.itype.as_deref(), Some("local" | "remote")) || item.file.is_none() {
+            return Err(coded_error(
+                "MERGED_PROFILE_INVALID",
+                format!("profile {uid} is not a subscription"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// FORK: read the ordered merged profile UIDs.
 #[tauri::command]
 #[specta::specta]
@@ -47,20 +62,7 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     };
     let next: Vec<String> = uids.unwrap_or_default();
 
-    {
-        let snapshot = profiles.latest_arc();
-        for uid in &next {
-            let item = snapshot
-                .get_item(uid.as_str())
-                .with_error_code("MERGED_PROFILE_INVALID")?;
-            if !matches!(item.itype.as_deref(), Some("local" | "remote")) || item.file.is_none() {
-                return Err(coded_error(
-                    "MERGED_PROFILE_INVALID",
-                    format!("profile {uid} is not a subscription"),
-                ));
-            }
-        }
-    }
+    validate_merged_members(profiles.latest_arc().as_ref(), &next)?;
 
     let update_result = profiles
         .with_data_modify(|mut candidate| async move {
@@ -121,6 +123,7 @@ pub async fn clear_merged_profiles() -> CmdResult {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::{clears_merge_for_switch, repaired_current};
 
@@ -144,5 +147,33 @@ mod tests {
         assert_eq!(repaired_current(Some(&"b".into()), &remaining), None);
         assert_eq!(repaired_current(None, &remaining), Some("b".into()));
         assert_eq!(repaired_current(Some(&"a".into()), &[]), None);
+    }
+
+    #[test]
+    fn merge_member_validation_rejects_chain_and_accepts_subscriptions() {
+        use crate::config::{IProfiles, PrfItem};
+
+        let item = |uid: &str, itype: &str, file: Option<&str>| PrfItem {
+            uid: Some(uid.into()),
+            itype: Some(itype.into()),
+            file: file.map(Into::into),
+            ..PrfItem::default()
+        };
+        let profiles = IProfiles {
+            current: Some("local".into()),
+            items: Some(vec![
+                item("local", "local", Some("local.yaml")),
+                item("remote", "remote", Some("remote.yaml")),
+                item("merge", "merge", Some("merge.yaml")),
+                item("missing-file", "remote", None),
+            ]),
+        };
+        let uids = |list: &[&str]| list.iter().map(|uid| (*uid).into()).collect::<Vec<_>>();
+
+        assert!(super::validate_merged_members(&profiles, &uids(&["local", "remote"])).is_ok());
+        for rejected in [uids(&["merge"]), uids(&["missing-file"]), uids(&["absent"])] {
+            let error = super::validate_merged_members(&profiles, &rejected).unwrap_err();
+            assert_eq!(error.code.as_deref(), Some("MERGED_PROFILE_INVALID"));
+        }
     }
 }
