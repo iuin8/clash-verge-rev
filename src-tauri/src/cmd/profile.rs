@@ -434,9 +434,9 @@ impl From<ProfilePatch> for PrfItem {
 #[tauri::command]
 #[tracing::instrument(skip_all, level = "info", fields(target = ?profiles.current))]
 #[specta::specta]
-/// Switching to a profile that is a merge member keeps the merge active. The
-/// generated config always uses merged[0] as its base, so `current` may be a
-/// non-primary member; the merge dialog documents that ordering.
+// Switching to a profile that is a merge member keeps the merge active. The
+// generated config always uses merged[0] as its base, so `current` may be a
+// non-primary member; the merge dialog documents that ordering.
 pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<ValidationOutcome> {
     if CURRENT_SWITCHING_PROFILE
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
