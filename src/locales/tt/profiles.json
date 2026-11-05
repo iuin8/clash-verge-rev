@@ -60,18 +60,18 @@
     },
     "title": "Профильләр",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Профильләрне берләштерү",
+      "description": "Берничә профильне бер эффектив конфигурациягә берләштерегез.",
+      "save": "Берләштерүне куллану",
+      "clear": "Берләштерүне чистарту",
+      "conflicts": "Каршылыклар",
+      "empty": "Кулланырлык профильләр юк.",
+      "selectHint": "Ким дигәндә ике профиль сайлагыз.",
+      "saved": "Берләштерү кулланылды.",
+      "moveUp": "Өскә күчерү",
+      "moveDown": "Аска күчерү",
+      "loadError": "Берләштерү исемлеге укылмый. Аны кире кайтару өчен «Берләштерүне чистарту» төймәсенә басыгыз.",
+      "primaryHint": "Беренче сайланган профиль төп (нигез) профиль булып тора."
     }
   },
   "components": {

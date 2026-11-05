@@ -60,18 +60,18 @@
     },
     "title": "Profiller",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Profilleri birleştir",
+      "description": "Birden fazla profili tek bir geçerli yapılandırmada birleştirin.",
+      "save": "Birleştirmeyi uygula",
+      "clear": "Birleştirmeyi temizle",
+      "conflicts": "Çakışmalar",
+      "empty": "Kullanılabilir profil yok.",
+      "selectHint": "En az iki profil seçin.",
+      "saved": "Birleştirme uygulandı.",
+      "moveUp": "Yukarı taşı",
+      "moveDown": "Aşağı taşı",
+      "loadError": "Birleştirme listesi okunamıyor. Sıfırlamak için Birleştirmeyi temizle düğmesine basın.",
+      "primaryHint": "Seçilen ilk profil birincil (temel) profildir."
     }
   },
   "components": {

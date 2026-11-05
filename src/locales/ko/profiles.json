@@ -60,18 +60,18 @@
     },
     "title": "프로필",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "프로필 병합",
+      "description": "여러 프로필을 하나의 유효한 구성으로 병합합니다.",
+      "save": "병합 적용",
+      "clear": "병합 지우기",
+      "conflicts": "충돌",
+      "empty": "사용 가능한 프로필이 없습니다.",
+      "selectHint": "프로필을 두 개 이상 선택하세요.",
+      "saved": "병합이 적용되었습니다.",
+      "moveUp": "위로 이동",
+      "moveDown": "아래로 이동",
+      "loadError": "병합 목록을 읽을 수 없습니다. «병합 지우기»를 눌러 초기화하세요.",
+      "primaryHint": "첫 번째로 선택한 프로필이 기본(베이스) 프로필입니다."
     }
   },
   "components": {

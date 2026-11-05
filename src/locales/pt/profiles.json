@@ -60,18 +60,18 @@
     },
     "title": "Perfis",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Combinar perfis",
+      "description": "Combine vários perfis em uma configuração efetiva.",
+      "save": "Aplicar combinação",
+      "clear": "Limpar combinação",
+      "conflicts": "Conflitos",
+      "empty": "Nenhum perfil disponível.",
+      "selectHint": "Selecione pelo menos dois perfis.",
+      "saved": "Combinação aplicada.",
+      "moveUp": "Mover para cima",
+      "moveDown": "Mover para baixo",
+      "loadError": "Não foi possível ler a lista de combinação. Pressione Limpar combinação para redefini-la.",
+      "primaryHint": "O primeiro perfil selecionado é o perfil principal (base)."
     }
   },
   "components": {

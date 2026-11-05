@@ -60,18 +60,18 @@
     },
     "title": "Profil",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Gabungkan profil",
+      "description": "Gabungkan beberapa profil menjadi satu konfigurasi yang berlaku.",
+      "save": "Terapkan penggabungan",
+      "clear": "Hapus penggabungan",
+      "conflicts": "Konflik",
+      "empty": "Tidak ada profil yang tersedia.",
+      "selectHint": "Pilih minimal dua profil.",
+      "saved": "Penggabungan diterapkan.",
+      "moveUp": "Naik",
+      "moveDown": "Turun",
+      "loadError": "Daftar penggabungan tidak dapat dibaca. Tekan Hapus penggabungan untuk mengatur ulang.",
+      "primaryHint": "Profil pertama yang dipilih adalah profil utama (dasar)."
     }
   },
   "components": {

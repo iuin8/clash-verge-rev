@@ -60,18 +60,18 @@
     },
     "title": "Suscripciones",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Combinar suscripciones",
+      "description": "Combina varias suscripciones en una configuración efectiva.",
+      "save": "Aplicar combinación",
+      "clear": "Borrar combinación",
+      "conflicts": "Conflictos",
+      "empty": "No hay suscripciones disponibles.",
+      "selectHint": "Selecciona al menos dos suscripciones.",
+      "saved": "Combinación aplicada.",
+      "moveUp": "Subir",
+      "moveDown": "Bajar",
+      "loadError": "No se puede leer la lista de combinación. Pulsa «Borrar combinación» para restablecerla.",
+      "primaryHint": "La primera suscripción seleccionada es la principal (base)."
     }
   },
   "components": {

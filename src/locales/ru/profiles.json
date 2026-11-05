@@ -60,18 +60,18 @@
     },
     "title": "Профили",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Объединить профили",
+      "description": "Объедините несколько профилей в одну действующую конфигурацию.",
+      "save": "Применить объединение",
+      "clear": "Очистить объединение",
+      "conflicts": "Конфликты",
+      "empty": "Нет доступных профилей.",
+      "selectHint": "Выберите как минимум два профиля.",
+      "saved": "Объединение применено.",
+      "moveUp": "Вверх",
+      "moveDown": "Вниз",
+      "loadError": "Список объединения недоступен для чтения. Нажмите «Очистить объединение», чтобы сбросить его.",
+      "primaryHint": "Первый выбранный профиль является основным (базовым)."
     }
   },
   "components": {

@@ -60,18 +60,18 @@
     },
     "title": "پروفایل‌ها",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "ادغام پروفایل‌ها",
+      "description": "چند پروفایل را در یک پیکربندی مؤثر ادغام کنید.",
+      "save": "اعمال ادغام",
+      "clear": "پاک‌کردن ادغام",
+      "conflicts": "تضادها",
+      "empty": "هیچ پروفایلی موجود نیست.",
+      "selectHint": "حداقل دو پروفایل انتخاب کنید.",
+      "saved": "ادغام اعمال شد.",
+      "moveUp": "انتقال به بالا",
+      "moveDown": "انتقال به پایین",
+      "loadError": "فهرست ادغام قابل خواندن نیست. برای بازنشانی، «پاک‌کردن ادغام» را بزنید.",
+      "primaryHint": "نخستین پروفایل انتخاب‌شده، پروفایل اصلی (پایه) است."
     }
   },
   "components": {

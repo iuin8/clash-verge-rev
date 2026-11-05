@@ -32,6 +32,35 @@ pub(crate) fn clears_merge_for_switch(target: Option<&String>, merged: &[String]
     target.is_some_and(|target| !merged.is_empty() && !merged.iter().any(|uid| uid == target))
 }
 
+/// Resolve the previous merged list for rollback. Clearing tolerates a corrupt
+/// store because the user explicitly asked to drop the merge list; every other
+/// operation fails closed.
+pub(crate) fn previous_merged_for_update(
+    loaded: anyhow::Result<Vec<String>>,
+    clearing: bool,
+) -> anyhow::Result<Vec<String>> {
+    match loaded {
+        Ok(previous) => Ok(previous),
+        Err(error) if clearing => {
+            logging!(warn, Type::Cmd, "clearing corrupt merged list: {error:#}");
+            Ok(Vec::new())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// A failed switch restores the merge list only if the switch cleared it and
+/// the new runtime config was not validated.
+pub(crate) const fn should_restore_merge_after_switch(clears_merge: bool, succeeded: bool) -> bool {
+    clears_merge && !succeeded
+}
+
+/// A failed delete restores the merged list unless the deletion already
+/// committed, in which case the new merged state is authoritative.
+pub(crate) const fn should_restore_merge_after_delete_failure(deletion_committed: bool) -> bool {
+    !deletion_committed
+}
+
 /// After deleting a merged member, keep `current` on a remaining member rather
 /// than a profile outside the merge.
 pub(crate) fn repaired_current(current: Option<&String>, remaining: &[String]) -> Option<String> {
@@ -73,14 +102,8 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
     let clearing = uids.is_none();
-    let previous_merged = match crate::config::merged::load().await {
-        Ok(previous) => previous,
-        Err(error) if clearing => {
-            logging!(warn, Type::Cmd, "clearing corrupt merged list: {error:#}");
-            Vec::new()
-        }
-        Err(error) => return Err(coded_error("MERGED_PROFILE_LOAD_FAILED", error)),
-    };
+    let previous_merged = previous_merged_for_update(crate::config::merged::load().await, clearing)
+        .with_error_code("MERGED_PROFILE_LOAD_FAILED")?;
     let next: Vec<String> = uids.unwrap_or_default();
 
     validate_merged_members(profiles.latest_arc().as_ref(), &next)?;
@@ -156,7 +179,10 @@ pub(crate) async fn restore_runtime_after_merge_rollback(previous: &[String]) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{clears_merge_for_switch, plan_delete_merge, repaired_current};
+    use super::{
+        clears_merge_for_switch, plan_delete_merge, previous_merged_for_update, repaired_current,
+        should_restore_merge_after_delete_failure, should_restore_merge_after_switch,
+    };
 
     fn uids(list: &[&str]) -> Vec<smartstring::alias::String> {
         list.iter().map(|uid| (*uid).into()).collect()
@@ -231,5 +257,32 @@ mod tests {
         let plan = plan_delete_merge(Some(&current), "a", &uids(&["a"]), false);
         assert!(plan.remaining.is_empty());
         assert_eq!(plan.repaired_current, None);
+    }
+
+    #[test]
+    fn corrupt_merged_store_fails_closed_except_when_clearing() {
+        let loaded = Ok(uids(&["a", "b"]));
+        assert_eq!(previous_merged_for_update(loaded, false).unwrap(), uids(&["a", "b"]));
+
+        let corrupt = || Err(anyhow::anyhow!("invalid merged.json"));
+        assert!(previous_merged_for_update(corrupt(), false).is_err());
+        assert_eq!(
+            previous_merged_for_update(corrupt(), true).unwrap(),
+            Vec::<smartstring::alias::String>::new()
+        );
+    }
+
+    #[test]
+    fn switch_restores_merge_only_when_it_cleared_and_failed() {
+        assert!(should_restore_merge_after_switch(true, false));
+        assert!(!should_restore_merge_after_switch(true, true));
+        assert!(!should_restore_merge_after_switch(false, false));
+        assert!(!should_restore_merge_after_switch(false, true));
+    }
+
+    #[test]
+    fn delete_rolls_back_merge_only_before_commit() {
+        assert!(should_restore_merge_after_delete_failure(false));
+        assert!(!should_restore_merge_after_delete_failure(true));
     }
 }

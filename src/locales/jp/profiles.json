@@ -60,18 +60,18 @@
     },
     "title": "プロファイル",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "プロファイルを統合",
+      "description": "複数のプロファイルを 1 つの有効な設定に統合します。",
+      "save": "統合を適用",
+      "clear": "統合を解除",
+      "conflicts": "競合",
+      "empty": "利用可能なプロファイルがありません。",
+      "selectHint": "2 つ以上のプロファイルを選択してください。",
+      "saved": "統合を適用しました。",
+      "moveUp": "上へ",
+      "moveDown": "下へ",
+      "loadError": "統合リストを読み取れません。「統合を解除」を押してリセットしてください。",
+      "primaryHint": "最初に選択したプロファイルがプライマリ（ベース）プロファイルです。"
     }
   },
   "components": {

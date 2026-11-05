@@ -60,18 +60,18 @@
     },
     "title": "Abonnement",
     "merge": {
-      "title": "Merge profiles",
-      "description": "Merge multiple profiles into one effective config.",
-      "save": "Apply merge",
-      "clear": "Clear merge",
-      "conflicts": "Conflicts",
-      "empty": "No profiles available.",
-      "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied.",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
-      "primaryHint": "The first selected profile is the primary (base) profile."
+      "title": "Abonnements zusammenführen",
+      "description": "Mehrere Abonnements zu einer effektiven Konfiguration zusammenführen.",
+      "save": "Zusammenführung anwenden",
+      "clear": "Zusammenführung löschen",
+      "conflicts": "Konflikte",
+      "empty": "Keine Abonnements verfügbar.",
+      "selectHint": "Wählen Sie mindestens zwei Abonnements aus.",
+      "saved": "Zusammenführung angewendet.",
+      "moveUp": "Nach oben",
+      "moveDown": "Nach unten",
+      "loadError": "Die Zusammenführungsliste ist unlesbar. Klicken Sie auf „Zusammenführung löschen“, um sie zurückzusetzen.",
+      "primaryHint": "Das erste ausgewählte Abonnement ist das primäre (Basis-)Abonnement."
     }
   },
   "components": {

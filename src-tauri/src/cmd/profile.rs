@@ -207,7 +207,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let result = match update_result {
         Ok(result) => result,
         Err(error) => {
-            if !deletion_committed.load(Ordering::Acquire) {
+            if super::merge::should_restore_merge_after_delete_failure(deletion_committed.load(Ordering::Acquire)) {
                 super::merge::restore_runtime_after_merge_rollback(&previous_merged).await;
             }
             return Err(coded_error("PROFILE_DELETE_FAILED", error));
@@ -216,7 +216,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let (needs_runtime_update, current, config_update_guard) = match result {
         Ok(result) => result,
         Err(outcome) => {
-            if !deletion_committed.load(Ordering::Acquire) {
+            if super::merge::should_restore_merge_after_delete_failure(deletion_committed.load(Ordering::Acquire)) {
                 super::merge::restore_runtime_after_merge_rollback(&previous_merged).await;
             }
             handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
@@ -467,8 +467,8 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
     });
 
     let outcome = perform_config_update(target_profile, previous_profile.as_ref()).await;
-    if clears_merge
-        && !matches!(outcome, Ok(ValidationOutcome::Valid))
+    let succeeded = matches!(outcome, Ok(ValidationOutcome::Valid));
+    if super::merge::should_restore_merge_after_switch(clears_merge, succeeded)
         && let Err(error) = crate::config::merged::save(&previous_merged).await
     {
         logging!(warn, Type::Cmd, "failed to restore merged list: {error:#}");
