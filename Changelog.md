@@ -19,7 +19,7 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
-## v2.5.10-fa.0
+## v2.5.10-fa.1
 
 > [!IMPORTANT]
 > 这是基于上游 v2.5.10 的个人 fork 版本。
@@ -28,6 +28,7 @@
 
 - 在 v2.5.10 新架构上重做多订阅合并：订阅管理页可选择、排序并应用多份配置，冲突集中展示
 - 随应用打包的 alpha 内核继续使用本 fork 的发布资产，升级逻辑不再因 rolling tag 被静默跳过
+- Linux 暂只发布 DEB：当前 Tauri RPM bundler 不接受 `-fa.N` 版本号，避免发布不可安装的 RPM
 
 ## v2.5.10
 

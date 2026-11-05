@@ -147,9 +147,6 @@ jobs:
           #### DEB包(Debian/Ubuntu系) 使用 apt install ./路径 安装
           - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
 
-          #### RPM包(Redhat/Fedora系) 使用 dnf install ./路径 安装
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge-${{ env.VERSION }}-1.x86_64.rpm)
-
           ### FAQ
           - [常见问题](https://clash-verge-rev.github.io/faq/windows.html)
 
@@ -282,7 +279,7 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           tauriScript: pnpm
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ matrix.os == 'ubuntu-22.04' && '--bundles deb' || '' }} # FORK: RPM cannot encode -fa.N
           includeUpdaterJson: true
 
       - name: Verify macOS signing
@@ -307,7 +304,6 @@ jobs:
         with:
           subject-path: |
             target/${{ matrix.target }}/release/bundle/deb/*.deb
-            target/${{ matrix.target }}/release/bundle/rpm/*.rpm
 
   release-update:
     if: ${{ !contains(github.ref_name, '-rc') }}
