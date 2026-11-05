@@ -396,7 +396,7 @@ impl IProfiles {
 
     /// FORK: resolve the current profile plus the ordered merged profiles.
     pub async fn current_mapping_resolved(&self) -> Result<Mapping> {
-        let uids = crate::config::merged::load().await;
+        let uids = crate::config::merged::load().await?;
         if uids.is_empty() {
             crate::enhance::multi_merge::publish_conflicts(Vec::new());
             return self.current_mapping().await;

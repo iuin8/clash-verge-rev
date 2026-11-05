@@ -20,7 +20,10 @@ use clash_verge_draft::{Draft, SharedDraft};
 use clash_verge_logging::{Type, logging, logging_error};
 use scopeguard::defer;
 use smartstring::alias::String;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
@@ -157,13 +160,17 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
 
     let profiles = Config::profiles().await;
-    let previous_merged = crate::config::merged::load().await;
+    let previous_merged = crate::config::merged::load()
+        .await
+        .with_error_code("MERGED_PROFILE_LOAD_FAILED")?;
     let deleted_was_merged = previous_merged.iter().any(|uid| uid == &merged_uid);
     let remaining_merged: Vec<String> = previous_merged
         .iter()
         .filter(|uid| *uid != &merged_uid)
         .cloned()
         .collect();
+    let deletion_committed = Arc::new(AtomicBool::new(false));
+    let committed = Arc::clone(&deletion_committed);
     let update_result = profiles
         .with_data_modify(|mut candidate| async move {
             let original = candidate.clone();
@@ -197,13 +204,16 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             };
             let current = candidate.current.clone();
             plan.cleanup().await;
+            committed.store(true, Ordering::Release);
             Ok((candidate, Ok((needs_runtime_update, current, guard))))
         })
         .await;
     let result = match update_result {
         Ok(result) => result,
         Err(error) => {
-            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
+            if !deletion_committed.load(Ordering::Acquire)
+                && let Err(rollback) = crate::config::merged::save(&previous_merged).await
+            {
                 logging!(warn, Type::Cmd, "failed to restore merged list: {rollback:#}");
             }
             return Err(coded_error("PROFILE_DELETE_FAILED", error));
@@ -212,7 +222,9 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let (needs_runtime_update, current, config_update_guard) = match result {
         Ok(result) => result,
         Err(outcome) => {
-            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
+            if !deletion_committed.load(Ordering::Acquire)
+                && let Err(rollback) = crate::config::merged::save(&previous_merged).await
+            {
                 logging!(warn, Type::Cmd, "failed to restore merged list: {rollback:#}");
             }
             handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
@@ -447,7 +459,9 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
 
     let previous_profile = Config::profiles().await.data_arc().current.clone();
 
-    let previous_merged = crate::config::merged::load().await;
+    let previous_merged = crate::config::merged::load()
+        .await
+        .with_error_code("PROFILE_SWITCH_FAILED")?;
     let clears_merge = target_profile
         .is_some_and(|target| !previous_merged.is_empty() && !previous_merged.iter().any(|uid| uid == target));
     if clears_merge && let Err(error) = crate::config::merged::clear().await {
@@ -587,21 +601,38 @@ pub async fn get_next_update_time(uid: std::string::String) -> CmdResult<Option<
     Ok(next_time)
 }
 
+async fn restore_runtime_after_merge_rollback(previous: &[String]) {
+    if let Err(error) = crate::config::merged::save(previous).await {
+        logging!(warn, Type::Cmd, "failed to roll back merged list: {error:#}");
+        return;
+    }
+    if let Err(error) = CoreManager::global().update_config_checked().await {
+        logging!(warn, Type::Cmd, "failed to regenerate after merge rollback: {error:#}");
+    }
+}
+
 /// FORK: read the ordered merged profile UIDs.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_merged_profiles() -> CmdResult<Vec<std::string::String>> {
-    Ok(crate::config::merged::load()
+    let uids = crate::config::merged::load()
         .await
-        .into_iter()
-        .map(Into::into)
-        .collect())
+        .with_error_code("MERGED_PROFILE_LOAD_FAILED")?;
+    Ok(uids.into_iter().map(Into::into).collect())
 }
 
 async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
-    let previous_merged = crate::config::merged::load().await;
+    let clearing = uids.is_none();
+    let previous_merged = match crate::config::merged::load().await {
+        Ok(previous) => previous,
+        Err(error) if clearing => {
+            logging!(warn, Type::Cmd, "clearing corrupt merged list: {error:#}");
+            Vec::new()
+        }
+        Err(error) => return Err(coded_error("MERGED_PROFILE_LOAD_FAILED", error)),
+    };
     let next: Vec<String> = uids.unwrap_or_default();
 
     {
@@ -644,9 +675,7 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     let result = match update_result {
         Ok(result) => result,
         Err(error) => {
-            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
-                logging!(warn, Type::Cmd, "failed to roll back merged list: {rollback:#}");
-            }
+            restore_runtime_after_merge_rollback(&previous_merged).await;
             return Err(coded_error("MERGED_PROFILE_FAILED", error));
         }
     };
@@ -654,9 +683,7 @@ async fn commit_merged_profiles(uids: Option<Vec<String>>) -> CmdResult {
     let config_update_guard = match result {
         Ok(guard) => guard,
         Err(error) => {
-            if let Err(rollback) = crate::config::merged::save(&previous_merged).await {
-                logging!(warn, Type::Cmd, "failed to roll back merged list: {rollback:#}");
-            }
+            restore_runtime_after_merge_rollback(&previous_merged).await;
             return Err(error);
         }
     };

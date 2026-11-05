@@ -25,16 +25,10 @@ fn store_path() -> Result<PathBuf> {
     Ok(dirs::app_home_dir()?.join(MERGED_FILE))
 }
 
-/// 读取合并列表；文件不存在时返回空列表。
-pub async fn load() -> Vec<String> {
-    match read_store().await {
-        Ok(Some(uids)) => uids,
-        Ok(None) => Vec::new(),
-        Err(error) => {
-            logging!(warn, Type::Config, "failed to read {MERGED_FILE}: {error:#}");
-            Vec::new()
-        }
-    }
+/// 读取合并列表；文件不存在时返回空列表。Corrupt state is an error, not
+/// an implicit "disabled": callers must clear it explicitly.
+pub async fn load() -> Result<Vec<String>> {
+    Ok(read_store().await?.unwrap_or_default())
 }
 
 pub async fn save(uids: &[String]) -> Result<()> {
@@ -58,11 +52,15 @@ fn prune_uids(uids: &mut Vec<String>, removed: &str) -> bool {
 
 /// 删除 profile 后把它的 uid 从合并列表里剔除。
 pub async fn remove(uid: &str) -> Result<()> {
-    let mut uids = load().await;
+    let mut uids = load().await?;
     if prune_uids(&mut uids, uid) {
         save(&uids).await?;
     }
     Ok(())
+}
+
+fn parse_store(body: &str) -> Result<MergedStore> {
+    Ok(serde_json::from_str(body)?)
 }
 
 async fn read_store() -> Result<Option<Vec<String>>> {
@@ -73,7 +71,7 @@ async fn read_store() -> Result<Option<Vec<String>>> {
     let body = fs::read_to_string(&path)
         .await
         .with_context(|| format!("failed to read {}", path.display()))?;
-    let store: MergedStore = serde_json::from_str(&body).with_context(|| format!("invalid {}", path.display()))?;
+    let store = parse_store(&body).with_context(|| format!("invalid {}", path.display()))?;
     Ok(Some(store.uids))
 }
 
@@ -83,6 +81,13 @@ mod tests {
 
     fn uids(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).into()).collect()
+    }
+
+    #[test]
+    fn corrupt_store_is_an_error_not_an_empty_list() {
+        assert!(parse_store(r#"{"uids": ["a"]}"#).is_ok());
+        assert!(parse_store("not json").is_err());
+        assert!(parse_store(r#"{"uids": "a"}"#).is_err());
     }
 
     #[test]

@@ -117,8 +117,11 @@ CHANGELOG_CONTENT="## v${VERSION}\n\n"
 
 # 判断是否是 fork 版本（包含 -suffix.N 格式）
 if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-[a-zA-Z0-9]+\.[0-9]+$'; then
-  # 从 package.json 获取基础版本号（去掉 fork 的 -fa.N 后缀）
-  UPSTREAM_VERSION=$(jq -r '.version' package.json 2>/dev/null | sed -E 's/-fa\..*$//' || echo "unknown")
+  # 从 package.json 获取基础版本号（去掉 fork 的 -<suffix>.N 后缀）
+  UPSTREAM_VERSION=$(jq -r '.version' package.json 2>/dev/null | sed -E 's/-[A-Za-z0-9]+\.[0-9]+$//' || true)
+  if [ -z "$UPSTREAM_VERSION" ]; then
+    UPSTREAM_VERSION="unknown"
+  fi
 
   CHANGELOG_CONTENT="${CHANGELOG_CONTENT}> [!IMPORTANT]\n"
   if [ "$UPSTREAM_VERSION" != "unknown" ]; then
