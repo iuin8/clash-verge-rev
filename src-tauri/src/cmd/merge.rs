@@ -5,6 +5,24 @@ use crate::core::{CoreManager, handle};
 use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 
+/// A single-profile switch clears merge mode only when the target is not one
+/// of its members.
+pub(crate) fn clears_merge_for_switch(target: Option<&String>, merged: &[String]) -> bool {
+    target.is_some_and(|target| !merged.is_empty() && !merged.iter().any(|uid| uid == target))
+}
+
+/// After deleting a merged member, keep `current` on a remaining member rather
+/// than a profile outside the merge.
+pub(crate) fn repaired_current(current: Option<&String>, remaining: &[String]) -> Option<String> {
+    if remaining.is_empty() {
+        return None;
+    }
+    if current.is_some_and(|current| remaining.iter().any(|uid| uid == current)) {
+        return None;
+    }
+    remaining.first().cloned()
+}
+
 /// FORK: read the ordered merged profile UIDs.
 #[tauri::command]
 #[specta::specta]
@@ -100,4 +118,31 @@ pub async fn set_merged_profiles(uids: Vec<std::string::String>) -> CmdResult {
 #[specta::specta]
 pub async fn clear_merged_profiles() -> CmdResult {
     commit_merged_profiles(None).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clears_merge_for_switch, repaired_current};
+
+    fn uids(list: &[&str]) -> Vec<smartstring::alias::String> {
+        list.iter().map(|uid| (*uid).into()).collect()
+    }
+
+    #[test]
+    fn switch_clears_only_when_target_is_outside_merge() {
+        let merged = uids(&["a", "b"]);
+        assert!(!clears_merge_for_switch(Some(&"a".into()), &merged));
+        assert!(clears_merge_for_switch(Some(&"c".into()), &merged));
+        assert!(!clears_merge_for_switch(None, &merged));
+        assert!(!clears_merge_for_switch(Some(&"a".into()), &[]));
+    }
+
+    #[test]
+    fn delete_repairs_current_when_it_left_the_merged_members() {
+        let remaining = uids(&["b", "c"]);
+        assert_eq!(repaired_current(Some(&"a".into()), &remaining), Some("b".into()));
+        assert_eq!(repaired_current(Some(&"b".into()), &remaining), None);
+        assert_eq!(repaired_current(None, &remaining), Some("b".into()));
+        assert_eq!(repaired_current(Some(&"a".into()), &[]), None);
+    }
 }

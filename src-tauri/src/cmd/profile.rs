@@ -178,14 +178,9 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             // Remove the uid before generating: a fail-closed merge resolver must
             // not try to load the profile that is being deleted.
             crate::config::merged::remove(&merged_uid).await?;
-            if !remaining_merged.is_empty()
-                && candidate
-                    .current
-                    .as_ref()
-                    .is_none_or(|current| !remaining_merged.contains(current))
-            {
+            if let Some(primary) = super::merge::repaired_current(candidate.current.as_ref(), &remaining_merged) {
                 candidate.patch_config(&IProfiles {
-                    current: remaining_merged.first().cloned(),
+                    current: Some(primary),
                     items: None,
                 });
             }
@@ -461,8 +456,7 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
     let previous_merged = crate::config::merged::load()
         .await
         .with_error_code("PROFILE_SWITCH_FAILED")?;
-    let clears_merge = target_profile
-        .is_some_and(|target| !previous_merged.is_empty() && !previous_merged.iter().any(|uid| uid == target));
+    let clears_merge = super::merge::clears_merge_for_switch(target_profile, &previous_merged);
     if clears_merge && let Err(error) = crate::config::merged::clear().await {
         return Err(coded_error("PROFILE_SWITCH_FAILED", error));
     }
