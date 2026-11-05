@@ -163,12 +163,7 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let previous_merged = crate::config::merged::load()
         .await
         .with_error_code("MERGED_PROFILE_LOAD_FAILED")?;
-    let deleted_was_merged = previous_merged.iter().any(|uid| uid == &merged_uid);
-    let remaining_merged: Vec<String> = previous_merged
-        .iter()
-        .filter(|uid| *uid != &merged_uid)
-        .cloned()
-        .collect();
+    let merge_snapshot = previous_merged.clone();
     let deletion_committed = Arc::new(AtomicBool::new(false));
     let committed = Arc::clone(&deletion_committed);
     let update_result = profiles
@@ -178,13 +173,19 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             // Remove the uid before generating: a fail-closed merge resolver must
             // not try to load the profile that is being deleted.
             crate::config::merged::remove(&merged_uid).await?;
-            if let Some(primary) = super::merge::repaired_current(candidate.current.as_ref(), &remaining_merged) {
+            let merge_plan = super::merge::plan_delete_merge(
+                candidate.current.as_ref(),
+                &merged_uid,
+                &merge_snapshot,
+                should_update,
+            );
+            if let Some(primary) = merge_plan.repaired_current.clone() {
                 candidate.patch_config(&IProfiles {
                     current: Some(primary),
                     items: None,
                 });
             }
-            let needs_runtime_update = should_update || deleted_was_merged;
+            let needs_runtime_update = merge_plan.needs_runtime_update;
             let guard = if needs_runtime_update {
                 match CoreManager::global()
                     .update_config_forced_with_profiles(&candidate, &original)

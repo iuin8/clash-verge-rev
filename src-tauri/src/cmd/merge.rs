@@ -5,6 +5,28 @@ use crate::core::{CoreManager, handle};
 use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 
+/// Pure outcome of deleting one member from the merged list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeleteMergePlan {
+    pub(crate) remaining: Vec<String>,
+    pub(crate) repaired_current: Option<String>,
+    pub(crate) needs_runtime_update: bool,
+}
+
+pub(crate) fn plan_delete_merge(
+    current: Option<&String>,
+    deleted: &str,
+    merged: &[String],
+    should_update: bool,
+) -> DeleteMergePlan {
+    let remaining: Vec<String> = merged.iter().filter(|uid| uid.as_str() != deleted).cloned().collect();
+    DeleteMergePlan {
+        repaired_current: repaired_current(current, &remaining),
+        needs_runtime_update: should_update || merged.iter().any(|uid| uid == deleted),
+        remaining,
+    }
+}
+
 /// A single-profile switch clears merge mode only when the target is not one
 /// of its members.
 pub(crate) fn clears_merge_for_switch(target: Option<&String>, merged: &[String]) -> bool {
@@ -125,7 +147,7 @@ pub async fn clear_merged_profiles() -> CmdResult {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{clears_merge_for_switch, repaired_current};
+    use super::{clears_merge_for_switch, plan_delete_merge, repaired_current};
 
     fn uids(list: &[&str]) -> Vec<smartstring::alias::String> {
         list.iter().map(|uid| (*uid).into()).collect()
@@ -175,5 +197,30 @@ mod tests {
             let error = super::validate_merged_members(&profiles, &rejected).unwrap_err();
             assert_eq!(error.code.as_deref(), Some("MERGED_PROFILE_INVALID"));
         }
+    }
+
+    #[test]
+    fn delete_plan_handles_current_and_runtime_decisions() {
+        let merged = uids(&["a", "b"]);
+        let current = "a".into();
+
+        let plan = plan_delete_merge(Some(&current), "a", &merged, false);
+        assert_eq!(plan.remaining, uids(&["b"]));
+        assert_eq!(plan.repaired_current, Some("b".into()));
+        assert!(plan.needs_runtime_update);
+
+        let plan = plan_delete_merge(Some(&current), "b", &merged, false);
+        assert_eq!(plan.remaining, uids(&["a"]));
+        assert_eq!(plan.repaired_current, None);
+        assert!(plan.needs_runtime_update);
+
+        let plan = plan_delete_merge(Some(&current), "other", &merged, false);
+        assert_eq!(plan.remaining, merged);
+        assert_eq!(plan.repaired_current, None);
+        assert!(!plan.needs_runtime_update);
+
+        let plan = plan_delete_merge(Some(&current), "a", &uids(&["a"]), false);
+        assert!(plan.remaining.is_empty());
+        assert_eq!(plan.repaired_current, None);
     }
 }
