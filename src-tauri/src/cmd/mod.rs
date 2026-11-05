@@ -166,6 +166,9 @@ impl<T, E: std::fmt::Display> WithErrorCode<T> for Result<T, E> {
 }
 
 #[cfg(test)]
+mod merge_acceptance;
+
+#[cfg(test)]
 mod tests {
     use anyhow::Context as _;
 
