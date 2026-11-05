@@ -143,6 +143,13 @@ export function MergeManager() {
           <Typography variant="caption" color="text.secondary">
             {t('profiles.page.merge.selectHint')}
           </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block' }}
+          >
+            {t('profiles.page.merge.primaryHint')}
+          </Typography>
           {loadError && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               {t('profiles.page.merge.loadError')}
@@ -164,8 +171,8 @@ export function MergeManager() {
                       <Stack direction="row" spacing={0.25}>
                         <IconButton
                           size="small"
-                          title="Move up"
-                          aria-label="Move up"
+                          title={t('profiles.page.merge.moveUp')}
+                          aria-label={t('profiles.page.merge.moveUp')}
                           disabled={order === 0}
                           onClick={() => move(item.uid, -1)}
                         >
@@ -173,8 +180,8 @@ export function MergeManager() {
                         </IconButton>
                         <IconButton
                           size="small"
-                          title="Move down"
-                          aria-label="Move down"
+                          title={t('profiles.page.merge.moveDown')}
+                          aria-label={t('profiles.page.merge.moveDown')}
                           disabled={order === selected.length - 1}
                           onClick={() => move(item.uid, 1)}
                         >

@@ -101,5 +101,3 @@ pub async fn set_merged_profiles(uids: Vec<std::string::String>) -> CmdResult {
 pub async fn clear_merged_profiles() -> CmdResult {
     commit_merged_profiles(None).await
 }
-
-// FORK: conflicts from the latest multi-profile merge.
