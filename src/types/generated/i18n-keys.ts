@@ -204,6 +204,7 @@ export const translationKeys = [
   'profiles.page.merge.conflict.topLevelKeyKept',
   'profiles.page.merge.conflict.topLevelKeyIgnored',
   'profiles.page.merge.conflict.groupReferenceMissing',
+  'profiles.page.merge.conflict.unknown',
   'profiles.page.merge.empty',
   'profiles.page.merge.selectHint',
   'profiles.page.merge.saved',

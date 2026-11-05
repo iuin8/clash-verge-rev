@@ -490,6 +490,7 @@ export interface TranslationResources {
             primaryFieldMalformed: string
             topLevelKeyIgnored: string
             topLevelKeyKept: string
+            unknown: string
           }
           conflicts: string
           description: string

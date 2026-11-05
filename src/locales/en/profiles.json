@@ -71,7 +71,8 @@
         "groupIncompatible": "Group {{name}} from {{source}} already exists in the primary profile with incompatible settings; the existing group was kept.",
         "topLevelKeyKept": "Key {{name}} from {{source}} already exists in the primary profile; the primary value was kept.",
         "topLevelKeyIgnored": "Key {{name}} from {{source}} is not merged; only the primary profile may define it.",
-        "groupReferenceMissing": "Group {{source}} references a missing proxy/provider/group {{name}}; the reference was dropped."
+        "groupReferenceMissing": "Group {{source}} references a missing proxy/provider/group {{name}}; the reference was dropped.",
+        "unknown": "An unexpected merge conflict occurred for {{name}} in {{source}} ({{field}})."
       },
       "empty": "No profiles available.",
       "selectHint": "Select at least two profiles.",

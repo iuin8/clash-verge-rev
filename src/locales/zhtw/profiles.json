@@ -71,7 +71,8 @@
         "groupIncompatible": "{{source}} 的分組 {{name}} 與主設定中的同名分組設定不相容，已保留主設定中的分組。",
         "topLevelKeyKept": "{{source}} 的 {{name}} 項目與主設定衝突，已保留主設定的值。",
         "topLevelKeyIgnored": "{{source}} 的 {{name}} 項目未參與合併，此欄位只能由主設定定義。",
-        "groupReferenceMissing": "分組 {{source}} 參照了不存在的節點/代理提供者/分組 {{name}}，該參照已被移除。"
+        "groupReferenceMissing": "分組 {{source}} 參照了不存在的節點/代理提供者/分組 {{name}}，該參照已被移除。",
+        "unknown": "{{source}} 中的 {{name}} 發生了一個未識別的合併衝突（{{field}}）。"
       },
       "empty": "沒有可用訂閱。",
       "selectHint": "請至少選擇兩個訂閱。",

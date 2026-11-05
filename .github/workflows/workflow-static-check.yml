@@ -1,7 +1,8 @@
 name: Workflow Static Checks
 
 # Fast static gate for the fork release workflow and fork-owned file lengths.
-# It runs only when the files it guards change and needs no secrets, Docker,
+# It runs only when the files it guards change (including the src-tauri source
+# and test paths the fork-length gate targets) and needs no secrets, Docker,
 # act, tags or release operations.
 #
 # The authoritative file-length/link gate is `sh tools/check-workspace.sh` at
@@ -18,6 +19,8 @@ on:
       - "package.json"
       - "Changelog.md"
       - "src-tauri/tauri.conf.json"
+      - "src-tauri/src/**"
+      - "src-tauri/tests/**"
   push:
     branches: [dev, "fa/**"]
     paths:
@@ -27,6 +30,8 @@ on:
       - "package.json"
       - "Changelog.md"
       - "src-tauri/tauri.conf.json"
+      - "src-tauri/src/**"
+      - "src-tauri/tests/**"
   workflow_dispatch:
 
 permissions:

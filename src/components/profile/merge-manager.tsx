@@ -219,20 +219,28 @@ export function MergeManager() {
                 {t('profiles.page.merge.conflicts')}
               </Typography>
               <Box sx={{ maxHeight: 180, overflow: 'auto' }}>
-                {conflicts.map((conflict) => (
-                  <Typography
-                    key={`${conflict.field}-${conflict.name}-${conflict.source}-${conflict.reason}`}
-                    variant="caption"
-                    sx={{ display: 'block' }}
-                  >
-                    {t(`profiles.page.merge.conflict.${conflict.code}`, {
-                      field: conflict.field,
-                      name: conflict.name,
-                      source: conflict.source,
-                      defaultValue: conflict.reason,
-                    })}
-                  </Typography>
-                ))}
+                {conflicts.map((conflict) => {
+                  const params = {
+                    field: conflict.field,
+                    name: conflict.name,
+                    source: conflict.source,
+                  }
+                  return (
+                    <Typography
+                      key={`${conflict.field}-${conflict.name}-${conflict.source}-${conflict.reason}`}
+                      variant="caption"
+                      sx={{ display: 'block' }}
+                    >
+                      {t(`profiles.page.merge.conflict.${conflict.code}`, {
+                        ...params,
+                        defaultValue: t(
+                          'profiles.page.merge.conflict.unknown',
+                          params,
+                        ),
+                      })}
+                    </Typography>
+                  )
+                })}
               </Box>
             </>
           )}

@@ -71,7 +71,8 @@
         "groupIncompatible": "El grupo {{name}} de {{source}} ya existe en el perfil principal con ajustes incompatibles; se mantuvo el grupo existente.",
         "topLevelKeyKept": "La clave {{name}} de {{source}} ya existe en el perfil principal; se mantuvo el valor principal.",
         "topLevelKeyIgnored": "La clave {{name}} de {{source}} no se combina; solo el perfil principal puede definirla.",
-        "groupReferenceMissing": "El grupo {{source}} hace referencia a un proxy/proveedor/grupo inexistente {{name}}; se descartó la referencia."
+        "groupReferenceMissing": "El grupo {{source}} hace referencia a un proxy/proveedor/grupo inexistente {{name}}; se descartó la referencia.",
+        "unknown": "Se produjo un conflicto de combinación desconocido para {{name}} en {{source}} ({{field}})."
       },
       "empty": "No hay suscripciones disponibles.",
       "selectHint": "Selecciona al menos dos suscripciones.",

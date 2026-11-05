@@ -71,7 +71,8 @@
         "groupIncompatible": "{{source}} のグループ {{name}} は、互換性のない設定でプライマリプロファイルに既に存在するため、既存のグループを保持しました。",
         "topLevelKeyKept": "{{source}} のキー {{name}} はプライマリプロファイルに既に存在するため、プライマリの値を保持しました。",
         "topLevelKeyIgnored": "{{source}} のキー {{name}} はマージされません。このキーはプライマリプロファイルでのみ定義できます。",
-        "groupReferenceMissing": "グループ {{source}} が存在しないプロキシ/プロバイダー/グループ {{name}} を参照しているため、参照を削除しました。"
+        "groupReferenceMissing": "グループ {{source}} が存在しないプロキシ/プロバイダー/グループ {{name}} を参照しているため、参照を削除しました。",
+        "unknown": "{{source}} の {{name}} で不明なマージ競合が発生しました（{{field}}）。"
       },
       "empty": "利用可能なプロファイルがありません。",
       "selectHint": "2 つ以上のプロファイルを選択してください。",

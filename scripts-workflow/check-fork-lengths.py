@@ -20,9 +20,14 @@ the workspace-root allowlist live outside this repository. Run the full gate at
 the workspace root before pushing. In-repo there are no fork-owned Markdown
 docs whose links need checking, so only the length half runs here.
 
+The same script asserts that every TARGETS pattern is covered by the
+pull_request and push path filters of .github/workflows/workflow-static-check.yml,
+so a newly added fork-owned target cannot silently stop running in CI.
+
 Usage:
     python3 scripts-workflow/check-fork-lengths.py [--root PATH] [--verbose]
-Exit codes: 0 pass (soft overages are reported but allowed), 1 hard violation.
+Exit codes: 0 pass (soft overages are reported but allowed), 1 hard violation
+or trigger-coverage gap.
 """
 
 from __future__ import annotations
@@ -30,6 +35,11 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - environment problem, not a check failure
+    sys.exit("PyYAML is required: python3 -m pip install pyyaml")
 
 THRESHOLDS = {
     ".md": (300, 500),
@@ -40,6 +50,8 @@ THRESHOLDS = {
     ".yaml": (400, 600),
     ".yml": (400, 600),
 }
+
+WORKFLOW = Path(".github/workflows/workflow-static-check.yml")
 
 # Mirror of the clash-verge-rev entries in workspace tools/check-file-lengths.py.
 TARGETS = [
@@ -68,6 +80,52 @@ def collect(root: Path) -> list[Path]:
     for pattern in TARGETS:
         files.update(p for p in root.glob(pattern) if p.is_file())
     return sorted(files)
+
+
+def path_covers(pattern: str, target: str) -> bool:
+    """Whether a workflow path filter necessarily matches a target pattern."""
+    pattern = pattern.rstrip("/")
+    target = target.rstrip("/")
+    if pattern == target:
+        return True
+    if pattern.endswith("/**"):
+        base = pattern[:-3]
+        return target == base or target.startswith(base + "/")
+    if pattern.endswith("*") and not pattern.endswith("**"):
+        base = pattern[:-1]
+        return target.startswith(base) and "/" not in target[len(base):]
+    return False
+
+
+def check_trigger_coverage(root: Path) -> int:
+    workflow = root / WORKFLOW
+    if not workflow.is_file():
+        print(f"FAIL trigger coverage: missing {WORKFLOW}")
+        return 1
+    data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    on = data.get("on", data.get(True)) if isinstance(data, dict) else None
+    missing = 0
+    for event in ("pull_request", "push"):
+        config = on.get(event) if isinstance(on, dict) else None
+        paths = config.get("paths", []) if isinstance(config, dict) else []
+        if isinstance(paths, str):
+            paths = [paths]
+        if not paths:
+            print(f"FAIL trigger coverage: {event} has no paths")
+            missing += 1
+            continue
+        for target in TARGETS:
+            if not any(path_covers(str(p), target) for p in paths):
+                print(
+                    f"FAIL trigger coverage: {event}.paths does not cover {target}"
+                )
+                missing += 1
+    if not missing:
+        print(
+            f"OK trigger coverage: {len(TARGETS)} fork targets covered by "
+            "pull_request and push paths"
+        )
+    return missing
 
 
 def main() -> int:
@@ -111,8 +169,12 @@ def main() -> int:
         "SKIP link gate: docs/workspace lives at the workspace root, outside "
         "this repository; run `sh tools/check-workspace.sh` there."
     )
-    if hard:
-        print(f"\nFAIL: {hard} hard file-length violation(s)")
+    coverage = check_trigger_coverage(root)
+    if hard or coverage:
+        print(
+            f"\nFAIL: {hard} hard file-length violation(s), "
+            f"{coverage} trigger-coverage gap(s)"
+        )
         return 1
     print(f"OK: {len(files)} fork-owned file(s) within hard length limits")
     return 0

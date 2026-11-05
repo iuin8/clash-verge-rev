@@ -71,7 +71,8 @@
         "groupIncompatible": "{{source}} içindeki {{name}} grubu, ana profilde uyumsuz ayarlarla zaten mevcut; mevcut grup korundu.",
         "topLevelKeyKept": "{{source}} içindeki {{name}} anahtarı ana profilde zaten mevcut; ana değer korundu.",
         "topLevelKeyIgnored": "{{source}} içindeki {{name}} anahtarı birleştirilmez; bu anahtarı yalnızca ana profil tanımlayabilir.",
-        "groupReferenceMissing": "{{source}} grubu, mevcut olmayan bir proxy/sağlayıcı/grup olan {{name}} öğesine başvuruyor; başvuru kaldırıldı."
+        "groupReferenceMissing": "{{source}} grubu, mevcut olmayan bir proxy/sağlayıcı/grup olan {{name}} öğesine başvuruyor; başvuru kaldırıldı.",
+        "unknown": "{{source}} içindeki {{name}} için bilinmeyen bir birleştirme çakışması oluştu ({{field}})."
       },
       "empty": "Kullanılabilir profil yok.",
       "selectHint": "En az iki profil seçin.",

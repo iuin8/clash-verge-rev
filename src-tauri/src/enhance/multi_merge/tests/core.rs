@@ -172,6 +172,76 @@ fn conflict_codes_serialize_as_stable_camel_case() {
     assert_eq!(json["code"], "topLevelKeyKept");
 }
 
+/// Locale key names for every conflict code. The inner `match` is exhaustive so
+/// adding a `ConflictCode` variant stops this test from compiling until it is
+/// listed here and given a message in every locale.
+fn conflict_code_locale_keys() -> Vec<(ConflictCode, &'static str)> {
+    fn key_name(code: ConflictCode) -> &'static str {
+        match code {
+            ConflictCode::PrimaryFieldMalformed => "primaryFieldMalformed",
+            ConflictCode::GroupMembersMalformed => "groupMembersMalformed",
+            ConflictCode::GroupIncompatible => "groupIncompatible",
+            ConflictCode::TopLevelKeyKept => "topLevelKeyKept",
+            ConflictCode::TopLevelKeyIgnored => "topLevelKeyIgnored",
+            ConflictCode::GroupReferenceMissing => "groupReferenceMissing",
+        }
+    }
+
+    [
+        ConflictCode::PrimaryFieldMalformed,
+        ConflictCode::GroupMembersMalformed,
+        ConflictCode::GroupIncompatible,
+        ConflictCode::TopLevelKeyKept,
+        ConflictCode::TopLevelKeyIgnored,
+        ConflictCode::GroupReferenceMissing,
+    ]
+    .into_iter()
+    .map(|code| (code, key_name(code)))
+    .collect()
+}
+
+#[test]
+fn every_conflict_code_has_a_message_in_every_locale() {
+    let locale_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/locales");
+    let mut locales: Vec<String> = std::fs::read_dir(&locale_root)
+        .expect("locale root is readable")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join("profiles.json").is_file())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    locales.sort();
+    assert!(locales.len() >= 14, "expected all shipped locales: {locales:?}");
+
+    let codes = conflict_code_locale_keys();
+    let expected: std::collections::BTreeSet<&str> = codes.iter().map(|(_, key)| *key).chain(["unknown"]).collect();
+
+    for locale in &locales {
+        let path = locale_root.join(locale).join("profiles.json");
+        let raw = std::fs::read_to_string(&path).expect("locale profiles.json is readable");
+        let json: serde_json::Value = serde_json::from_str(&raw).expect("locale profiles.json is valid JSON");
+        let messages = json
+            .pointer("/page/merge/conflict")
+            .and_then(serde_json::Value::as_object)
+            .expect("locale profiles.json has page.merge.conflict");
+        for (code, key) in &codes {
+            let wire = serde_json::to_value(code).expect("conflict code serializes");
+            assert_eq!(wire.as_str(), Some(*key), "{locale}: serde name drifted");
+            let message = messages.get(*key).and_then(serde_json::Value::as_str);
+            assert!(
+                message.is_some_and(|value| !value.is_empty()),
+                "{locale}: missing non-empty merge conflict message '{key}'"
+            );
+        }
+        let unknown = messages.get("unknown").and_then(serde_json::Value::as_str);
+        assert!(
+            unknown.is_some_and(|value| !value.is_empty()),
+            "{locale}: missing non-empty merge conflict fallback 'unknown'"
+        );
+        let actual: std::collections::BTreeSet<&str> = messages.keys().map(String::as_str).collect();
+        assert_eq!(actual, expected, "{locale}: conflict key set drifted from ConflictCode");
+    }
+}
+
 #[test]
 fn supplementary_rule_providers_are_merged_into_result() {
     let primary = mapping("rules:\n  - MATCH,DIRECT");
