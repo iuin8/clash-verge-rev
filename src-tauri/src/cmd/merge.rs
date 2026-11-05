@@ -1,4 +1,3 @@
-use super::profile::restore_runtime_after_merge_rollback;
 use super::{CmdResult, WithErrorCode as _, coded_error};
 use crate::config::{Config, IProfiles, profiles::PROFILE_WRITE_LOCK};
 use crate::core::{CoreManager, handle};
@@ -142,6 +141,16 @@ pub async fn set_merged_profiles(uids: Vec<std::string::String>) -> CmdResult {
 #[specta::specta]
 pub async fn clear_merged_profiles() -> CmdResult {
     commit_merged_profiles(None).await
+}
+
+pub(crate) async fn restore_runtime_after_merge_rollback(previous: &[String]) {
+    if let Err(error) = crate::config::merged::save(previous).await {
+        logging!(warn, Type::Cmd, "failed to roll back merged list: {error:#}");
+        return;
+    }
+    if let Err(error) = CoreManager::global().update_config_checked().await {
+        logging!(warn, Type::Cmd, "failed to regenerate after merge rollback: {error:#}");
+    }
 }
 
 #[cfg(test)]
