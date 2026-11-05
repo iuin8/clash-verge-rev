@@ -67,7 +67,11 @@
       "conflicts": "Conflicts",
       "empty": "No profiles available.",
       "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied."
+      "saved": "Merge applied.",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "loadError": "合并列表无法读取，请点“清除合并”重置。",
+      "primaryHint": "第一个选中的订阅是主配置（基础配置）。"
     }
   },
   "components": {

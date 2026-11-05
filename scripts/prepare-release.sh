@@ -117,9 +117,10 @@ CHANGELOG_CONTENT="## v${VERSION}\n\n"
 
 # 判断是否是 fork 版本（包含 -suffix.N 格式）
 if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+-[a-zA-Z0-9]+\.[0-9]+$'; then
-  # 从 package.json 获取基础版本号（去掉 fork 的 -<suffix>.N 后缀）
-  UPSTREAM_VERSION=$(jq -r '.version' package.json 2>/dev/null | sed -E 's/-[A-Za-z0-9]+\.[0-9]+$//' || true)
-  if [ -z "$UPSTREAM_VERSION" ]; then
+  # The tag carries the upstream base (v2.5.11-fa.0 -> 2.5.11); do not read it
+  # from package.json, which still contains the previous fork version here.
+  UPSTREAM_VERSION=$(echo "$TAG_NAME" | sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*$/\1/')
+  if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "$TAG_NAME" ]; then
     UPSTREAM_VERSION="unknown"
   fi
 

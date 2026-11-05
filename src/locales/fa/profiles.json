@@ -67,7 +67,11 @@
       "conflicts": "Conflicts",
       "empty": "No profiles available.",
       "selectHint": "Select at least two profiles.",
-      "saved": "Merge applied."
+      "saved": "Merge applied.",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "loadError": "The merge list is unreadable. Press Clear merge to reset it.",
+      "primaryHint": "The first selected profile is the primary (base) profile."
     }
   },
   "components": {

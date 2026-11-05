@@ -35,12 +35,15 @@ export function MergeManager() {
   const [selected, setSelected] = useState<string[]>([])
   const [conflicts, setConflicts] = useState<ConflictEntry[]>([])
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(async () => {
     try {
       setSelected(await getMergedProfiles())
       setConflicts(await getMergeConflicts())
+      setLoadError(false)
     } catch (error) {
+      setLoadError(true)
       showNotice.error(error)
     }
   }, [])
@@ -108,6 +111,7 @@ export function MergeManager() {
       })
       setSelected([])
       setConflicts([])
+      setLoadError(false)
     } catch (error) {
       showNotice.error(error)
     } finally {
@@ -139,6 +143,11 @@ export function MergeManager() {
           <Typography variant="caption" color="text.secondary">
             {t('profiles.page.merge.selectHint')}
           </Typography>
+          {loadError && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              {t('profiles.page.merge.loadError')}
+            </Typography>
+          )}
           <List dense sx={{ mt: 1 }}>
             {items.length === 0 && (
               <Typography variant="body2" color="text.secondary">

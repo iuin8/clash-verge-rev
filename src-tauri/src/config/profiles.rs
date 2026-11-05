@@ -396,12 +396,11 @@ impl IProfiles {
 
     /// FORK: resolve the current profile plus the ordered merged profiles.
     pub async fn current_mapping_resolved(&self) -> Result<Mapping> {
+        crate::enhance::multi_merge::publish_conflicts(Vec::new());
         let uids = crate::config::merged::load().await?;
         if uids.is_empty() {
-            crate::enhance::multi_merge::publish_conflicts(Vec::new());
             return self.current_mapping().await;
         }
-        crate::enhance::multi_merge::publish_conflicts(Vec::new());
         let Some(items) = self.items.as_ref() else {
             bail!("multi-merge: profiles are unavailable");
         };
