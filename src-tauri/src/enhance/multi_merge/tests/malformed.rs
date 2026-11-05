@@ -1,4 +1,4 @@
-use super::super::multi_profile_merge;
+use super::super::{ConflictCode, multi_profile_merge};
 use super::{group_mapping, mapping};
 
 #[test]
@@ -9,6 +9,7 @@ fn malformed_primary_proxies_are_replaced_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::PrimaryFieldMalformed);
     assert_eq!(conflicts[0].field, "proxies");
     let proxies = result.get("proxies").unwrap().as_sequence().unwrap();
     assert_eq!(proxies.len(), 1);
@@ -37,6 +38,7 @@ fn malformed_primary_rules_are_replaced_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::PrimaryFieldMalformed);
     assert_eq!(conflicts[0].field, "rules");
     let rules = result.get("rules").unwrap().as_sequence().unwrap();
     assert_eq!(rules.len(), 1);
@@ -74,6 +76,7 @@ fn malformed_primary_proxy_groups_are_replaced_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::PrimaryFieldMalformed);
     assert_eq!(conflicts[0].field, "proxy-groups");
     let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
     assert_eq!(groups.len(), 1);
@@ -102,6 +105,7 @@ fn malformed_primary_proxy_group_members_are_repaired_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::GroupMembersMalformed);
     assert_eq!(conflicts[0].field, "proxy-groups");
     let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
     let proxies = groups[0]
@@ -123,6 +127,7 @@ fn malformed_primary_proxy_group_use_members_are_repaired_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::GroupMembersMalformed);
     assert_eq!(conflicts[0].field, "proxy-groups");
     let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
     let providers = groups[0]
@@ -194,6 +199,7 @@ fn malformed_primary_rule_providers_are_replaced_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::PrimaryFieldMalformed);
     assert_eq!(conflicts[0].field, "rule-providers");
     let providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
     assert!(providers.get("Local-LAN").is_some());
@@ -232,6 +238,7 @@ fn malformed_primary_proxy_providers_are_replaced_during_merge() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::PrimaryFieldMalformed);
     assert_eq!(conflicts[0].field, "proxy-providers");
     let providers = result.get("proxy-providers").unwrap().as_mapping().unwrap();
     assert!(providers.get("provider-b").is_some());

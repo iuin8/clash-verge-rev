@@ -225,7 +225,12 @@ export function MergeManager() {
                     variant="caption"
                     sx={{ display: 'block' }}
                   >
-                    {conflict.field}: {conflict.name} — {conflict.reason}
+                    {t(`profiles.page.merge.conflict.${conflict.code}`, {
+                      field: conflict.field,
+                      name: conflict.name,
+                      source: conflict.source,
+                      defaultValue: conflict.reason,
+                    })}
                   </Typography>
                 ))}
               </Box>

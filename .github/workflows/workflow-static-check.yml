@@ -1,0 +1,59 @@
+name: Workflow Static Checks
+
+# Fast static gate for the fork release workflow and fork-owned file lengths.
+# It runs only when the files it guards change and needs no secrets, Docker,
+# act, tags or release operations.
+#
+# The authoritative file-length/link gate is `sh tools/check-workspace.sh` at
+# the workspace root. GitHub Actions checks out this repository only, so that
+# checkout is unavailable; the job runs the in-repo subset
+# (scripts-workflow/check-fork-lengths.py). The docs/workspace link half must
+# still run at the workspace root before pushing.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "scripts-workflow/**"
+      - "scripts/prepare-release.sh"
+      - "package.json"
+      - "Changelog.md"
+      - "src-tauri/tauri.conf.json"
+  push:
+    branches: [dev, "fa/**"]
+    paths:
+      - ".github/workflows/**"
+      - "scripts-workflow/**"
+      - "scripts/prepare-release.sh"
+      - "package.json"
+      - "Changelog.md"
+      - "src-tauri/tauri.conf.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-static-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Workflow and fork hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML (pinned)
+        run: python -m pip install --disable-pip-version-check --no-input pyyaml==6.0.3
+
+      - name: Validate workflows, needs/expressions, scripts and tag expectations
+        run: python3 scripts-workflow/check-release-workflow.py --no-act
+
+      - name: Fork-owned file-length gate (in-repo subset)
+        run: python3 scripts-workflow/check-fork-lengths.py

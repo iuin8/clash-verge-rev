@@ -65,6 +65,14 @@
       "save": "병합 적용",
       "clear": "병합 지우기",
       "conflicts": "충돌",
+      "conflict": {
+        "primaryFieldMalformed": "{{source}}의 {{field}} 필드가 유효하지 않아 병합 중 교체되었습니다.",
+        "groupMembersMalformed": "그룹 {{name}}({{source}})의 멤버 목록이 유효하지 않아 병합 중 교체되었습니다.",
+        "groupIncompatible": "{{source}}의 그룹 {{name}}이(가) 호환되지 않는 설정으로 기본 프로필에 이미 있어 기존 그룹을 유지했습니다.",
+        "topLevelKeyKept": "{{source}}의 키 {{name}}이(가) 기본 프로필에 이미 있어 기본 값을 유지했습니다.",
+        "topLevelKeyIgnored": "{{source}}의 키 {{name}}은(는) 병합되지 않습니다. 이 키는 기본 프로필에서만 정의할 수 있습니다.",
+        "groupReferenceMissing": "그룹 {{source}}이(가) 존재하지 않는 프록시/공급자/그룹 {{name}}을(를) 참조하여 해당 참조를 삭제했습니다."
+      },
       "empty": "사용 가능한 프로필이 없습니다.",
       "selectHint": "프로필을 두 개 이상 선택하세요.",
       "saved": "병합이 적용되었습니다.",

@@ -65,6 +65,14 @@
       "save": "应用合并",
       "clear": "清除合并",
       "conflicts": "冲突",
+      "conflict": {
+        "primaryFieldMalformed": "{{source}} 的 {{field}} 字段格式无效，已在合并时替换。",
+        "groupMembersMalformed": "分组 {{name}}（{{source}}）的成员列表格式无效，已在合并时替换。",
+        "groupIncompatible": "{{source}} 的分组 {{name}} 与主配置中的同名分组设置不兼容，已保留主配置中的分组。",
+        "topLevelKeyKept": "{{source}} 的 {{name}} 项与主配置冲突，已保留主配置的值。",
+        "topLevelKeyIgnored": "{{source}} 的 {{name}} 项未参与合并，该字段只能由主配置定义。",
+        "groupReferenceMissing": "分组 {{source}} 引用了不存在的节点/代理提供者/分组 {{name}}，该引用已被移除。"
+      },
       "empty": "没有可用订阅。",
       "selectHint": "至少选择两个订阅。",
       "saved": "合并已应用。",

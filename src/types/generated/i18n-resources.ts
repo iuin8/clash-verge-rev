@@ -483,6 +483,14 @@ export interface TranslationResources {
         }
         merge: {
           clear: string
+          conflict: {
+            groupIncompatible: string
+            groupMembersMalformed: string
+            groupReferenceMissing: string
+            primaryFieldMalformed: string
+            topLevelKeyIgnored: string
+            topLevelKeyKept: string
+          }
           conflicts: string
           description: string
           empty: string

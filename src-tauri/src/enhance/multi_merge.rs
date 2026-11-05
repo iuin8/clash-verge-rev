@@ -20,8 +20,28 @@ use self::{
     top_level::log_top_level_key_conflicts,
 };
 
+/// Stable identifiers for merge conflicts. The frontend maps these to localized
+/// messages; `reason` stays as the English fallback detail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ConflictCode {
+    /// A top-level field on the primary profile had the wrong YAML shape.
+    PrimaryFieldMalformed,
+    /// A group's existing `proxies`/`use` member list had the wrong YAML shape.
+    GroupMembersMalformed,
+    /// A supplementary group collides with an incompatible group on the primary.
+    GroupIncompatible,
+    /// A supplementary top-level key collides and the primary value wins.
+    TopLevelKeyKept,
+    /// A supplementary top-level key is dropped because only the primary may define it.
+    TopLevelKeyIgnored,
+    /// A group references a proxy/provider/group that does not exist in the merged config.
+    GroupReferenceMissing,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ConflictEntry {
+    pub code: ConflictCode,
     pub field: String,
     pub name: String,
     pub source: String,
@@ -30,12 +50,14 @@ pub struct ConflictEntry {
 
 fn push_conflict(
     conflicts: &mut Vec<ConflictEntry>,
+    code: ConflictCode,
     field: &str,
     name: impl Into<String>,
     source: &str,
     reason: impl Into<String>,
 ) {
     conflicts.push(ConflictEntry {
+        code,
         field: field.into(),
         name: name.into(),
         source: source.into(),
@@ -83,6 +105,7 @@ fn ensure_sequence_field<'a>(
     if !matches!(base_value, Value::Sequence(_)) {
         push_conflict(
             conflicts,
+            ConflictCode::PrimaryFieldMalformed,
             field,
             "<top-level>",
             primary_name,
@@ -109,6 +132,7 @@ fn ensure_mapping_field<'a>(
     if !matches!(base_value, Value::Mapping(_)) {
         push_conflict(
             conflicts,
+            ConflictCode::PrimaryFieldMalformed,
             field,
             "<top-level>",
             primary_name,

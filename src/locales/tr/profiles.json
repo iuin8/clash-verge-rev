@@ -65,6 +65,14 @@
       "save": "Birleştirmeyi uygula",
       "clear": "Birleştirmeyi temizle",
       "conflicts": "Çakışmalar",
+      "conflict": {
+        "primaryFieldMalformed": "{{source}} içindeki {{field}} alanı geçersiz ve birleştirme sırasında değiştirildi.",
+        "groupMembersMalformed": "{{name}} grubunun ({{source}}) üye listesi geçersiz ve birleştirme sırasında değiştirildi.",
+        "groupIncompatible": "{{source}} içindeki {{name}} grubu, ana profilde uyumsuz ayarlarla zaten mevcut; mevcut grup korundu.",
+        "topLevelKeyKept": "{{source}} içindeki {{name}} anahtarı ana profilde zaten mevcut; ana değer korundu.",
+        "topLevelKeyIgnored": "{{source}} içindeki {{name}} anahtarı birleştirilmez; bu anahtarı yalnızca ana profil tanımlayabilir.",
+        "groupReferenceMissing": "{{source}} grubu, mevcut olmayan bir proxy/sağlayıcı/grup olan {{name}} öğesine başvuruyor; başvuru kaldırıldı."
+      },
       "empty": "Kullanılabilir profil yok.",
       "selectHint": "En az iki profil seçin.",
       "saved": "Birleştirme uygulandı.",

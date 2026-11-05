@@ -65,6 +65,14 @@
       "save": "統合を適用",
       "clear": "統合を解除",
       "conflicts": "競合",
+      "conflict": {
+        "primaryFieldMalformed": "{{source}} の {{field}} フィールドが無効なため、マージ時に置き換えました。",
+        "groupMembersMalformed": "グループ {{name}}（{{source}}）のメンバーリストが無効なため、マージ時に置き換えました。",
+        "groupIncompatible": "{{source}} のグループ {{name}} は、互換性のない設定でプライマリプロファイルに既に存在するため、既存のグループを保持しました。",
+        "topLevelKeyKept": "{{source}} のキー {{name}} はプライマリプロファイルに既に存在するため、プライマリの値を保持しました。",
+        "topLevelKeyIgnored": "{{source}} のキー {{name}} はマージされません。このキーはプライマリプロファイルでのみ定義できます。",
+        "groupReferenceMissing": "グループ {{source}} が存在しないプロキシ/プロバイダー/グループ {{name}} を参照しているため、参照を削除しました。"
+      },
       "empty": "利用可能なプロファイルがありません。",
       "selectHint": "2 つ以上のプロファイルを選択してください。",
       "saved": "統合を適用しました。",

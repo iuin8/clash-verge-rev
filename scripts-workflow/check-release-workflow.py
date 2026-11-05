@@ -17,13 +17,15 @@ the failure modes that are cheap to catch locally:
 
 Usage:
     python3 scripts-workflow/check-release-workflow.py              # all workflows
+    python3 scripts-workflow/check-release-workflow.py --no-act     # CI: no act
     python3 scripts-workflow/check-release-workflow.py --self-test  # mutation test
     python3 scripts-workflow/check-release-workflow.py --help
 
 Requires PyYAML (already used by the workspace tooling) for YAML parsing.
 When the `act` binary is installed the checker also runs `act --list` for the
 release workflow and compares the listed jobs with the parsed jobs; this needs
-no Docker daemon. Exit codes: 0 pass, 1 check failure, 2 usage/environment error.
+no Docker daemon. Pass `--no-act` when the environment must not depend on act.
+Exit codes: 0 pass, 1 check failure, 2 usage/environment error.
 """
 
 from __future__ import annotations
@@ -66,9 +68,10 @@ PNPM_RE = re.compile(r"\bpnpm\s+(?:run\s+)?([A-Za-z0-9:_-]+)\b")
 
 
 class Checker:
-    def __init__(self, root: Path, verbose: bool = False) -> None:
+    def __init__(self, root: Path, verbose: bool = False, use_act: bool = True) -> None:
         self.root = root
         self.verbose = verbose
+        self.use_act = use_act
         self.failures: list[str] = []
         self.passes = 0
         self.skipped: list[str] = []
@@ -408,8 +411,10 @@ class Checker:
                     )
 
         # act --list must agree with the parsed job set.
-        act = shutil.which("act")
-        if not act:
+        act = shutil.which("act") if self.use_act else None
+        if not self.use_act:
+            self.skip("act cross-check disabled (--no-act)")
+        elif not act:
             self.skip("act not installed; skipped act --list cross-check")
         else:
             proc = subprocess.run(
@@ -451,22 +456,14 @@ def self_test() -> int:
     repo = Path(__file__).resolve().parent.parent
     source = repo / RELEASE_WORKFLOW
     mutations = [
-        (
-            "broken needs reference",
-            lambda p: p.replace(
-                "needs: [prepare_release]", "needs: [definitely_missing_job]", 1
-            ),
-            "definitely_missing_job",
-        ),
-        (
-            "missing local script",
-            lambda p: p.replace(
-                "bash ./scripts-workflow/group_platforms.sh",
-                "bash ./scripts-workflow/absent-check.sh",
-                1,
-            ),
-            "absent-check.sh",
-        ),
+        ("broken needs reference",
+         lambda p: p.replace("needs: [prepare_release]",
+                             "needs: [definitely_missing_job]", 1),
+         "definitely_missing_job"),
+        ("missing local script",
+         lambda p: p.replace("bash ./scripts-workflow/group_platforms.sh",
+                             "bash ./scripts-workflow/absent-check.sh", 1),
+         "absent-check.sh"),
     ]
     version_mutation = (
         "version without changelog entry",
@@ -576,6 +573,7 @@ def main() -> int:
         help=f"release workflow path (default: {RELEASE_WORKFLOW})",
     )
     parser.add_argument("--verbose", action="store_true", help="print each passed check")
+    parser.add_argument("--no-act", action="store_true", help="skip the optional act cross-check")
     parser.add_argument(
         "--self-test",
         action="store_true",
@@ -595,7 +593,7 @@ def main() -> int:
     if not workflows:
         print(f"FAIL no workflows found under {root / WORKFLOW_DIR}")
         return 1
-    return Checker(root, verbose=args.verbose).run(workflows, args.release_workflow)
+    return Checker(root, verbose=args.verbose, use_act=not args.no_act).run(workflows, args.release_workflow)
 
 
 if __name__ == "__main__":

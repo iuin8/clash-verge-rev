@@ -65,6 +65,14 @@
       "save": "Aplicar combinación",
       "clear": "Borrar combinación",
       "conflicts": "Conflictos",
+      "conflict": {
+        "primaryFieldMalformed": "El campo {{field}} de {{source}} no es válido y se reemplazó durante la combinación.",
+        "groupMembersMalformed": "La lista de miembros del grupo {{name}} ({{source}}) no es válida y se reemplazó durante la combinación.",
+        "groupIncompatible": "El grupo {{name}} de {{source}} ya existe en el perfil principal con ajustes incompatibles; se mantuvo el grupo existente.",
+        "topLevelKeyKept": "La clave {{name}} de {{source}} ya existe en el perfil principal; se mantuvo el valor principal.",
+        "topLevelKeyIgnored": "La clave {{name}} de {{source}} no se combina; solo el perfil principal puede definirla.",
+        "groupReferenceMissing": "El grupo {{source}} hace referencia a un proxy/proveedor/grupo inexistente {{name}}; se descartó la referencia."
+      },
       "empty": "No hay suscripciones disponibles.",
       "selectHint": "Selecciona al menos dos suscripciones.",
       "saved": "Combinación aplicada.",

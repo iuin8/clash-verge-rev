@@ -1,4 +1,4 @@
-use super::super::multi_profile_merge;
+use super::super::{ConflictCode, multi_profile_merge};
 use super::mapping;
 
 const LOCAL_LAN_PRIMARY_YAML: &str =
@@ -92,7 +92,11 @@ fn group_referencing_missing_proxy_is_dropped_with_conflict() {
     let supp = mapping("rules:\n  - MATCH,DIRECT");
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
-    assert!(conflicts.iter().any(|c| c.name == "ghost"));
+    let ghost = conflicts
+        .iter()
+        .find(|c| c.name == "ghost")
+        .expect("ghost conflict is reported");
+    assert_eq!(ghost.code, ConflictCode::GroupReferenceMissing);
     let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
     let members = groups[0]
         .as_mapping()
@@ -148,12 +152,24 @@ fn top_level_key_conflicts_are_logged_and_primary_wins() {
     assert!(dns.get("enable").unwrap().as_bool().unwrap());
     assert!(result.get("interface-name").is_none());
     assert_eq!(conflicts.len(), 2);
+    assert_eq!(conflicts[0].code, ConflictCode::TopLevelKeyKept);
     assert_eq!(conflicts[0].field, "top-level");
     assert_eq!(conflicts[0].name, "enable");
     assert_eq!(conflicts[0].source, "supp");
+    assert_eq!(conflicts[1].code, ConflictCode::TopLevelKeyIgnored);
     assert_eq!(conflicts[1].field, "top-level");
     assert_eq!(conflicts[1].name, "interface-name");
     assert_eq!(conflicts[1].source, "supp");
+}
+
+#[test]
+fn conflict_codes_serialize_as_stable_camel_case() {
+    let primary = mapping("dns:\n  enable: true");
+    let supp = mapping("dns:\n  enable: false");
+    let (_, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
+
+    let json = serde_json::to_value(&conflicts[0]).expect("conflict serializes");
+    assert_eq!(json["code"], "topLevelKeyKept");
 }
 
 #[test]
@@ -178,6 +194,7 @@ fn local_lan_merge_repro_fixtures_keep_rule_provider() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::TopLevelKeyKept);
     assert_eq!(conflicts[0].field, "top-level");
     assert_eq!(conflicts[0].name, "mixed-port");
     let rule_providers = result.get("rule-providers").unwrap().as_mapping().unwrap();
@@ -199,6 +216,7 @@ fn local_lan_merge_repro_reverse_order_keeps_primary_definition() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::TopLevelKeyKept);
     assert_eq!(conflicts[0].field, "top-level");
     assert_eq!(conflicts[0].name, "mixed-port");
     let rule_providers = result.get("rule-providers").unwrap().as_mapping().unwrap();

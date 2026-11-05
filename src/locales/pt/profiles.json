@@ -65,6 +65,14 @@
       "save": "Aplicar combinação",
       "clear": "Limpar combinação",
       "conflicts": "Conflitos",
+      "conflict": {
+        "primaryFieldMalformed": "O campo {{field}} em {{source}} é inválido e foi substituído durante a combinação.",
+        "groupMembersMalformed": "A lista de membros do grupo {{name}} ({{source}}) é inválida e foi substituída durante a combinação.",
+        "groupIncompatible": "O grupo {{name}} de {{source}} já existe no perfil principal com configurações incompatíveis; o grupo existente foi mantido.",
+        "topLevelKeyKept": "A chave {{name}} de {{source}} já existe no perfil principal; o valor principal foi mantido.",
+        "topLevelKeyIgnored": "A chave {{name}} de {{source}} não é combinada; apenas o perfil principal pode defini-la.",
+        "groupReferenceMissing": "O grupo {{source}} referencia um proxy/provedor/grupo inexistente {{name}}; a referência foi descartada."
+      },
       "empty": "Nenhum perfil disponível.",
       "selectHint": "Selecione pelo menos dois perfis.",
       "saved": "Combinação aplicada.",

@@ -279,7 +279,26 @@ export type CommandFailure_Serialize = {
   operation?: FailedOperation | null
 }
 
+/**
+ *  Stable identifiers for merge conflicts. The frontend maps these to localized
+ *  messages; `reason` stays as the English fallback detail.
+ */
+export type ConflictCode =
+  /**  A top-level field on the primary profile had the wrong YAML shape. */
+  | 'primaryFieldMalformed'
+  /**  A group's existing `proxies`/`use` member list had the wrong YAML shape. */
+  | 'groupMembersMalformed'
+  /**  A supplementary group collides with an incompatible group on the primary. */
+  | 'groupIncompatible'
+  /**  A supplementary top-level key collides and the primary value wins. */
+  | 'topLevelKeyKept'
+  /**  A supplementary top-level key is dropped because only the primary may define it. */
+  | 'topLevelKeyIgnored'
+  /**  A group references a proxy/provider/group that does not exist in the merged config. */
+  | 'groupReferenceMissing'
+
 export type ConflictEntry = {
+  code: ConflictCode
   field: string
   name: string
   source: string

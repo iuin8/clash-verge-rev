@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use serde_yaml_ng::{Mapping, Value};
 
-use super::{ConflictEntry, push_conflict};
+use super::{ConflictCode, ConflictEntry, push_conflict};
 
 /// 合并完成后校验所有 group 的 proxies/use 成员引用是否存在于最终 config，
 /// 不存在的记 conflict 并从成员中移除（降级，不阻断）。
@@ -68,6 +68,7 @@ pub(super) fn verify_reference_integrity(base: &mut Mapping, conflicts: &mut Vec
                     if !ok {
                         push_conflict(
                             conflicts,
+                            ConflictCode::GroupReferenceMissing,
                             "proxy-groups",
                             name,
                             &group_name,

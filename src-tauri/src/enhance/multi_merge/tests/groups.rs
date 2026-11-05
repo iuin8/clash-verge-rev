@@ -1,4 +1,4 @@
-use super::super::multi_profile_merge;
+use super::super::{ConflictCode, multi_profile_merge};
 use super::{group_mapping, mapping};
 
 #[test]
@@ -27,6 +27,7 @@ fn duplicate_proxy_group_settings_keep_existing_members() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::GroupIncompatible);
     assert_eq!(conflicts[0].field, "proxy-groups");
     let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
     let proxies = groups[0]
@@ -152,6 +153,7 @@ fn duplicate_proxy_group_merge_rejects_invalid_untouched_use_members() {
     let (result, conflicts) = multi_profile_merge(&[primary, supp], &["primary", "supp"]);
 
     assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].code, ConflictCode::GroupIncompatible);
     assert_eq!(conflicts[0].field, "proxy-groups");
     assert_eq!(result, expected);
 }

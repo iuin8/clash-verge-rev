@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_yaml_ng::{Mapping, Value};
 
-use super::{ConflictEntry, MergeContext, ensure_sequence_field, push_conflict, renamed_target};
+use super::{ConflictCode, ConflictEntry, MergeContext, ensure_sequence_field, push_conflict, renamed_target};
 
 /// 重写 group 自身的 `proxies`/`use` 成员引用（用于全新 group，无需与 primary 合并）。
 fn rewrite_group_members(group: &mut Value, renames: &HashMap<String, String>) {
@@ -59,6 +59,7 @@ fn merge_group_member_list(
     if !matches!(existing_members, Value::Sequence(_)) {
         push_conflict(
             conflicts,
+            ConflictCode::GroupMembersMalformed,
             "proxy-groups",
             group_name,
             primary_name,
@@ -232,6 +233,7 @@ pub(super) fn merge_proxy_groups(ctx: &mut MergeContext, base: &mut Mapping, sup
             if existing_settings != incoming_settings || !can_merge_group_members(target_group, group) {
                 push_conflict(
                     &mut ctx.conflicts,
+                    ConflictCode::GroupIncompatible,
                     "proxy-groups",
                     group_name,
                     &ctx.supp_name,

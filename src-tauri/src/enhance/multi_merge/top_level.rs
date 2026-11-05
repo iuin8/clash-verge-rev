@@ -2,7 +2,7 @@ use serde_yaml_ng::{Mapping, Value};
 
 use clash_verge_logging::{Type, logging};
 
-use super::{MergeContext, push_conflict};
+use super::{ConflictCode, MergeContext, push_conflict};
 
 pub(super) fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Mapping, supp: &Mapping) {
     const MERGED_FIELDS: [&str; 5] = ["proxies", "proxy-providers", "proxy-groups", "rules", "rule-providers"];
@@ -23,6 +23,7 @@ pub(super) fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Map
             Some(_) => {
                 push_conflict(
                     &mut ctx.conflicts,
+                    ConflictCode::TopLevelKeyKept,
                     "top-level",
                     key_str,
                     &ctx.supp_name,
@@ -34,6 +35,7 @@ pub(super) fn log_top_level_key_conflicts(ctx: &mut MergeContext, base: &mut Map
             None => {
                 push_conflict(
                     &mut ctx.conflicts,
+                    ConflictCode::TopLevelKeyIgnored,
                     "top-level",
                     key_str,
                     &ctx.supp_name,
@@ -64,6 +66,7 @@ fn deep_merge_mapping(base: &mut Mapping, supp: &Mapping, ctx: &mut MergeContext
                 } else {
                     push_conflict(
                         &mut ctx.conflicts,
+                        ConflictCode::TopLevelKeyKept,
                         "top-level",
                         k.as_str().unwrap_or("<non-string>"),
                         &ctx.supp_name,
@@ -75,6 +78,7 @@ fn deep_merge_mapping(base: &mut Mapping, supp: &Mapping, ctx: &mut MergeContext
                 if existing != v {
                     push_conflict(
                         &mut ctx.conflicts,
+                        ConflictCode::TopLevelKeyKept,
                         "top-level",
                         k.as_str().unwrap_or("<non-string>"),
                         &ctx.supp_name,

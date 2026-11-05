@@ -65,6 +65,14 @@
       "save": "Terapkan penggabungan",
       "clear": "Hapus penggabungan",
       "conflicts": "Konflik",
+      "conflict": {
+        "primaryFieldMalformed": "Bidang {{field}} pada {{source}} tidak valid dan diganti saat penggabungan.",
+        "groupMembersMalformed": "Daftar anggota grup {{name}} ({{source}}) tidak valid dan diganti saat penggabungan.",
+        "groupIncompatible": "Grup {{name}} dari {{source}} sudah ada di profil utama dengan pengaturan yang tidak kompatibel; grup yang ada dipertahankan.",
+        "topLevelKeyKept": "Kunci {{name}} dari {{source}} sudah ada di profil utama; nilai utama dipertahankan.",
+        "topLevelKeyIgnored": "Kunci {{name}} dari {{source}} tidak digabungkan; hanya profil utama yang boleh mendefinisikannya.",
+        "groupReferenceMissing": "Grup {{source}} merujuk proxy/penyedia/grup yang tidak ada {{name}}; rujukan tersebut dihapus."
+      },
       "empty": "Tidak ada profil yang tersedia.",
       "selectHint": "Pilih minimal dua profil.",
       "saved": "Penggabungan diterapkan.",
