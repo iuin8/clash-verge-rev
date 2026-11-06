@@ -220,22 +220,22 @@ fn every_conflict_code_has_a_message_in_every_locale() {
         let raw = std::fs::read_to_string(&path).expect("locale profiles.json is readable");
         let json: serde_json::Value = serde_json::from_str(&raw).expect("locale profiles.json is valid JSON");
         let messages = json
-            .pointer("/page/merge/conflict")
+            .pointer("/page/bundle/conflict")
             .and_then(serde_json::Value::as_object)
-            .expect("locale profiles.json has page.merge.conflict");
+            .expect("locale profiles.json has page.bundle.conflict");
         for (code, key) in &codes {
             let wire = serde_json::to_value(code).expect("conflict code serializes");
             assert_eq!(wire.as_str(), Some(*key), "{locale}: serde name drifted");
             let message = messages.get(*key).and_then(serde_json::Value::as_str);
             assert!(
                 message.is_some_and(|value| !value.is_empty()),
-                "{locale}: missing non-empty merge conflict message '{key}'"
+                "{locale}: missing non-empty bundle conflict message '{key}'"
             );
         }
         let unknown = messages.get("unknown").and_then(serde_json::Value::as_str);
         assert!(
             unknown.is_some_and(|value| !value.is_empty()),
-            "{locale}: missing non-empty merge conflict fallback 'unknown'"
+            "{locale}: missing non-empty bundle conflict fallback 'unknown'"
         );
         let actual: std::collections::BTreeSet<&str> = messages.keys().map(String::as_str).collect();
         assert_eq!(actual, expected, "{locale}: conflict key set drifted from ConflictCode");

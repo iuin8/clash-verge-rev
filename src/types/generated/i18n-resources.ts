@@ -265,6 +265,13 @@ export interface TranslationResources {
     }
     profiles: {
       components: {
+        bundle: {
+          badge: string
+          conflicts: string
+          members: string
+          primary: string
+          stale: string
+        }
         card: {
           labels: {
             clickToImport: string
@@ -442,6 +449,64 @@ export interface TranslationResources {
           }
           title: string
         }
+        bundle: {
+          actions: {
+            conflicts: string
+            delete: string
+            editMembers: string
+            refresh: string
+          }
+          batch: {
+            create: string
+            hint: string
+            update: string
+          }
+          confirm: {
+            create: {
+              message: string
+              title: string
+            }
+            delete: {
+              message: string
+              title: string
+            }
+            overwrite: {
+              message: string
+              title: string
+            }
+          }
+          conflict: {
+            groupIncompatible: string
+            groupMembersMalformed: string
+            groupReferenceMissing: string
+            primaryFieldMalformed: string
+            topLevelKeyIgnored: string
+            topLevelKeyKept: string
+            unknown: string
+          }
+          details: {
+            conflicts: string
+            generatedAt: string
+            members: string
+            missing: string
+            noConflicts: string
+            primary: string
+            stale: string
+            title: string
+          }
+          diff: {
+            added: string
+            moved: string
+            removed: string
+            unchanged: string
+          }
+          notices: {
+            created: string
+            deleted: string
+            refreshed: string
+            updated: string
+          }
+        }
         feedback: {
           errors: {
             createFailed: string
@@ -480,29 +545,6 @@ export interface TranslationResources {
             paste: string
           }
           placeholder: string
-        }
-        merge: {
-          clear: string
-          conflict: {
-            groupIncompatible: string
-            groupMembersMalformed: string
-            groupReferenceMissing: string
-            primaryFieldMalformed: string
-            topLevelKeyIgnored: string
-            topLevelKeyKept: string
-            unknown: string
-          }
-          conflicts: string
-          description: string
-          empty: string
-          loadError: string
-          moveDown: string
-          moveUp: string
-          primaryHint: string
-          save: string
-          saved: string
-          selectHint: string
-          title: string
         }
         title: string
       }

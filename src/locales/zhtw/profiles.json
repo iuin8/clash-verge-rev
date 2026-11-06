@@ -59,12 +59,54 @@
       }
     },
     "title": "訂閱",
-    "merge": {
-      "title": "多訂閱合併",
-      "description": "將多個訂閱合併成一份生效設定。",
-      "save": "套用合併",
-      "clear": "清除合併",
-      "conflicts": "衝突",
+    "bundle": {
+      "batch": {
+        "create": "組合訂閱",
+        "update": "更新組合",
+        "hint": "請至少選擇兩個訂閱。"
+      },
+      "actions": {
+        "editMembers": "編輯成員",
+        "conflicts": "衝突",
+        "refresh": "重新整理組合",
+        "delete": "刪除組合"
+      },
+      "confirm": {
+        "create": {
+          "title": "建立組合訂閱？",
+          "message": "將依下列順序把所選訂閱合併為一個產生的設定。"
+        },
+        "overwrite": {
+          "title": "更新組合訂閱？",
+          "message": "組合成員及順序將替換為："
+        },
+        "delete": {
+          "title": "刪除組合訂閱？",
+          "message": "產生的組合設定將被刪除，成員訂閱會保留。"
+        }
+      },
+      "diff": {
+        "added": "新增",
+        "removed": "移除",
+        "moved": "移動",
+        "unchanged": "未變"
+      },
+      "details": {
+        "title": "組合訂閱",
+        "members": "成員順序",
+        "primary": "基礎",
+        "conflicts": "衝突",
+        "noConflicts": "沒有回報衝突。",
+        "stale": "產生後成員已變更，請重新整理組合以重新產生。",
+        "generatedAt": "產生於：{{time}}",
+        "missing": "訂閱缺失"
+      },
+      "notices": {
+        "created": "組合訂閱已建立。",
+        "updated": "組合訂閱已更新。",
+        "refreshed": "組合訂閱已重新整理。",
+        "deleted": "組合訂閱已刪除。"
+      },
       "conflict": {
         "primaryFieldMalformed": "{{source}} 的 {{field}} 欄位格式無效，已於合併時替換。",
         "groupMembersMalformed": "分組 {{name}}（{{source}}）的成員清單格式無效，已於合併時替換。",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "{{source}} 的 {{name}} 項目未參與合併，此欄位只能由主設定定義。",
         "groupReferenceMissing": "分組 {{source}} 參照了不存在的節點/代理提供者/分組 {{name}}，該參照已被移除。",
         "unknown": "{{source}} 中的 {{name}} 發生了一個未識別的合併衝突（{{field}}）。"
-      },
-      "empty": "沒有可用訂閱。",
-      "selectHint": "請至少選擇兩個訂閱。",
-      "saved": "合併已套用。",
-      "moveUp": "上移",
-      "moveDown": "下移",
-      "loadError": "合併清單無法讀取，請點「清除合併」重設。",
-      "primaryHint": "第一個選取的訂閱是主設定（基礎設定）。"
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "未知",
         "autoUpdateDisabled": "自動更新已停用"
       }
+    },
+    "bundle": {
+      "badge": "組合",
+      "members": "成員：{{count}}",
+      "primary": "基礎：{{name}}",
+      "conflicts": "衝突：{{count}}",
+      "stale": "已過期"
     }
   },
   "modals": {

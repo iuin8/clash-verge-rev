@@ -94,13 +94,14 @@ pub fn proxy_aware_error(error: &anyhow::Error) -> CommandFailure {
 // Command modules
 pub mod app;
 pub mod backup;
+pub mod bundle;
 pub mod clash;
 pub mod lightweight;
 pub mod listener;
 pub mod media_unlock_checker;
-pub mod merge;
 pub mod network;
 pub mod profile;
+mod profile_delete;
 pub mod proxy;
 pub mod runtime;
 pub mod save_profile;
@@ -114,13 +115,14 @@ pub mod webdav;
 // Re-export all command functions for backwards compatibility
 pub use app::*;
 pub use backup::*;
+pub use bundle::*;
 pub use clash::*;
 pub use lightweight::*;
 pub use listener::*;
 pub use media_unlock_checker::*;
-pub use merge::*;
 pub use network::*;
 pub use profile::*;
+pub use profile_delete::*;
 pub use proxy::*;
 pub use runtime::*;
 pub use save_profile::*;
@@ -164,9 +166,6 @@ impl<T, E: std::fmt::Display> WithErrorCode<T> for Result<T, E> {
         self.map_err(|error| CommandFailure::coded(code, format_args!("{error:#}")))
     }
 }
-
-#[cfg(test)]
-mod merge_acceptance;
 
 #[cfg(test)]
 mod tests {

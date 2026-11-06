@@ -6,8 +6,8 @@ mod encrypt;
 mod mixed_port;
 mod port;
 mod prfitem;
-// FORK: multi-subscription merge selection
-pub mod merged;
+// FORK: materialized Profile Bundle (generated local profile + metadata sidecar)
+pub mod bundle;
 pub mod profiles;
 pub mod runtime;
 pub(crate) mod snapshot;

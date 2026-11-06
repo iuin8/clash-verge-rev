@@ -59,12 +59,54 @@
       }
     },
     "title": "Profil",
-    "merge": {
-      "title": "Gabungkan profil",
-      "description": "Gabungkan beberapa profil menjadi satu konfigurasi yang berlaku.",
-      "save": "Terapkan penggabungan",
-      "clear": "Hapus penggabungan",
-      "conflicts": "Konflik",
+    "bundle": {
+      "batch": {
+        "create": "Paket profil",
+        "update": "Perbarui paket",
+        "hint": "Pilih minimal dua profil."
+      },
+      "actions": {
+        "editMembers": "Edit anggota",
+        "conflicts": "Konflik",
+        "refresh": "Segarkan paket",
+        "delete": "Hapus paket"
+      },
+      "confirm": {
+        "create": {
+          "title": "Buat paket profil?",
+          "message": "Profil yang dipilih akan digabungkan dalam urutan berikut menjadi satu profil yang dihasilkan."
+        },
+        "overwrite": {
+          "title": "Perbarui paket profil?",
+          "message": "Anggota dan urutan paket akan diganti dengan:"
+        },
+        "delete": {
+          "title": "Hapus paket profil?",
+          "message": "Profil paket yang dihasilkan akan dihapus. Langganan anggota tetap disimpan."
+        }
+      },
+      "diff": {
+        "added": "Ditambahkan",
+        "removed": "Dihapus",
+        "moved": "Dipindah",
+        "unchanged": "Tidak berubah"
+      },
+      "details": {
+        "title": "Paket profil",
+        "members": "Urutan anggota",
+        "primary": "Dasar",
+        "conflicts": "Konflik",
+        "noConflicts": "Tidak ada konflik yang dilaporkan.",
+        "stale": "Anggota berubah sejak paket dibuat. Segarkan untuk membuat ulang.",
+        "generatedAt": "Dibuat: {{time}}",
+        "missing": "Profil hilang"
+      },
+      "notices": {
+        "created": "Paket profil dibuat.",
+        "updated": "Paket profil diperbarui.",
+        "refreshed": "Paket profil disegarkan.",
+        "deleted": "Paket profil dihapus."
+      },
       "conflict": {
         "primaryFieldMalformed": "Bidang {{field}} pada {{source}} tidak valid dan diganti saat penggabungan.",
         "groupMembersMalformed": "Daftar anggota grup {{name}} ({{source}}) tidak valid dan diganti saat penggabungan.",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "Kunci {{name}} dari {{source}} tidak digabungkan; hanya profil utama yang boleh mendefinisikannya.",
         "groupReferenceMissing": "Grup {{source}} merujuk proxy/penyedia/grup yang tidak ada {{name}}; rujukan tersebut dihapus.",
         "unknown": "Terjadi konflik penggabungan yang tidak dikenal untuk {{name}} di {{source}} ({{field}})."
-      },
-      "empty": "Tidak ada profil yang tersedia.",
-      "selectHint": "Pilih minimal dua profil.",
-      "saved": "Penggabungan diterapkan.",
-      "moveUp": "Naik",
-      "moveDown": "Turun",
-      "loadError": "Daftar penggabungan tidak dapat dibaca. Tekan Hapus penggabungan untuk mengatur ulang.",
-      "primaryHint": "Profil pertama yang dipilih adalah profil utama (dasar)."
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
       }
+    },
+    "bundle": {
+      "badge": "Paket",
+      "members": "Anggota: {{count}}",
+      "primary": "Dasar: {{name}}",
+      "conflicts": "Konflik: {{count}}",
+      "stale": "Usang"
     }
   },
   "modals": {

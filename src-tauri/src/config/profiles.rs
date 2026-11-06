@@ -68,6 +68,11 @@ pub(crate) struct ProfileDeletePlan {
 }
 
 impl ProfileDeletePlan {
+    /// Merge another deletion plan into this one (bundle teardown after a member deletion).
+    pub(crate) fn absorb(&mut self, other: Self) {
+        self.files.extend(other.files);
+    }
+
     pub(crate) async fn cleanup(self) {
         let Ok(dir) = dirs::app_profiles_dir() else {
             return;
@@ -391,56 +396,6 @@ impl IProfiles {
                 bail!("failed to find the current profile \"uid:{current}\"");
             }
             _ => Ok(Mapping::new()),
-        }
-    }
-
-    /// FORK: resolve the current profile plus the ordered merged profiles.
-    pub async fn current_mapping_resolved(&self) -> Result<Mapping> {
-        crate::enhance::multi_merge::publish_conflicts(Vec::new());
-        let uids = crate::config::merged::load().await?;
-        if uids.is_empty() {
-            return self.current_mapping().await;
-        }
-        let Some(items) = self.items.as_ref() else {
-            bail!("multi-merge: profiles are unavailable");
-        };
-
-        let mut configs: Vec<Mapping> = Vec::with_capacity(uids.len());
-        let mut names: Vec<&str> = Vec::with_capacity(uids.len());
-        for uid in &uids {
-            let item = items
-                .iter()
-                .find(|e| e.uid.as_deref() == Some(uid.as_str()))
-                .with_context(|| format!("multi-merge: profile '{uid}' no longer exists"))?;
-            if !matches!(item.itype.as_deref(), Some("local" | "remote")) {
-                bail!("multi-merge: profile '{uid}' is not a subscription");
-            }
-            let file = item
-                .file
-                .as_ref()
-                .with_context(|| format!("multi-merge: profile '{uid}' has no file"))?;
-            let path = dirs::app_profiles_dir()?.join(file.as_str());
-            let mapping = help::read_mapping(&path)
-                .await
-                .with_context(|| format!("multi-merge: failed to load profile '{uid}'"))?;
-            configs.push(mapping);
-            names.push(item.name.as_deref().unwrap_or_default());
-        }
-
-        match configs.len() {
-            0 => {
-                crate::enhance::multi_merge::publish_conflicts(Vec::new());
-                Ok(Mapping::new())
-            }
-            1 => {
-                crate::enhance::multi_merge::publish_conflicts(Vec::new());
-                Ok(configs.remove(0))
-            }
-            _ => {
-                let (merged, conflicts) = crate::enhance::multi_merge::multi_profile_merge(&configs, &names);
-                crate::enhance::multi_merge::publish_conflicts(conflicts);
-                Ok(merged)
-            }
         }
     }
 

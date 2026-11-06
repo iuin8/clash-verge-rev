@@ -59,12 +59,54 @@
       }
     },
     "title": "Suscripciones",
-    "merge": {
-      "title": "Combinar suscripciones",
-      "description": "Combina varias suscripciones en una configuración efectiva.",
-      "save": "Aplicar combinación",
-      "clear": "Borrar combinación",
-      "conflicts": "Conflictos",
+    "bundle": {
+      "batch": {
+        "create": "Paquete de perfiles",
+        "update": "Actualizar paquete",
+        "hint": "Selecciona al menos dos perfiles."
+      },
+      "actions": {
+        "editMembers": "Editar miembros",
+        "conflicts": "Conflictos",
+        "refresh": "Actualizar paquete",
+        "delete": "Eliminar paquete"
+      },
+      "confirm": {
+        "create": {
+          "title": "¿Crear paquete de perfiles?",
+          "message": "Los perfiles seleccionados se combinarán en el siguiente orden en un perfil generado."
+        },
+        "overwrite": {
+          "title": "¿Actualizar paquete de perfiles?",
+          "message": "Los miembros y el orden del paquete se reemplazarán por:"
+        },
+        "delete": {
+          "title": "¿Eliminar paquete de perfiles?",
+          "message": "Se eliminará el perfil de paquete generado. Las suscripciones de los miembros se conservan."
+        }
+      },
+      "diff": {
+        "added": "Añadido",
+        "removed": "Eliminado",
+        "moved": "Movido",
+        "unchanged": "Sin cambios"
+      },
+      "details": {
+        "title": "Paquete de perfiles",
+        "members": "Orden de miembros",
+        "primary": "Base",
+        "conflicts": "Conflictos",
+        "noConflicts": "No se informaron conflictos.",
+        "stale": "Los miembros cambiaron desde que se generó el paquete. Actualízalo para regenerarlo.",
+        "generatedAt": "Generado: {{time}}",
+        "missing": "Perfil ausente"
+      },
+      "notices": {
+        "created": "Paquete de perfiles creado.",
+        "updated": "Paquete de perfiles actualizado.",
+        "refreshed": "Paquete de perfiles actualizado.",
+        "deleted": "Paquete de perfiles eliminado."
+      },
       "conflict": {
         "primaryFieldMalformed": "El campo {{field}} de {{source}} no es válido y se reemplazó durante la combinación.",
         "groupMembersMalformed": "La lista de miembros del grupo {{name}} ({{source}}) no es válida y se reemplazó durante la combinación.",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "La clave {{name}} de {{source}} no se combina; solo el perfil principal puede definirla.",
         "groupReferenceMissing": "El grupo {{source}} hace referencia a un proxy/proveedor/grupo inexistente {{name}}; se descartó la referencia.",
         "unknown": "Se produjo un conflicto de combinación desconocido para {{name}} en {{source}} ({{field}})."
-      },
-      "empty": "No hay suscripciones disponibles.",
-      "selectHint": "Selecciona al menos dos suscripciones.",
-      "saved": "Combinación aplicada.",
-      "moveUp": "Subir",
-      "moveDown": "Bajar",
-      "loadError": "No se puede leer la lista de combinación. Pulsa «Borrar combinación» para restablecerla.",
-      "primaryHint": "La primera suscripción seleccionada es la principal (base)."
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "Desconocido",
         "autoUpdateDisabled": "La actualización automática está deshabilitada"
       }
+    },
+    "bundle": {
+      "badge": "Paquete",
+      "members": "Miembros: {{count}}",
+      "primary": "Base: {{name}}",
+      "conflicts": "Conflictos: {{count}}",
+      "stale": "Desactualizado"
     }
   },
   "modals": {

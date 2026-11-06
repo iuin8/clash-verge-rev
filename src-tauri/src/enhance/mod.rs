@@ -172,7 +172,7 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
     };
 
     let current = profiles
-        .current_mapping_resolved()
+        .current_mapping()
         .await
         .with_context(|| format!("failed to read current profile \"{current_profile_uid}\""))?;
 
@@ -183,43 +183,63 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
         }
     };
 
-    let merge_uid = current_item.current_merge().cloned().unwrap_or_else(|| "Merge".into());
-    let script_uid = current_item
-        .current_script()
-        .cloned()
-        .unwrap_or_else(|| "Script".into());
-    let rules_uid = current_item.current_rules().cloned().unwrap_or_else(|| "Rules".into());
-    let proxies_uid = current_item
-        .current_proxies()
-        .cloned()
-        .unwrap_or_else(|| "Proxies".into());
-    let groups_uid = current_item
-        .current_groups()
-        .cloned()
-        .unwrap_or_else(|| "Groups".into());
+    // A generated bundle has no per-profile chain items; applying the global
+    // Merge/Script fallback here would run them twice (process_global_items
+    // already did).
+    let is_bundle = crate::config::bundle::is_bundle_uid(&current_profile_uid);
+    let merge_uid = (!is_bundle).then(|| current_item.current_merge().cloned().unwrap_or_else(|| "Merge".into()));
+    let script_uid = (!is_bundle).then(|| {
+        current_item
+            .current_script()
+            .cloned()
+            .unwrap_or_else(|| "Script".into())
+    });
+    let rules_uid = (!is_bundle).then(|| current_item.current_rules().cloned().unwrap_or_else(|| "Rules".into()));
+    let proxies_uid = (!is_bundle).then(|| {
+        current_item
+            .current_proxies()
+            .cloned()
+            .unwrap_or_else(|| "Proxies".into())
+    });
+    let groups_uid = (!is_bundle).then(|| {
+        current_item
+            .current_groups()
+            .cloned()
+            .unwrap_or_else(|| "Groups".into())
+    });
 
     let name = current_item.name.clone().unwrap_or_default();
 
     let (merge_item, script_item, rules_item, proxies_item, groups_item, global_merge, global_script) = tokio::join!(
-        chain_item_or_default(profiles.get_item(&merge_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Merge(Mapping::new()),
+        chain_item_or_default(merge_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
+            ChainItem {
+                uid: "".into(),
+                data: ChainType::Merge(Mapping::new()),
+            }
         },),
-        chain_item_or_default(profiles.get_item(&script_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
+        chain_item_or_default(script_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
+            ChainItem {
+                uid: "".into(),
+                data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
+            }
         },),
-        chain_item_or_default(profiles.get_item(&rules_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Rules(SeqMap::default()),
+        chain_item_or_default(rules_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
+            ChainItem {
+                uid: "".into(),
+                data: ChainType::Rules(SeqMap::default()),
+            }
         },),
-        chain_item_or_default(profiles.get_item(&proxies_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Proxies(SeqMap::default()),
+        chain_item_or_default(proxies_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
+            ChainItem {
+                uid: "".into(),
+                data: ChainType::Proxies(SeqMap::default()),
+            }
         },),
-        chain_item_or_default(profiles.get_item(&groups_uid).ok(), || ChainItem {
-            uid: "".into(),
-            data: ChainType::Groups(SeqMap::default()),
+        chain_item_or_default(groups_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
+            ChainItem {
+                uid: "".into(),
+                data: ChainType::Groups(SeqMap::default()),
+            }
         },),
         chain_item_or_default(profiles.get_item("Merge").ok(), || ChainItem {
             uid: "Merge".into(),

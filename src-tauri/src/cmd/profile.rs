@@ -12,7 +12,7 @@ use crate::{
         },
         profiles_append_item_safe,
     },
-    core::{CoreManager, handle, timer::Timer, tray::Tray, validate::ValidationOutcome},
+    core::{CoreManager, handle, timer::Timer, validate::ValidationOutcome},
     feat,
     utils::{dirs, help},
 };
@@ -20,10 +20,7 @@ use clash_verge_draft::{Draft, SharedDraft};
 use clash_verge_logging::{Type, logging, logging_error};
 use scopeguard::defer;
 use smartstring::alias::String;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
@@ -150,100 +147,6 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
             Err(coded_error("PROFILE_UPDATE_FAILED", e))
         }
     }
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn delete_profile(index: std::string::String) -> CmdResult {
-    let index: String = index.into();
-    let merged_uid = index.clone();
-    let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
-
-    let profiles = Config::profiles().await;
-    let previous_merged = crate::config::merged::load()
-        .await
-        .with_error_code("MERGED_PROFILE_LOAD_FAILED")?;
-    let merge_snapshot = previous_merged.clone();
-    let deletion_committed = Arc::new(AtomicBool::new(false));
-    let committed = Arc::clone(&deletion_committed);
-    let update_result = profiles
-        .with_data_modify(|mut candidate| async move {
-            let original = candidate.clone();
-            let (should_update, plan) = candidate.plan_delete_item(&index)?;
-            // Remove the uid before generating: a fail-closed merge resolver must
-            // not try to load the profile that is being deleted.
-            crate::config::merged::remove(&merged_uid).await?;
-            let merge_plan = super::merge::plan_delete_merge(
-                candidate.current.as_ref(),
-                &merged_uid,
-                &merge_snapshot,
-                should_update,
-            );
-            if let Some(primary) = merge_plan.repaired_current.clone() {
-                candidate.patch_config(&IProfiles {
-                    current: Some(primary),
-                    items: None,
-                });
-            }
-            let needs_runtime_update = merge_plan.needs_runtime_update;
-            let guard = if needs_runtime_update {
-                match CoreManager::global()
-                    .update_config_forced_with_profiles(&candidate, &original)
-                    .await?
-                {
-                    Ok(guard) => Some(guard),
-                    Err(outcome) => return Ok((original, Err(outcome))),
-                }
-            } else {
-                candidate.save_file().await?;
-                None
-            };
-            let current = candidate.current.clone();
-            plan.cleanup().await;
-            committed.store(true, Ordering::Release);
-            Ok((candidate, Ok((needs_runtime_update, current, guard))))
-        })
-        .await;
-    let result = match update_result {
-        Ok(result) => result,
-        Err(error) => {
-            if super::merge::should_restore_merge_after_delete_failure(deletion_committed.load(Ordering::Acquire)) {
-                super::merge::restore_runtime_after_merge_rollback(&previous_merged).await;
-            }
-            return Err(coded_error("PROFILE_DELETE_FAILED", error));
-        }
-    };
-    let (needs_runtime_update, current, config_update_guard) = match result {
-        Ok(result) => result,
-        Err(outcome) => {
-            if super::merge::should_restore_merge_after_delete_failure(deletion_committed.load(Ordering::Acquire)) {
-                super::merge::restore_runtime_after_merge_rollback(&previous_merged).await;
-            }
-            handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
-            return Err(coded_error("PROFILE_DELETE_FAILED", outcome));
-        }
-    };
-    if needs_runtime_update {
-        profiles::activate_selected_nodes();
-    }
-    drop(config_update_guard);
-    drop(profile_write_guard);
-
-    if let Err(e) = Tray::global().update_tooltip().await {
-        logging!(warn, Type::Cmd, "异步更新托盘提示失败: {e:#}");
-    }
-
-    if let Err(e) = Tray::global().update_menu().await {
-        logging!(warn, Type::Cmd, "异步更新托盘菜单失败: {e:#}");
-    }
-    if needs_runtime_update {
-        handle::Handle::refresh_clash();
-        if let Some(current) = current.as_ref() {
-            handle::Handle::notify_profile_changed(current);
-        }
-    }
-    logging_error!(Type::Timer, Timer::global().refresh().await);
-    Ok(())
 }
 
 async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
@@ -430,9 +333,6 @@ impl From<ProfilePatch> for PrfItem {
 #[tauri::command]
 #[tracing::instrument(skip_all, level = "info", fields(target = ?profiles.current))]
 #[specta::specta]
-// Switching to a profile that is a merge member keeps the merge active. The
-// generated config always uses merged[0] as its base, so `current` may be a
-// non-primary member; the merge dialog documents that ordering.
 pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<ValidationOutcome> {
     if CURRENT_SWITCHING_PROFILE
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -454,26 +354,13 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
 
     let previous_profile = Config::profiles().await.data_arc().current.clone();
 
-    let previous_merged = crate::config::merged::load()
-        .await
-        .with_error_code("PROFILE_SWITCH_FAILED")?;
-    let clears_merge = super::merge::clears_merge_for_switch(target_profile, &previous_merged);
-    if clears_merge && let Err(error) = crate::config::merged::clear().await {
-        return Err(coded_error("PROFILE_SWITCH_FAILED", error));
-    }
-
     Config::profiles().await.edit_draft(|d| {
         d.patch_config(&profiles);
     });
 
-    let outcome = perform_config_update(target_profile, previous_profile.as_ref()).await;
-    let succeeded = matches!(outcome, Ok(ValidationOutcome::Valid));
-    if super::merge::should_restore_merge_after_switch(clears_merge, succeeded)
-        && let Err(error) = crate::config::merged::save(&previous_merged).await
-    {
-        logging!(warn, Type::Cmd, "failed to restore merged list: {error:#}");
-    }
-    outcome.map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
+    perform_config_update(target_profile, previous_profile.as_ref())
+        .await
+        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
 }
 
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<ValidationOutcome> {
@@ -486,8 +373,17 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) -> CmdResult {
-    let profile: PrfItem = profile.into();
     let index: String = index.into();
+    let mut profile: PrfItem = profile.into();
+    if crate::config::bundle::is_bundle_uid(&index) {
+        // The generated bundle is owned by its members; only display fields may change.
+        profile.itype = None;
+        profile.file = None;
+        profile.url = None;
+        profile.selected = None;
+        profile.extra = None;
+        profile.option = None;
+    }
     let profiles = Config::profiles().await;
     let should_refresh_timer = if let Ok(old_profile) = profiles.latest_arc().get_item(&index)
         && let Some(new_option) = profile.option.as_ref()

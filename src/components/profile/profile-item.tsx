@@ -7,6 +7,7 @@ import {
 } from '@mui/icons-material'
 import {
   Box,
+  Chip,
   CircularProgress,
   IconButton,
   keyframes,
@@ -32,6 +33,7 @@ import { EditorViewer } from '@/components/profile/editor-viewer'
 import { GroupsEditorViewer } from '@/components/profile/groups-editor-viewer'
 import { RulesEditorViewer } from '@/components/profile/rules-editor-viewer'
 import { useEditorDocument } from '@/hooks/use-editor-document'
+import type { BundleView } from '@/services/bindings'
 import {
   getNextUpdateTime,
   readProfileFile,
@@ -51,6 +53,7 @@ import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
+import { isBundleUid } from './bundle-constants'
 import { EnhanceHint } from './enhance-hint'
 import { ProfileBox } from './profile-box'
 import { ProxiesEditorViewer } from './proxies-editor-viewer'
@@ -74,6 +77,11 @@ export interface ProfileItemProps {
   batchMode?: boolean
   isSelected?: boolean
   onSelectionChange?: () => void
+  bundleView?: BundleView | null
+  bundleConflictCount?: number
+  onBundleEditMembers?: () => void
+  onBundleDetails?: () => void
+  onBundleDelete?: () => void
   timerUpdateRevision: number
   completedUpdateRevision: number
 }
@@ -93,9 +101,16 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     batchMode,
     isSelected,
     onSelectionChange,
+    bundleView,
+    bundleConflictCount,
+    onBundleEditMembers,
+    onBundleDetails,
+    onBundleDelete,
     timerUpdateRevision,
     completedUpdateRevision,
   } = props
+
+  const isBundle = isBundleUid(id)
 
   const [element, setElement] = useState<Element | null>(null)
   const handleRef = useRef<HTMLButtonElement | null>(null)
@@ -432,6 +447,9 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     extendConfig: 'profiles.components.menu.extendConfig',
     extendScript: 'profiles.components.menu.extendScript',
     openFile: 'profiles.components.menu.openFile',
+    bundleEditMembers: 'profiles.page.bundle.actions.editMembers',
+    bundleConflicts: 'profiles.page.bundle.actions.conflicts',
+    bundleDelete: 'profiles.page.bundle.actions.delete',
     update: 'profiles.components.menu.update',
     updateViaProxy: 'profiles.components.menu.updateViaProxy',
     delete: 'shared.actions.delete',
@@ -583,6 +601,41 @@ const ProfileItemBase = (props: ProfileItemProps) => {
       disabled: false,
     },
   ]
+  const bundleMenu: ContextMenuItem[] = [
+    {
+      label: menuLabels.select,
+      handler: onForceSelect,
+      disabled: false,
+    },
+    {
+      label: menuLabels.bundleEditMembers,
+      handler: () => {
+        setAnchorEl(null)
+        onBundleEditMembers?.()
+      },
+      disabled: activating || !onBundleEditMembers,
+    },
+    {
+      label: menuLabels.bundleConflicts,
+      handler: () => {
+        setAnchorEl(null)
+        onBundleDetails?.()
+      },
+      disabled: !onBundleDetails,
+    },
+    {
+      label: menuLabels.bundleDelete,
+      handler: () => {
+        setAnchorEl(null)
+        if (batchMode) {
+          onSelectionChange?.()
+        } else {
+          onBundleDelete?.()
+        }
+      },
+      disabled: activating || !onBundleDelete,
+    },
+  ]
 
   const boxStyle = {
     height: 26,
@@ -720,7 +773,13 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
             <Typography
               sx={{
-                width: batchMode ? 'calc(100% - 56px)' : 'calc(100% - 36px)',
+                width: isBundle
+                  ? batchMode
+                    ? 'calc(100% - 116px)'
+                    : 'calc(100% - 96px)'
+                  : batchMode
+                    ? 'calc(100% - 56px)'
+                    : 'calc(100% - 36px)',
                 fontSize: '18px',
                 fontWeight: '600',
                 lineHeight: '26px',
@@ -732,6 +791,15 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             >
               {name}
             </Typography>
+            {isBundle && (
+              <Chip
+                size="small"
+                color="primary"
+                variant="outlined"
+                label={t('profiles.components.bundle.badge')}
+                sx={{ ml: 0.5, height: 20, flexShrink: 0 }}
+              />
+            )}
           </Box>
 
           {hasUrl && (
@@ -759,69 +827,107 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             </IconButton>
           )}
         </Box>
-        <Box sx={boxStyle}>
-          {
-            <>
-              {description ? (
-                <Typography
-                  noWrap
-                  title={description}
-                  sx={{ fontSize: '14px' }}
-                >
-                  {description}
-                </Typography>
-              ) : (
-                hasUrl && (
+        {isBundle ? (
+          <Box sx={boxStyle}>
+            <Typography noWrap sx={{ fontSize: 14 }}>
+              {t('profiles.components.bundle.members', {
+                count: bundleView?.members.length ?? 0,
+              })}
+            </Typography>
+            <Typography
+              noWrap
+              sx={{ fontSize: 14, ml: 'auto', maxWidth: '60%' }}
+              title={bundleView?.members[0]?.name}
+            >
+              {t('profiles.components.bundle.primary', {
+                name: bundleView?.members[0]?.name ?? '-',
+              })}
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={boxStyle}>
+            {
+              <>
+                {description ? (
                   <Typography
                     noWrap
-                    title={`${t('shared.labels.from')} ${from}`}
+                    title={description}
+                    sx={{ fontSize: '14px' }}
                   >
-                    {from}
+                    {description}
                   </Typography>
-                )
-              )}
-              {hasUrl && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    ml: 'auto',
-                  }}
-                >
-                  <Typography
-                    noWrap
-                    component="span"
-                    title={
-                      showNextUpdate
-                        ? t('profiles.components.profileItem.tooltips.showLast')
-                        : `${t('shared.labels.updateTime')}: ${parseExpire(updated!)}\n${t('profiles.components.profileItem.tooltips.showNext')}`
-                    }
+                ) : (
+                  hasUrl && (
+                    <Typography
+                      noWrap
+                      title={`${t('shared.labels.from')} ${from}`}
+                    >
+                      {from}
+                    </Typography>
+                  )
+                )}
+                {hasUrl && (
+                  <Box
                     sx={{
-                      fontSize: 14,
-                      textAlign: 'right',
-                      cursor: 'pointer',
-                      display: 'inline-block',
-                      borderBottom: '1px dashed transparent',
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        borderBottomColor: 'primary.main',
-                        color: 'primary.main',
-                      },
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      ml: 'auto',
                     }}
-                    onClick={toggleUpdateTimeDisplay}
                   >
-                    {showNextUpdate
-                      ? nextUpdateTime
-                      : updated! > 0
-                        ? dayjs(updated! * 1000).fromNow()
-                        : ''}
-                  </Typography>
-                </Box>
-              )}
-            </>
-          }
-        </Box>
-        {hasExtra ? (
+                    <Typography
+                      noWrap
+                      component="span"
+                      title={
+                        showNextUpdate
+                          ? t(
+                              'profiles.components.profileItem.tooltips.showLast',
+                            )
+                          : `${t('shared.labels.updateTime')}: ${parseExpire(updated!)}\n${t('profiles.components.profileItem.tooltips.showNext')}`
+                      }
+                      sx={{
+                        fontSize: 14,
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        display: 'inline-block',
+                        borderBottom: '1px dashed transparent',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          borderBottomColor: 'primary.main',
+                          color: 'primary.main',
+                        },
+                      }}
+                      onClick={toggleUpdateTimeDisplay}
+                    >
+                      {showNextUpdate
+                        ? nextUpdateTime
+                        : updated! > 0
+                          ? dayjs(updated! * 1000).fromNow()
+                          : ''}
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            }
+          </Box>
+        )}
+        {isBundle ? (
+          <Box sx={{ ...boxStyle, fontSize: 12 }}>
+            <span>
+              {t('profiles.components.bundle.conflicts', {
+                count: bundleConflictCount ?? 0,
+              })}
+            </span>
+            {bundleView?.stale && (
+              <Box
+                component="span"
+                sx={{ color: 'warning.main' }}
+                title={t('profiles.components.bundle.stale')}
+              >
+                {t('profiles.components.bundle.stale')}
+              </Box>
+            )}
+          </Box>
+        ) : hasExtra ? (
           <Box sx={{ ...boxStyle, fontSize: 14 }}>
             <span title={t('shared.labels.usedTotal')}>
               {parseTraffic(upload + download)} / {parseTraffic(total)}
@@ -855,29 +961,32 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           e.preventDefault()
         }}
       >
-        {(hasUrl ? urlModeMenu : fileModeMenu).map((item) => (
-          <MenuItem
-            key={item.label}
-            onClick={item.handler}
-            disabled={item.disabled}
-            sx={[
-              {
-                minWidth: 120,
-              },
-              (theme) => {
-                return {
-                  color:
-                    item.label === menuLabels.delete
-                      ? theme.palette.error.main
-                      : undefined,
-                }
-              },
-            ]}
-            dense
-          >
-            {t(item.label)}
-          </MenuItem>
-        ))}
+        {(hasUrl ? urlModeMenu : isBundle ? bundleMenu : fileModeMenu).map(
+          (item) => (
+            <MenuItem
+              key={item.label}
+              onClick={item.handler}
+              disabled={item.disabled}
+              sx={[
+                {
+                  minWidth: 120,
+                },
+                (theme) => {
+                  return {
+                    color:
+                      item.label === menuLabels.delete ||
+                      item.label === menuLabels.bundleDelete
+                        ? theme.palette.error.main
+                        : undefined,
+                  }
+                },
+              ]}
+              dense
+            >
+              {t(item.label)}
+            </MenuItem>
+          ),
+        )}
       </Menu>
       {fileOpen && (
         <EditorViewer

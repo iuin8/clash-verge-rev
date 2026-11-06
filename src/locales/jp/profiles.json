@@ -59,12 +59,54 @@
       }
     },
     "title": "プロファイル",
-    "merge": {
-      "title": "プロファイルを統合",
-      "description": "複数のプロファイルを 1 つの有効な設定に統合します。",
-      "save": "統合を適用",
-      "clear": "統合を解除",
-      "conflicts": "競合",
+    "bundle": {
+      "batch": {
+        "create": "プロファイルバンドル",
+        "update": "バンドルを更新",
+        "hint": "2 つ以上のプロファイルを選択してください。"
+      },
+      "actions": {
+        "editMembers": "メンバーを編集",
+        "conflicts": "競合",
+        "refresh": "バンドルを更新",
+        "delete": "バンドルを削除"
+      },
+      "confirm": {
+        "create": {
+          "title": "プロファイルバンドルを作成しますか？",
+          "message": "選択したプロファイルを以下の順序で 1 つの生成プロファイルに結合します。"
+        },
+        "overwrite": {
+          "title": "プロファイルバンドルを更新しますか？",
+          "message": "バンドルのメンバーと順序を次に置き換えます:"
+        },
+        "delete": {
+          "title": "プロファイルバンドルを削除しますか？",
+          "message": "生成されたバンドルプロファイルを削除します。メンバーのサブスクリプションは保持されます。"
+        }
+      },
+      "diff": {
+        "added": "追加",
+        "removed": "削除",
+        "moved": "移動",
+        "unchanged": "変更なし"
+      },
+      "details": {
+        "title": "プロファイルバンドル",
+        "members": "メンバーの順序",
+        "primary": "ベース",
+        "conflicts": "競合",
+        "noConflicts": "競合は報告されていません。",
+        "stale": "生成後にメンバーが変更されました。更新して再生成してください。",
+        "generatedAt": "生成日時: {{time}}",
+        "missing": "プロファイルが見つかりません"
+      },
+      "notices": {
+        "created": "プロファイルバンドルを作成しました。",
+        "updated": "プロファイルバンドルを更新しました。",
+        "refreshed": "プロファイルバンドルを更新しました。",
+        "deleted": "プロファイルバンドルを削除しました。"
+      },
       "conflict": {
         "primaryFieldMalformed": "{{source}} の {{field}} フィールドが無効なため、マージ時に置き換えました。",
         "groupMembersMalformed": "グループ {{name}}（{{source}}）のメンバーリストが無効なため、マージ時に置き換えました。",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "{{source}} のキー {{name}} はマージされません。このキーはプライマリプロファイルでのみ定義できます。",
         "groupReferenceMissing": "グループ {{source}} が存在しないプロキシ/プロバイダー/グループ {{name}} を参照しているため、参照を削除しました。",
         "unknown": "{{source}} の {{name}} で不明なマージ競合が発生しました（{{field}}）。"
-      },
-      "empty": "利用可能なプロファイルがありません。",
-      "selectHint": "2 つ以上のプロファイルを選択してください。",
-      "saved": "統合を適用しました。",
-      "moveUp": "上へ",
-      "moveDown": "下へ",
-      "loadError": "統合リストを読み取れません。「統合を解除」を押してリセットしてください。",
-      "primaryHint": "最初に選択したプロファイルがプライマリ（ベース）プロファイルです。"
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "不明",
         "autoUpdateDisabled": "自動更新が無効になっています。"
       }
+    },
+    "bundle": {
+      "badge": "バンドル",
+      "members": "メンバー: {{count}}",
+      "primary": "ベース: {{name}}",
+      "conflicts": "競合: {{count}}",
+      "stale": "要更新"
     }
   },
   "modals": {

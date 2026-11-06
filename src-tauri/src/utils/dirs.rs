@@ -55,6 +55,11 @@ pub fn app_icons_dir() -> Result<PathBuf> {
     Ok(app_home_dir()?.join("icons"))
 }
 
+/// Fork-only state for materialized profile bundles (never part of `profiles.yaml`).
+pub fn app_bundles_dir() -> Result<PathBuf> {
+    Ok(app_home_dir()?.join("bundles"))
+}
+
 pub fn find_target_icons(target: &str) -> Result<Option<String>> {
     let icons_dir = app_icons_dir()?;
     let icon_path = fs::read_dir(&icons_dir)?

@@ -78,6 +78,7 @@ impl Config {
 
     pub async fn init_config_before_window() -> Result<()> {
         Self::ensure_default_profile_items().await?;
+        Self::init_bundle_state().await;
 
         let verge = Self::verge().await.latest_arc();
         clash_verge_i18n::sync_locale(verge.language.as_deref());
@@ -142,6 +143,42 @@ impl Config {
             profiles_append_item_to_safe(&profiles, script_item).await?;
         }
         Ok(())
+    }
+
+    /// Migrate the removed merged.json store and regenerate a stale bundle before
+    /// the runtime config is generated for this launch. Failures are logged, never
+    /// fatal: the generated profile stays usable and the next start retries.
+    async fn init_bundle_state() {
+        let profiles = Self::profiles().await;
+
+        match crate::config::bundle::migrate_legacy(&profiles).await {
+            Ok(outcome) if outcome.migrated => {
+                logging!(
+                    info,
+                    Type::Config,
+                    "legacy merged profiles migrated into a profile bundle"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                logging!(error, Type::Config, "profile bundle migration failed: {error:#}");
+            }
+        }
+
+        let snapshot = profiles.latest_arc();
+        match crate::config::bundle::refresh_if_stale(snapshot.as_ref()).await {
+            Ok(Some(outcome)) if outcome.regenerated => {
+                logging!(info, Type::Config, "regenerated the stale profile bundle at startup");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                logging!(
+                    warn,
+                    Type::Config,
+                    "failed to refresh the profile bundle at startup: {error:#}"
+                );
+            }
+        }
     }
 
     async fn generate_and_validate() -> Result<Option<(NoticeStatus, String)>> {

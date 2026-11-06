@@ -211,8 +211,36 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
         None => false,
     };
     let profiles = Config::profiles().await;
-    let is_current = profiles.latest_arc().current.as_ref() == Some(uid);
-    let should_refresh = is_current || (!profile_persisted && is_mannual_trigger);
+    let bundle_member = match crate::config::bundle::is_member(uid).await {
+        Ok(is_member) => is_member,
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Config,
+                "[订阅更新] failed to read bundle metadata: {error:#}"
+            );
+            false
+        }
+    };
+    let (is_current, bundle_active) = {
+        let snapshot = profiles.latest_arc();
+        if bundle_member {
+            let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+            if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true).await {
+                logging!(
+                    error,
+                    Type::Config,
+                    "[订阅更新] failed to regenerate the profile bundle: {error:#}"
+                );
+                bail!("profile updated but the profile bundle could not be regenerated: {error:#}");
+            }
+        }
+        (
+            snapshot.current.as_ref() == Some(uid),
+            snapshot.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID),
+        )
+    };
+    let should_refresh = is_current || (bundle_member && bundle_active) || (!profile_persisted && is_mannual_trigger);
 
     if should_refresh {
         logging!(debug, Type::Config, "[订阅更新] 更新内核配置");

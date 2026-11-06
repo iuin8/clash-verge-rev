@@ -59,12 +59,54 @@
       }
     },
     "title": "Perfis",
-    "merge": {
-      "title": "Combinar perfis",
-      "description": "Combine vários perfis em uma configuração efetiva.",
-      "save": "Aplicar combinação",
-      "clear": "Limpar combinação",
-      "conflicts": "Conflitos",
+    "bundle": {
+      "batch": {
+        "create": "Pacote de perfis",
+        "update": "Atualizar pacote",
+        "hint": "Selecione pelo menos dois perfis."
+      },
+      "actions": {
+        "editMembers": "Editar membros",
+        "conflicts": "Conflitos",
+        "refresh": "Atualizar pacote",
+        "delete": "Excluir pacote"
+      },
+      "confirm": {
+        "create": {
+          "title": "Criar pacote de perfis?",
+          "message": "Os perfis selecionados serão combinados na ordem abaixo em um perfil gerado."
+        },
+        "overwrite": {
+          "title": "Atualizar pacote de perfis?",
+          "message": "Os membros e a ordem do pacote serão substituídos por:"
+        },
+        "delete": {
+          "title": "Excluir pacote de perfis?",
+          "message": "O perfil de pacote gerado será excluído. As assinaturas dos membros são mantidas."
+        }
+      },
+      "diff": {
+        "added": "Adicionado",
+        "removed": "Removido",
+        "moved": "Movido",
+        "unchanged": "Inalterado"
+      },
+      "details": {
+        "title": "Pacote de perfis",
+        "members": "Ordem dos membros",
+        "primary": "Base",
+        "conflicts": "Conflitos",
+        "noConflicts": "Nenhum conflito foi relatado.",
+        "stale": "Os membros mudaram desde que o pacote foi gerado. Atualize para regenerar.",
+        "generatedAt": "Gerado: {{time}}",
+        "missing": "Perfil ausente"
+      },
+      "notices": {
+        "created": "Pacote de perfis criado.",
+        "updated": "Pacote de perfis atualizado.",
+        "refreshed": "Pacote de perfis atualizado.",
+        "deleted": "Pacote de perfis excluído."
+      },
       "conflict": {
         "primaryFieldMalformed": "O campo {{field}} em {{source}} é inválido e foi substituído durante a combinação.",
         "groupMembersMalformed": "A lista de membros do grupo {{name}} ({{source}}) é inválida e foi substituída durante a combinação.",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "A chave {{name}} de {{source}} não é combinada; apenas o perfil principal pode defini-la.",
         "groupReferenceMissing": "O grupo {{source}} referencia um proxy/provedor/grupo inexistente {{name}}; a referência foi descartada.",
         "unknown": "Ocorreu um conflito de combinação desconhecido para {{name}} em {{source}} ({{field}})."
-      },
-      "empty": "Nenhum perfil disponível.",
-      "selectHint": "Selecione pelo menos dois perfis.",
-      "saved": "Combinação aplicada.",
-      "moveUp": "Mover para cima",
-      "moveDown": "Mover para baixo",
-      "loadError": "Não foi possível ler a lista de combinação. Pressione Limpar combinação para redefini-la.",
-      "primaryHint": "O primeiro perfil selecionado é o perfil principal (base)."
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "Desconhecido",
         "autoUpdateDisabled": "Atualização automática desativada"
       }
+    },
+    "bundle": {
+      "badge": "Pacote",
+      "members": "Membros: {{count}}",
+      "primary": "Base: {{name}}",
+      "conflicts": "Conflitos: {{count}}",
+      "stale": "Desatualizado"
     }
   },
   "modals": {

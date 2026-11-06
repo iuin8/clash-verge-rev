@@ -1,4 +1,4 @@
-use super::CmdResult;
+use super::{CmdResult, coded_error};
 use crate::{
     cmd::StringifyErr as _,
     cmd::validate::{ValidationNoticeTarget, handle_validation_notice},
@@ -22,10 +22,28 @@ pub async fn save_profile_file(
     file_data: Option<std::string::String>,
 ) -> CmdResult<ValidationOutcome> {
     let index: String = index.into();
+    if crate::config::bundle::is_bundle_uid(&index) {
+        return Err(coded_error(
+            "BUNDLE_GENERATED_READ_ONLY",
+            "the bundle profile is generated from its members; edit the bundle members instead",
+        ));
+    }
     let file_data = file_data.map(String::from);
     let file_data = match file_data {
         Some(d) => d,
         None => return Ok(ValidationOutcome::Valid),
+    };
+
+    let bundle_member = match crate::config::bundle::is_member(&index).await {
+        Ok(is_member) => is_member,
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to read bundle metadata while saving profile '{index}': {error:#}"
+            );
+            false
+        }
     };
 
     let backup_trigger = match index.as_str() {
@@ -42,8 +60,14 @@ pub async fn save_profile_file(
         let is_merge = item.itype.as_ref().is_some_and(|t| t == "merge");
         let path = item.file.clone().ok_or("file field is null")?;
         let is_script = item.itype.as_ref().is_some_and(|t| t == "script") || path.ends_with(".js");
-        let affects_runtime = profile_affects_runtime(&profiles_guard, &index);
+        let affects_runtime = profile_affects_runtime(&profiles_guard, &index, bundle_member);
         (path, is_merge, is_script, affects_runtime)
+    };
+
+    let bundle_artifacts = if bundle_member {
+        Some(crate::config::bundle::snapshot_artifacts().await.stringify_err()?)
+    } else {
+        None
     };
 
     let profiles_dir = dirs::app_profiles_dir().stringify_err()?;
@@ -77,9 +101,13 @@ pub async fn save_profile_file(
         &file_path,
         &original_content,
         original_existed,
-        is_merge_file,
-        is_script_file,
-        affects_runtime,
+        SavedFileContext {
+            is_merge_file,
+            is_script_file,
+            affects_runtime,
+            bundle_member,
+            bundle_artifacts: bundle_artifacts.as_ref(),
+        },
     )
     .await?;
 
@@ -104,11 +132,33 @@ async fn restore_original(
     }
 }
 
-fn profile_affects_runtime(profiles: &IProfiles, index: &str) -> bool {
+async fn restore_original_and_bundle(
+    file_path: &std::path::Path,
+    original_content: &str,
+    original_existed: bool,
+    bundle_artifacts: Option<&crate::config::bundle::BundleArtifacts>,
+) -> CmdResult<()> {
+    restore_original(file_path, original_content, original_existed).await?;
+    if let Some(artifacts) = bundle_artifacts
+        && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
+    {
+        logging!(
+            warn,
+            Type::Config,
+            "[cmd配置save] failed to restore bundle artifacts: {error:#}"
+        );
+    }
+    Ok(())
+}
+
+fn profile_affects_runtime(profiles: &IProfiles, index: &str, bundle_member: bool) -> bool {
     let Some(current_uid) = profiles.current.as_ref() else {
         return false;
     };
     if current_uid == index {
+        return true;
+    }
+    if bundle_member && crate::config::bundle::is_bundle_uid(current_uid) {
         return true;
     }
 
@@ -125,39 +175,63 @@ fn profile_affects_runtime(profiles: &IProfiles, index: &str) -> bool {
     .contains(&index)
 }
 
+struct SavedFileContext<'a> {
+    is_merge_file: bool,
+    is_script_file: bool,
+    affects_runtime: bool,
+    bundle_member: bool,
+    bundle_artifacts: Option<&'a crate::config::bundle::BundleArtifacts>,
+}
+
 async fn handle_saved_profile_file(
     file_path_str: &str,
     file_path: &std::path::Path,
     original_content: &str,
     original_existed: bool,
-    is_merge_file: bool,
-    is_script_file: bool,
-    affects_runtime: bool,
+    context: SavedFileContext<'_>,
 ) -> CmdResult<ValidationOutcome> {
-    let (target, file_type) = if is_script_file {
+    let (target, file_type) = if context.is_script_file {
         (ValidationNoticeTarget::Script, "脚本文件")
-    } else if is_merge_file {
+    } else if context.is_merge_file {
         (ValidationNoticeTarget::Merge, "合并配置文件")
     } else {
         (ValidationNoticeTarget::Runtime, "YAML配置文件")
     };
 
-    match CoreConfigValidator::validate_config_file_outcome(file_path_str, Some(is_merge_file)).await {
+    match CoreConfigValidator::validate_config_file_outcome(file_path_str, Some(context.is_merge_file)).await {
         Ok(outcome) if outcome.is_valid() => {}
         Ok(outcome) => {
             logging!(warn, Type::Config, "[cmd配置save] 文件验证失败: {}", outcome);
-            restore_original(file_path, original_content, original_existed).await?;
+            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
+                .await?;
             handle_validation_notice(&outcome, target, file_type);
             return Ok(outcome);
         }
         Err(e) => {
             logging!(error, Type::Config, "[cmd配置save] 验证过程发生错误: {e:#}");
-            restore_original(file_path, original_content, original_existed).await?;
+            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
+                .await?;
             return Err(e.to_string().into());
         }
     }
 
-    if !affects_runtime {
+    if context.bundle_member {
+        let profiles = Config::profiles().await;
+        let snapshot = profiles.latest_arc();
+        let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+        if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true).await {
+            logging!(
+                error,
+                Type::Config,
+                "[cmd配置save] bundle regeneration failed: {error:#}"
+            );
+            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
+                .await?;
+            return Err(error.to_string().into());
+        }
+    }
+
+    if !context.affects_runtime {
         return Ok(ValidationOutcome::Valid);
     }
 
@@ -173,13 +247,15 @@ async fn handle_saved_profile_file(
         }
         Ok(outcome) => {
             logging!(warn, Type::Config, "[cmd配置save] 运行时配置应用失败: {}", outcome);
-            restore_original(file_path, original_content, original_existed).await?;
+            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
+                .await?;
             handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
             Ok(outcome)
         }
         Err(err) => {
             logging!(error, Type::Config, "[cmd配置save] 运行时配置应用错误: {err:#}");
-            restore_original(file_path, original_content, original_existed).await?;
+            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
+                .await?;
             Err(err.to_string().into())
         }
     }

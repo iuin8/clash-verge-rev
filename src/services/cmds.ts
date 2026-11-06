@@ -38,21 +38,25 @@ export async function getProfiles(): Promise<IProfilesConfig> {
   return commands.getProfiles()
 }
 
-// FORK: multi-profile merge
-export async function getMergedProfiles(): Promise<string[]> {
-  return commands.getMergedProfiles()
+// FORK: profile bundle
+export async function getBundleView() {
+  return commands.getBundleView()
 }
 
-export async function setMergedProfiles(uids: string[]) {
-  return commands.setMergedProfiles(uids)
+export async function setBundleMembers(uids: string[]) {
+  return commands.setBundleMembers(uids)
 }
 
-export async function clearMergedProfiles() {
-  return commands.clearMergedProfiles()
+export async function refreshBundle() {
+  return commands.refreshBundle()
 }
 
-export async function getMergeConflicts() {
-  return commands.getMergeConflicts()
+export async function deleteBundle() {
+  return commands.deleteBundle()
+}
+
+export async function getBundleConflicts() {
+  return commands.getBundleConflicts()
 }
 
 export async function enhanceProfiles() {

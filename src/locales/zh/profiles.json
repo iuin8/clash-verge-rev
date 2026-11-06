@@ -59,12 +59,54 @@
       }
     },
     "title": "订阅",
-    "merge": {
-      "title": "多订阅合并",
-      "description": "把多个订阅合并成一份生效配置。",
-      "save": "应用合并",
-      "clear": "清除合并",
-      "conflicts": "冲突",
+    "bundle": {
+      "batch": {
+        "create": "组合订阅",
+        "update": "更新组合",
+        "hint": "至少选择两个订阅。"
+      },
+      "actions": {
+        "editMembers": "编辑成员",
+        "conflicts": "冲突",
+        "refresh": "刷新组合",
+        "delete": "删除组合"
+      },
+      "confirm": {
+        "create": {
+          "title": "创建组合订阅？",
+          "message": "将按以下顺序把所选订阅合并为一个生成的配置。"
+        },
+        "overwrite": {
+          "title": "更新组合订阅？",
+          "message": "组合成员及顺序将替换为："
+        },
+        "delete": {
+          "title": "删除组合订阅？",
+          "message": "生成的组合配置将被删除，成员订阅会保留。"
+        }
+      },
+      "diff": {
+        "added": "新增",
+        "removed": "移除",
+        "moved": "移动",
+        "unchanged": "未变"
+      },
+      "details": {
+        "title": "组合订阅",
+        "members": "成员顺序",
+        "primary": "基础",
+        "conflicts": "冲突",
+        "noConflicts": "没有报告冲突。",
+        "stale": "生成后成员已变更，请刷新组合以重新生成。",
+        "generatedAt": "生成于：{{time}}",
+        "missing": "订阅缺失"
+      },
+      "notices": {
+        "created": "组合订阅已创建。",
+        "updated": "组合订阅已更新。",
+        "refreshed": "组合订阅已刷新。",
+        "deleted": "组合订阅已删除。"
+      },
       "conflict": {
         "primaryFieldMalformed": "{{source}} 的 {{field}} 字段格式无效，已在合并时替换。",
         "groupMembersMalformed": "分组 {{name}}（{{source}}）的成员列表格式无效，已在合并时替换。",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "{{source}} 的 {{name}} 项未参与合并，该字段只能由主配置定义。",
         "groupReferenceMissing": "分组 {{source}} 引用了不存在的节点/代理提供者/分组 {{name}}，该引用已被移除。",
         "unknown": "{{source}} 中的 {{name}} 发生了一个未识别的合并冲突（{{field}}）。"
-      },
-      "empty": "没有可用订阅。",
-      "selectHint": "至少选择两个订阅。",
-      "saved": "合并已应用。",
-      "moveUp": "上移",
-      "moveDown": "下移",
-      "loadError": "合并列表无法读取，请点“清除合并”重置。",
-      "primaryHint": "第一个选中的订阅是主配置（基础配置）。"
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "未知",
         "autoUpdateDisabled": "自动更新已禁用"
       }
+    },
+    "bundle": {
+      "badge": "组合",
+      "members": "成员：{{count}}",
+      "primary": "基础：{{name}}",
+      "conflicts": "冲突：{{count}}",
+      "stale": "已过期"
     }
   },
   "modals": {

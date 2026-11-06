@@ -59,12 +59,54 @@
       }
     },
     "title": "Abonnement",
-    "merge": {
-      "title": "Abonnements zusammenführen",
-      "description": "Mehrere Abonnements zu einer effektiven Konfiguration zusammenführen.",
-      "save": "Zusammenführung anwenden",
-      "clear": "Zusammenführung löschen",
-      "conflicts": "Konflikte",
+    "bundle": {
+      "batch": {
+        "create": "Profilbündel",
+        "update": "Bündel aktualisieren",
+        "hint": "Wählen Sie mindestens zwei Profile aus."
+      },
+      "actions": {
+        "editMembers": "Mitglieder bearbeiten",
+        "conflicts": "Konflikte",
+        "refresh": "Bündel aktualisieren",
+        "delete": "Bündel löschen"
+      },
+      "confirm": {
+        "create": {
+          "title": "Profilbündel erstellen?",
+          "message": "Die ausgewählten Profile werden in der folgenden Reihenfolge zu einem generierten Profil zusammengeführt."
+        },
+        "overwrite": {
+          "title": "Profilbündel aktualisieren?",
+          "message": "Mitglieder und Reihenfolge des Bündels werden ersetzt durch:"
+        },
+        "delete": {
+          "title": "Profilbündel löschen?",
+          "message": "Das generierte Bündelprofil wird gelöscht. Die Mitglieds-Abonnements bleiben erhalten."
+        }
+      },
+      "diff": {
+        "added": "Hinzugefügt",
+        "removed": "Entfernt",
+        "moved": "Verschoben",
+        "unchanged": "Unverändert"
+      },
+      "details": {
+        "title": "Profilbündel",
+        "members": "Reihenfolge der Mitglieder",
+        "primary": "Basis",
+        "conflicts": "Konflikte",
+        "noConflicts": "Es wurden keine Konflikte gemeldet.",
+        "stale": "Die Mitglieder haben sich seit der Generierung geändert. Aktualisieren Sie das Bündel.",
+        "generatedAt": "Generiert: {{time}}",
+        "missing": "Profil fehlt"
+      },
+      "notices": {
+        "created": "Profilbündel erstellt.",
+        "updated": "Profilbündel aktualisiert.",
+        "refreshed": "Profilbündel aktualisiert.",
+        "deleted": "Profilbündel gelöscht."
+      },
       "conflict": {
         "primaryFieldMalformed": "Das Feld {{field}} in {{source}} ist ungültig und wurde beim Zusammenführen ersetzt.",
         "groupMembersMalformed": "Die Mitgliederliste der Gruppe {{name}} ({{source}}) ist ungültig und wurde beim Zusammenführen ersetzt.",
@@ -73,14 +115,7 @@
         "topLevelKeyIgnored": "Der Schlüssel {{name}} aus {{source}} wird nicht zusammengeführt; nur das primäre Profil darf ihn definieren.",
         "groupReferenceMissing": "Die Gruppe {{source}} verweist auf einen fehlenden Proxy/Provider/eine fehlende Gruppe {{name}}; der Verweis wurde entfernt.",
         "unknown": "Für {{name}} in {{source}} ist ein unbekannter Zusammenführungskonflikt aufgetreten ({{field}})."
-      },
-      "empty": "Keine Abonnements verfügbar.",
-      "selectHint": "Wählen Sie mindestens zwei Abonnements aus.",
-      "saved": "Zusammenführung angewendet.",
-      "moveUp": "Nach oben",
-      "moveDown": "Nach unten",
-      "loadError": "Die Zusammenführungsliste ist unlesbar. Klicken Sie auf „Zusammenführung löschen“, um sie zurückzusetzen.",
-      "primaryHint": "Das erste ausgewählte Abonnement ist das primäre (Basis-)Abonnement."
+      }
     }
   },
   "components": {
@@ -129,6 +164,13 @@
         "unknown": "Unbekannt",
         "autoUpdateDisabled": "Automatische Aktualisierung deaktiviert"
       }
+    },
+    "bundle": {
+      "badge": "Bündel",
+      "members": "Mitglieder: {{count}}",
+      "primary": "Basis: {{name}}",
+      "conflicts": "Konflikte: {{count}}",
+      "stale": "Veraltet"
     }
   },
   "modals": {
