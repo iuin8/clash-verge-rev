@@ -354,13 +354,44 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
 
     let previous_profile = Config::profiles().await.data_arc().current.clone();
 
+    let switching_to_bundle = target_profile.is_some_and(|uid| uid.as_str() == crate::config::bundle::BUNDLE_UID);
+    let bundle_artifacts = if switching_to_bundle {
+        let profiles_draft = Config::profiles().await;
+        let snapshot = profiles_draft.latest_arc();
+        if snapshot.get_item(crate::config::bundle::BUNDLE_UID).is_ok() {
+            let artifacts = crate::config::bundle::snapshot_artifacts()
+                .await
+                .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))?;
+            if let Err(error) = crate::config::bundle::refresh(&snapshot, false, true).await {
+                return Err(coded_error(
+                    "PROFILE_SWITCH_FAILED",
+                    format!("cannot activate the profile bundle: {error:#}"),
+                ));
+            }
+            Some(artifacts)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     Config::profiles().await.edit_draft(|d| {
         d.patch_config(&profiles);
     });
 
-    perform_config_update(target_profile, previous_profile.as_ref())
-        .await
-        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
+    let outcome = perform_config_update(target_profile, previous_profile.as_ref()).await;
+    if !matches!(&outcome, Ok(ValidationOutcome::Valid))
+        && let Some(artifacts) = bundle_artifacts.as_ref()
+        && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
+    {
+        logging!(
+            warn,
+            Type::Cmd,
+            "failed to restore bundle artifacts after a failed activation: {error:#}"
+        );
+    }
+    outcome.map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
 }
 
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<ValidationOutcome> {

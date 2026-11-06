@@ -53,7 +53,7 @@ import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
-import { isBundleUid } from './bundle-constants'
+import { isBundleUid, isDefaultBundleName } from './bundle-constants'
 import { EnhanceHint } from './enhance-hint'
 import { ProfileBox } from './profile-box'
 import { ProxiesEditorViewer } from './proxies-editor-viewer'
@@ -141,6 +141,10 @@ const ProfileItemBase = (props: ProfileItemProps) => {
   )
 
   const { uid, name = 'Profile', extra, updated = 0, option } = itemData
+  const displayName =
+    isBundle && isDefaultBundleName(name)
+      ? t('profiles.page.bundle.defaultName')
+      : name
 
   const fetchNextUpdateTimeCallback = useCallback(
     async (forceRefresh = false) => {
@@ -627,11 +631,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
       label: menuLabels.bundleDelete,
       handler: () => {
         setAnchorEl(null)
-        if (batchMode) {
-          onSelectionChange?.()
-        } else {
-          onBundleDelete?.()
-        }
+        onBundleDelete?.()
       },
       disabled: activating || !onBundleDelete,
     },
@@ -735,7 +735,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
         )}
         <Box sx={{ position: 'relative' }}>
           <Box sx={{ display: 'flex', justifyContent: 'start' }}>
-            {batchMode && (
+            {batchMode && !isBundle && (
               <IconButton
                 size="small"
                 sx={{ padding: '2px', marginRight: '4px', marginLeft: '-8px' }}
@@ -787,9 +787,9 @@ const ProfileItemBase = (props: ProfileItemProps) => {
               variant="h6"
               component="h2"
               noWrap
-              title={name!}
+              title={displayName!}
             >
-              {name}
+              {displayName}
             </Typography>
             {isBundle && (
               <Chip

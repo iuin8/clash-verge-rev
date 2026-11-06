@@ -142,3 +142,58 @@ fn bundle_generated_paths_are_fixed_and_fork_owned() {
     assert!(is_bundle_uid(BUNDLE_UID));
     assert!(!is_bundle_uid("bundle-other"));
 }
+
+#[test]
+fn invalid_generated_output_is_never_written() {
+    assert_eq!(commit_decision(BundleValidation::Valid, false), CommitDecision::Write);
+    assert_eq!(
+        commit_decision(BundleValidation::Invalid, false),
+        CommitDecision::Reject
+    );
+    assert_eq!(commit_decision(BundleValidation::Invalid, true), CommitDecision::Reject);
+    assert_eq!(
+        commit_decision(BundleValidation::Unavailable, true),
+        CommitDecision::Write,
+        "paths that immediately apply the runtime may proceed and roll back on failure"
+    );
+    assert_eq!(
+        commit_decision(BundleValidation::Unavailable, false),
+        CommitDecision::KeepStale,
+        "background refreshes must not write unvalidated YAML"
+    );
+}
+
+#[test]
+fn teardown_clears_only_the_bundle_dns_override() {
+    use crate::config::dns::ProfileDnsSettings;
+
+    let mut verge = crate::config::IVerge::default();
+    verge
+        .profile_dns_settings
+        .insert(BUNDLE_UID.into(), ProfileDnsSettings::default());
+    verge
+        .profile_dns_settings
+        .insert("other".into(), ProfileDnsSettings::default());
+
+    assert!(remove_dns_settings(&mut verge));
+    assert!(!verge.profile_dns_settings.contains_key(BUNDLE_UID));
+    assert!(verge.profile_dns_settings.contains_key("other"));
+    assert!(!remove_dns_settings(&mut verge), "clearing is idempotent");
+}
+
+#[test]
+fn pruning_an_inactive_bundle_markers_it_stale() {
+    let mut current = meta(&["a", "b"]);
+    current.sources.insert("a".into(), String::from("hash-a"));
+    current.generated_sha256 = String::from("generated-hash");
+
+    let stale = stale_meta_after_prune(&current, &uids(&["b"]));
+    assert_eq!(stale.members, uids(&["b"]));
+    assert!(
+        stale.generated_sha256.is_empty(),
+        "old generated file must be treated as stale"
+    );
+    assert!(!stale.sources.contains_key("a"));
+    assert!(!stale.sources.contains_key("b"));
+    assert!(stale.conflicts.is_empty());
+}

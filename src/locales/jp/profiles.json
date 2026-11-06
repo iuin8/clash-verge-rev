@@ -60,6 +60,7 @@
     },
     "title": "プロファイル",
     "bundle": {
+      "defaultName": "プロファイルバンドル",
       "batch": {
         "create": "プロファイルバンドル",
         "update": "バンドルを更新",

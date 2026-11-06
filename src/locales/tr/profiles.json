@@ -60,6 +60,7 @@
     },
     "title": "Profiller",
     "bundle": {
+      "defaultName": "Profil paketi",
       "batch": {
         "create": "Profil paketi",
         "update": "Paketi güncelle",

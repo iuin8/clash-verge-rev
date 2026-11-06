@@ -484,6 +484,7 @@ export interface TranslationResources {
             topLevelKeyKept: string
             unknown: string
           }
+          defaultName: string
           details: {
             conflicts: string
             generatedAt: string

@@ -60,6 +60,7 @@
     },
     "title": "Perfis",
     "bundle": {
+      "defaultName": "Pacote de perfis",
       "batch": {
         "create": "Pacote de perfis",
         "update": "Atualizar pacote",

@@ -60,6 +60,7 @@
     },
     "title": "Suscripciones",
     "bundle": {
+      "defaultName": "Paquete de perfiles",
       "batch": {
         "create": "Paquete de perfiles",
         "update": "Actualizar paquete",

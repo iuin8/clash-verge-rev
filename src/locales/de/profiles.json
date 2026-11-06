@@ -60,6 +60,7 @@
     },
     "title": "Abonnement",
     "bundle": {
+      "defaultName": "Profilbündel",
       "batch": {
         "create": "Profilbündel",
         "update": "Bündel aktualisieren",

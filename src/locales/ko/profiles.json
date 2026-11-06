@@ -60,6 +60,7 @@
     },
     "title": "프로필",
     "bundle": {
+      "defaultName": "프로필 번들",
       "batch": {
         "create": "프로필 번들",
         "update": "번들 업데이트",

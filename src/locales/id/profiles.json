@@ -60,6 +60,7 @@
     },
     "title": "Profil",
     "bundle": {
+      "defaultName": "Paket profil",
       "batch": {
         "create": "Paket profil",
         "update": "Perbarui paket",

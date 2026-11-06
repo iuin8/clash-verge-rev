@@ -89,7 +89,7 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     let artifacts = bundle::snapshot_artifacts()
         .await
         .with_error_code("BUNDLE_WRITE_FAILED")?;
-    if let Err(error) = bundle::write(&generated).await {
+    if let Err(error) = bundle::commit_generated(&generated, true).await {
         let _ = bundle::restore_artifacts(&artifacts).await;
         return Err(coded_error("BUNDLE_WRITE_FAILED", error));
     }
@@ -112,11 +112,11 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     let config_update_guard = match update_result {
         Ok(Ok(guard)) => guard,
         Ok(Err(error)) => {
-            let _ = bundle::restore_artifacts(&artifacts).await;
+            rollback_bundle_artifacts(Some(&artifacts), "bundle apply rejected").await;
             return Err(error);
         }
         Err(error) => {
-            let _ = bundle::restore_artifacts(&artifacts).await;
+            rollback_bundle_artifacts(Some(&artifacts), "bundle apply failed").await;
             return Err(coded_error("BUNDLE_APPLY_FAILED", error));
         }
     };
@@ -139,15 +139,25 @@ pub async fn refresh_bundle() -> CmdResult {
         return Err(coded_error("BUNDLE_NOT_FOUND", "no profile bundle exists"));
     }
 
-    let Some(outcome) = bundle::refresh(&snapshot, true)
+    let artifacts = bundle::snapshot_artifacts()
         .await
-        .with_error_code("BUNDLE_REFRESH_FAILED")?
-    else {
+        .with_error_code("BUNDLE_REFRESH_FAILED")?;
+    let Some(outcome) = (match bundle::refresh(&snapshot, true, false).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = bundle::restore_artifacts(&artifacts).await;
+            return Err(coded_error("BUNDLE_REFRESH_FAILED", error));
+        }
+    }) else {
         return Err(coded_error("BUNDLE_NOT_FOUND", "no profile bundle exists"));
     };
 
-    if outcome.regenerated && snapshot.current.as_deref() == Some(bundle::BUNDLE_UID) {
-        apply_runtime().await?;
+    if outcome.regenerated
+        && snapshot.current.as_deref() == Some(bundle::BUNDLE_UID)
+        && let Err(error) = apply_runtime().await
+    {
+        rollback_bundle_artifacts(Some(&artifacts), "bundle refresh apply failed").await;
+        return Err(error);
     }
     Ok(())
 }
@@ -180,6 +190,35 @@ pub async fn delete_bundle() -> CmdResult {
 #[specta::specta]
 pub async fn get_bundle_conflicts() -> CmdResult<Vec<ConflictEntry>> {
     Ok(multi_merge::conflicts())
+}
+
+/// Restore the previous artifacts BEFORE rebuilding the runtime from the
+/// rolled-back profiles: the core's own rollback regenerates from whatever
+/// generated file is on disk.
+pub(super) async fn rollback_bundle_artifacts(artifacts: Option<&bundle::BundleArtifacts>, context: &str) {
+    let Some(artifacts) = artifacts else {
+        return;
+    };
+    if let Err(error) = bundle::restore_artifacts(artifacts).await {
+        logging!(
+            error,
+            Type::Cmd,
+            "{context}: failed to restore bundle artifacts: {error:#}"
+        );
+    }
+    match CoreManager::global().update_config_forced().await {
+        Ok(outcome) if outcome.is_valid() => handle::Handle::refresh_clash(),
+        Ok(outcome) => logging!(
+            error,
+            Type::Cmd,
+            "{context}: runtime rebuild after artifact rollback failed: {outcome}"
+        ),
+        Err(error) => logging!(
+            error,
+            Type::Cmd,
+            "{context}: runtime rebuild after artifact rollback failed: {error:#}"
+        ),
+    }
 }
 
 async fn apply_runtime() -> CmdResult {

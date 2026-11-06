@@ -60,6 +60,7 @@
     },
     "title": "訂閱",
     "bundle": {
+      "defaultName": "組合訂閱",
       "batch": {
         "create": "組合訂閱",
         "update": "更新組合",

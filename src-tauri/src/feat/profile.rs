@@ -222,23 +222,32 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
             false
         }
     };
+    let mut bundle_artifacts = None;
     let (is_current, bundle_active) = {
         let snapshot = profiles.latest_arc();
+        let active = snapshot.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID);
         if bundle_member {
             let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
-            if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true).await {
+            if active {
+                bundle_artifacts = Some(crate::config::bundle::snapshot_artifacts().await?);
+            }
+            if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true, active).await {
+                if active {
+                    logging!(
+                        error,
+                        Type::Config,
+                        "[订阅更新] failed to regenerate the profile bundle: {error:#}"
+                    );
+                    bail!("profile updated but the profile bundle could not be regenerated: {error:#}");
+                }
                 logging!(
-                    error,
+                    warn,
                     Type::Config,
-                    "[订阅更新] failed to regenerate the profile bundle: {error:#}"
+                    "[订阅更新] bundle stays stale until it is activated or refreshed: {error:#}"
                 );
-                bail!("profile updated but the profile bundle could not be regenerated: {error:#}");
             }
         }
-        (
-            snapshot.current.as_ref() == Some(uid),
-            snapshot.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID),
-        )
+        (snapshot.current.as_ref() == Some(uid), active)
     };
     let should_refresh = is_current || (bundle_member && bundle_active) || (!profile_persisted && is_mannual_trigger);
 
@@ -250,6 +259,15 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
                 logging!(info, Type::Config, "[订阅更新] 本次配置刷新已跳过: {}", outcome);
             }
             result => {
+                if let Some(artifacts) = bundle_artifacts.as_ref()
+                    && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
+                {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "[订阅更新] failed to restore bundle artifacts: {error:#}"
+                    );
+                }
                 let message = match result {
                     Ok(outcome) => outcome.to_string(),
                     Err(err) => err.to_string(),

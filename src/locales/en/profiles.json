@@ -60,6 +60,7 @@
     },
     "title": "Profiles",
     "bundle": {
+      "defaultName": "Profile Bundle",
       "batch": {
         "create": "Profile Bundle",
         "update": "Update bundle",

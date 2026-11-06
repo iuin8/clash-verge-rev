@@ -79,11 +79,21 @@ async fn prepare_bundle_delete(
     match crate::config::bundle::plan_prune(meta, index) {
         crate::config::bundle::PrunePlan::Unchanged => Ok(unchanged),
         crate::config::bundle::PrunePlan::Regenerate(remaining) => {
-            let snapshot = profiles.latest_arc();
             let artifacts = crate::config::bundle::snapshot_artifacts().await?;
-            if let Err(error) = crate::config::bundle::regenerate(snapshot.as_ref(), &remaining).await {
-                let _ = crate::config::bundle::restore_artifacts(&artifacts).await;
-                return Err(error);
+            if bundle_was_current {
+                let snapshot = profiles.latest_arc();
+                if let Err(error) = crate::config::bundle::regenerate(snapshot.as_ref(), &remaining, true).await {
+                    let _ = crate::config::bundle::restore_artifacts(&artifacts).await;
+                    return Err(error);
+                }
+            } else {
+                // Inactive bundle: prune metadata only and mark the old generated
+                // file stale; regeneration waits for activation or explicit refresh.
+                let stale = crate::config::bundle::stale_meta_after_prune(meta, &remaining);
+                if let Err(error) = crate::config::bundle::save_meta(&stale).await {
+                    let _ = crate::config::bundle::restore_artifacts(&artifacts).await;
+                    return Err(error);
+                }
             }
             Ok(BundleDeletePlan {
                 affects_bundle: true,
@@ -152,22 +162,23 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let (needs_runtime_update, current, config_update_guard) = match update_result {
         Ok(Ok(result)) => result,
         Ok(Err(outcome)) => {
-            if let Some(artifacts) = bundle_artifacts.as_ref() {
-                let _ = crate::config::bundle::restore_artifacts(artifacts).await;
-            }
+            super::bundle::rollback_bundle_artifacts(bundle_artifacts.as_ref(), "profile delete rejected").await;
             handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
             return Err(coded_error("PROFILE_DELETE_FAILED", outcome));
         }
         Err(error) => {
-            if let Some(artifacts) = bundle_artifacts.as_ref() {
-                let _ = crate::config::bundle::restore_artifacts(artifacts).await;
-            }
+            super::bundle::rollback_bundle_artifacts(bundle_artifacts.as_ref(), "profile delete failed").await;
             return Err(coded_error("PROFILE_DELETE_FAILED", error));
         }
     };
 
-    if remove_bundle_item && let Err(error) = crate::config::bundle::remove_artifacts().await {
-        logging!(warn, Type::Cmd, "failed to remove bundle artifacts: {error:#}");
+    if remove_bundle_item {
+        if let Err(error) = crate::config::bundle::remove_artifacts().await {
+            logging!(warn, Type::Cmd, "failed to remove bundle artifacts: {error:#}");
+        }
+        if let Err(error) = crate::config::bundle::clear_dns_state().await {
+            logging!(warn, Type::Cmd, "failed to clear bundle DNS settings: {error:#}");
+        }
     }
     if needs_runtime_update {
         profiles::activate_selected_nodes();

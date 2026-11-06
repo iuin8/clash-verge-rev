@@ -193,6 +193,7 @@ export const translationKeys = [
   'profiles.page.feedback.notices.emergencyRefreshFailed',
   'profiles.page.feedback.tooltips.forceRefreshStaleData',
   'profiles.page.title',
+  'profiles.page.bundle.defaultName',
   'profiles.page.bundle.batch.create',
   'profiles.page.bundle.batch.update',
   'profiles.page.bundle.batch.hint',

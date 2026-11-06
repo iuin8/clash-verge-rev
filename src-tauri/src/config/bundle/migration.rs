@@ -10,7 +10,7 @@ use serde::Deserialize;
 use smartstring::alias::String;
 use tokio::fs;
 
-use super::{BUNDLE_UID, MIN_MEMBERS, generate, is_bundle_uid, upsert_item, validate_member_item, write};
+use super::{BUNDLE_UID, MIN_MEMBERS, commit_generated, generate, is_bundle_uid, upsert_item, validate_member_item};
 use crate::config::{IProfiles, PrfItem};
 use crate::enhance::multi_merge;
 use crate::utils::dirs;
@@ -91,7 +91,7 @@ async fn archive_legacy(path: &Path, suffix: &str) -> Result<PathBuf> {
 /// One-shot migration of the removed `merged.json` store into a bundle. Never
 /// deletes the old file: valid state is archived as `.migrated`, corrupt state
 /// as `.corrupt-<ts>` so it can be inspected/recovered.
-pub async fn migrate_legacy(profiles: &Draft<IProfiles>) -> Result<MigrationOutcome> {
+pub async fn migrate_legacy(profiles: &Draft<IProfiles>, allow_unvalidated: bool) -> Result<MigrationOutcome> {
     let legacy_path = dirs::app_home_dir()?.join(LEGACY_MERGED_FILE);
     if !fs::try_exists(&legacy_path).await.unwrap_or(false) {
         return Ok(MigrationOutcome::default());
@@ -159,7 +159,7 @@ pub async fn migrate_legacy(profiles: &Draft<IProfiles>) -> Result<MigrationOutc
             return Ok(MigrationOutcome::default());
         }
     };
-    write(&generated).await?;
+    commit_generated(&generated, allow_unvalidated).await?;
 
     if let Err(error) = profiles
         .with_data_modify(|mut candidate| async move {

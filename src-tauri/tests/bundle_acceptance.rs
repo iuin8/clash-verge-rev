@@ -160,7 +160,7 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
         bundle::is_stale(&profiles, &meta).await.unwrap(),
         "a manually edited generated file must be detected as stale"
     );
-    let restored = bundle::refresh(&profiles, false).await.unwrap().unwrap();
+    let restored = bundle::refresh(&profiles, false, true).await.unwrap().unwrap();
     assert!(restored.regenerated);
     assert!(
         read_generated().contains("alpha"),
@@ -176,7 +176,10 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
         bundle::is_stale(&profiles, &meta).await.unwrap(),
         "a changed member source must be detected as stale"
     );
-    let outcome = bundle::refresh(&profiles, false).await.unwrap().expect("bundle exists");
+    let outcome = bundle::refresh(&profiles, false, true)
+        .await
+        .unwrap()
+        .expect("bundle exists");
     assert!(outcome.regenerated);
     let regenerated = read_generated();
     assert!(regenerated.contains("beta-renamed"));
@@ -184,7 +187,7 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
 
     let refreshed_meta = bundle::load_meta().await.unwrap().unwrap();
     assert!(!bundle::is_stale(&profiles, &refreshed_meta).await.unwrap());
-    let no_op = bundle::refresh(&profiles, false).await.unwrap().unwrap();
+    let no_op = bundle::refresh(&profiles, false, true).await.unwrap().unwrap();
     assert!(!no_op.regenerated, "a fresh bundle must not be rewritten");
 }
 
@@ -214,7 +217,7 @@ async fn deleting_a_member_prunes_metadata_and_regenerates() {
     };
     assert_eq!(remaining, uids(&["alpha", "gamma"]));
 
-    bundle::regenerate(&profiles, &remaining).await.unwrap();
+    bundle::regenerate(&profiles, &remaining, true).await.unwrap();
     let regenerated = read_generated();
     assert!(regenerated.contains("alpha"));
     assert!(
@@ -239,7 +242,7 @@ async fn legacy_merged_json_migrates_once_and_is_archived() {
     fs::write(&legacy, r#"{"uids":["alpha","beta"]}"#).unwrap();
 
     let draft = Draft::new(profiles);
-    let outcome = bundle::migrate_legacy(&draft).await.unwrap();
+    let outcome = bundle::migrate_legacy(&draft, true).await.unwrap();
     assert!(outcome.migrated);
     assert!(!legacy.exists(), "the legacy store must be moved");
     assert!(legacy.with_file_name("merged.json.migrated").is_file());
@@ -253,7 +256,7 @@ async fn legacy_merged_json_migrates_once_and_is_archived() {
     assert!(bundle::meta_path().unwrap().is_file());
 
     // Idempotent: a second run must not duplicate or re-create anything.
-    let outcome = bundle::migrate_legacy(&draft).await.unwrap();
+    let outcome = bundle::migrate_legacy(&draft, true).await.unwrap();
     assert!(!outcome.migrated);
     assert_eq!(
         draft
@@ -278,7 +281,7 @@ async fn corrupt_legacy_state_is_archived_never_deleted() {
     fs::write(&legacy, "{ definitely not json").unwrap();
 
     let draft = Draft::new(profiles);
-    let outcome = bundle::migrate_legacy(&draft).await.unwrap();
+    let outcome = bundle::migrate_legacy(&draft, true).await.unwrap();
     assert!(!outcome.migrated);
     assert!(draft.latest_arc().get_item(bundle::BUNDLE_UID).is_err());
 
@@ -286,4 +289,54 @@ async fn corrupt_legacy_state_is_archived_never_deleted() {
     assert!(archived.is_file());
     assert!(archived.file_name().unwrap().to_string_lossy().contains("corrupt-"));
     assert_eq!(fs::read_to_string(&archived).unwrap(), "{ definitely not json");
+}
+
+#[tokio::test]
+async fn failed_update_can_restore_the_previous_artifacts_before_any_runtime_rebuild() {
+    let _home = TempHome::new();
+    let mut profiles = setup_two_members();
+    bundle::upsert_item(&mut profiles);
+
+    let old = bundle::generate(&profiles, &uids(&["alpha", "beta"])).await.unwrap();
+    bundle::write(&old).await.unwrap();
+    let old_generated = fs::read(bundle::generated_path().unwrap()).unwrap();
+    let old_meta = fs::read(bundle::meta_path().unwrap()).unwrap();
+
+    let snapshot = bundle::snapshot_artifacts().await.unwrap();
+    let proposed = bundle::generate(&profiles, &uids(&["beta", "alpha"])).await.unwrap();
+    bundle::write(&proposed).await.unwrap();
+    assert_ne!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
+
+    // Failure paths must restore artifacts before the runtime is rebuilt from
+    // the rolled-back profile; the restored bytes are what that rebuild reads.
+    bundle::restore_artifacts(&snapshot).await.unwrap();
+    assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
+    assert_eq!(fs::read(bundle::meta_path().unwrap()).unwrap(), old_meta);
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(!bundle::is_stale(&profiles, &meta).await.unwrap());
+}
+
+#[tokio::test]
+async fn refresh_never_recreates_artifacts_without_a_bundle_item() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    let generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    bundle::write(&generated).await.unwrap();
+    let before = fs::read(bundle::generated_path().unwrap()).unwrap();
+
+    let orphaned = profiles(vec![item("alpha", "remote"), item("beta", "local")], "alpha");
+    let refreshed = bundle::refresh(&orphaned, true, true).await.unwrap();
+    assert!(refreshed.is_none(), "a missing bundle item must not be regenerated");
+    assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), before);
+
+    assert!(bundle::cleanup_orphans(&orphaned).await.unwrap());
+    assert!(!bundle::generated_path().unwrap().exists());
+    assert!(!bundle::meta_path().unwrap().exists());
+    assert!(
+        !bundle::cleanup_orphans(&orphaned).await.unwrap(),
+        "cleanup is idempotent"
+    );
 }

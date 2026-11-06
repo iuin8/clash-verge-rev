@@ -42,7 +42,7 @@ import {
   BaseStyledTextField,
   type DialogRef,
 } from '@/components/base'
-import { BUNDLE_UID } from '@/components/profile/bundle-constants'
+import { isBundleUid } from '@/components/profile/bundle-constants'
 import {
   BundleConfirmDialog,
   BundleDetailsDialog,
@@ -262,7 +262,14 @@ const ProfilePage = () => {
   }
 
   const bundleExists = useMemo(
-    () => profileItems.some((item) => item.uid === BUNDLE_UID),
+    () => profileItems.some((item) => isBundleUid(item.uid)),
+    [profileItems],
+  )
+
+  // The generated bundle is not a normal batch target: it has its own confirmed
+  // delete flow and can never be a bundle member.
+  const selectableProfiles = useMemo(
+    () => profileItems.filter((item) => !isBundleUid(item.uid)),
     [profileItems],
   )
 
@@ -273,7 +280,7 @@ const ProfilePage = () => {
         .filter(
           (item) =>
             item.uid &&
-            item.uid !== BUNDLE_UID &&
+            !isBundleUid(item.uid) &&
             selectedProfiles.has(item.uid),
         )
         .map((item) => ({ uid: item.uid!, name: item.name || item.uid! })),
@@ -650,9 +657,10 @@ const ProfilePage = () => {
       } finally {
         setLoadingProfiles(uids, false)
         void mutateProfiles()
+        void refreshBundleQueries()
       }
     },
-    [mutateProfiles, setLoadingProfiles],
+    [mutateProfiles, refreshBundleQueries, setLoadingProfiles],
   )
   const onUpdateAll = useLockFn(async () => {
     const items = profileItems.filter((e) => e.type === 'remote')
@@ -678,6 +686,7 @@ const ProfilePage = () => {
   }
 
   const toggleProfileSelection = (uid: string) => {
+    if (isBundleUid(uid)) return
     setSelectedProfiles((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(uid)) {
@@ -690,7 +699,7 @@ const ProfilePage = () => {
   }
 
   const selectAllProfiles = () => {
-    setSelectedProfiles(new Set(profileItems.map((item) => item.uid!)))
+    setSelectedProfiles(new Set(selectableProfiles.map((item) => item.uid!)))
   }
 
   const clearAllSelections = () => {
@@ -699,14 +708,18 @@ const ProfilePage = () => {
 
   const isAllSelected = () => {
     return (
-      profileItems.length > 0 && profileItems.length === selectedProfiles.size
+      selectableProfiles.length > 0 &&
+      selectableProfiles.every((item) => selectedProfiles.has(item.uid!))
     )
   }
 
   const getSelectionState = () => {
-    if (selectedProfiles.size === 0) {
+    const selectedCount = selectableProfiles.filter((item) =>
+      selectedProfiles.has(item.uid!),
+    ).length
+    if (selectedCount === 0) {
       return 'none'
-    } else if (selectedProfiles.size === profileItems.length) {
+    } else if (selectedCount === selectableProfiles.length) {
       return 'all'
     } else {
       return 'partial'
@@ -714,17 +727,18 @@ const ProfilePage = () => {
   }
 
   const deleteSelectedProfiles = useLockFn(async () => {
-    if (selectedProfiles.size === 0) return
+    const targets = [...selectedProfiles].filter((uid) => !isBundleUid(uid))
+    if (targets.length === 0) return
 
     try {
       const currentActivating =
-        profiles.current && selectedProfiles.has(profiles.current)
+        profiles.current && targets.includes(profiles.current)
           ? [profiles.current]
           : []
 
       setActivatings((prev) => [...new Set([...prev, ...currentActivating])])
 
-      for (const uid of selectedProfiles) {
+      for (const uid of targets) {
         await mutate(() => deleteProfile(uid), {
           id: 'delete-profile',
           errorNotice: false,
@@ -1130,22 +1144,22 @@ const ProfilePage = () => {
                 batchMode={batchMode}
                 isSelected={selectedProfiles.has(item.uid!)}
                 onSelectionChange={() => toggleProfileSelection(item.uid!)}
-                bundleView={item.uid === BUNDLE_UID ? bundleView : undefined}
+                bundleView={isBundleUid(item.uid) ? bundleView : undefined}
                 bundleConflictCount={
-                  item.uid === BUNDLE_UID ? bundleConflicts.length : undefined
+                  isBundleUid(item.uid) ? bundleConflicts.length : undefined
                 }
                 onBundleEditMembers={
-                  item.uid === BUNDLE_UID && bundleView
+                  isBundleUid(item.uid) && bundleView
                     ? editBundleMembers
                     : undefined
                 }
                 onBundleDetails={
-                  item.uid === BUNDLE_UID && bundleView
+                  isBundleUid(item.uid) && bundleView
                     ? () => setBundleDetailsOpen(true)
                     : undefined
                 }
                 onBundleDelete={
-                  item.uid === BUNDLE_UID
+                  isBundleUid(item.uid)
                     ? () => setBundleDeleteOpen(true)
                     : undefined
                 }

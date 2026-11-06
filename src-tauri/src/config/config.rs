@@ -151,7 +151,7 @@ impl Config {
     async fn init_bundle_state() {
         let profiles = Self::profiles().await;
 
-        match crate::config::bundle::migrate_legacy(&profiles).await {
+        match crate::config::bundle::migrate_legacy(&profiles, false).await {
             Ok(outcome) if outcome.migrated => {
                 logging!(
                     info,
@@ -166,7 +166,14 @@ impl Config {
         }
 
         let snapshot = profiles.latest_arc();
-        match crate::config::bundle::refresh_if_stale(snapshot.as_ref()).await {
+        if let Err(error) = crate::config::bundle::cleanup_orphans(snapshot.as_ref()).await {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to clean up orphaned profile bundle artifacts: {error:#}"
+            );
+        }
+        match crate::config::bundle::refresh_if_stale(snapshot.as_ref(), false).await {
             Ok(Some(outcome)) if outcome.regenerated => {
                 logging!(info, Type::Config, "regenerated the stale profile bundle at startup");
             }

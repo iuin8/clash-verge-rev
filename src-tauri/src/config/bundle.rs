@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result, bail};
 use clash_verge_draft::Draft;
+use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 use sha2::{Digest as _, Sha256};
@@ -24,8 +25,10 @@ use crate::enhance::multi_merge::{self, ConflictEntry};
 use crate::utils::{dirs, help, yaml_emitter};
 
 mod migration;
+mod validation;
 
 pub use migration::{MigrationOutcome, MigrationPlan, migrate_legacy, plan_migration};
+pub use validation::{BundleValidation, CommitDecision, commit_decision, commit_generated, validate_generated};
 
 pub const BUNDLE_UID: &str = "bundle-main";
 pub const BUNDLE_FILE: &str = "bundle-main.yaml";
@@ -359,16 +362,20 @@ pub async fn is_member(uid: &str) -> Result<bool> {
 
 /// Regenerate the bundle artifacts, replacing the previous generated file and
 /// metadata atomically (each file), and publish the latest conflicts.
-pub async fn regenerate(profiles: &IProfiles, members: &[String]) -> Result<GeneratedBundle> {
+pub async fn regenerate(profiles: &IProfiles, members: &[String], allow_unvalidated: bool) -> Result<GeneratedBundle> {
     let generated = generate(profiles, members).await?;
-    write(&generated).await?;
+    commit_generated(&generated, allow_unvalidated).await?;
     multi_merge::publish_conflicts(generated.conflicts.clone());
     Ok(generated)
 }
 
 /// Refresh the generated profile when a source member changed (or unconditionally
 /// when `force`). Returns `None` when no bundle exists.
-pub async fn refresh(profiles: &IProfiles, force: bool) -> Result<Option<RefreshOutcome>> {
+pub async fn refresh(profiles: &IProfiles, force: bool, allow_unvalidated: bool) -> Result<Option<RefreshOutcome>> {
+    if profiles.get_item(BUNDLE_UID).is_err() {
+        // Never recreate artifacts for a bundle item that no longer exists.
+        return Ok(None);
+    }
     let Some(meta) = load_meta().await? else {
         return Ok(None);
     };
@@ -381,7 +388,7 @@ pub async fn refresh(profiles: &IProfiles, force: bool) -> Result<Option<Refresh
         }));
     }
     let generated = generate(profiles, &meta.members).await?;
-    write(&generated).await?;
+    commit_generated(&generated, allow_unvalidated).await?;
     multi_merge::publish_conflicts(generated.conflicts.clone());
     Ok(Some(RefreshOutcome {
         meta: generated.meta,
@@ -390,8 +397,47 @@ pub async fn refresh(profiles: &IProfiles, force: bool) -> Result<Option<Refresh
     }))
 }
 
-pub async fn refresh_if_stale(profiles: &IProfiles) -> Result<Option<RefreshOutcome>> {
-    refresh(profiles, false).await
+pub async fn refresh_if_stale(profiles: &IProfiles, allow_unvalidated: bool) -> Result<Option<RefreshOutcome>> {
+    refresh(profiles, false, allow_unvalidated).await
+}
+
+/// Remove generated/meta artifacts whose bundle item disappeared (avoid orphans).
+pub async fn cleanup_orphans(profiles: &IProfiles) -> Result<bool> {
+    if profiles.get_item(BUNDLE_UID).is_ok() {
+        return Ok(false);
+    }
+    let has_meta = fs::try_exists(meta_path()?).await.unwrap_or(false);
+    let has_generated = fs::try_exists(generated_path()?).await.unwrap_or(false);
+    if !has_meta && !has_generated {
+        return Ok(false);
+    }
+    remove_artifacts().await?;
+    multi_merge::publish_conflicts(Vec::new());
+    logging!(
+        warn,
+        Type::Config,
+        "removed orphaned profile bundle artifacts because the bundle item is missing"
+    );
+    Ok(true)
+}
+
+/// Metadata-only prune for an inactive bundle: keeps the old generated file
+/// (still valid) but marks it stale so activation/refresh regenerates it.
+pub fn stale_meta_after_prune(meta: &BundleMeta, members: &[String]) -> BundleMeta {
+    let mut sources = BTreeMap::new();
+    for member in members {
+        if let Some(source) = meta.sources.get(member) {
+            sources.insert(member.clone(), source.clone());
+        }
+    }
+    BundleMeta {
+        version: META_VERSION,
+        members: members.to_vec(),
+        sources,
+        generated_sha256: String::new(),
+        conflicts: Vec::new(),
+        generated_at: meta.generated_at,
+    }
 }
 
 /// Add or overwrite the single bundle item. Keeps an existing display name and
@@ -455,6 +501,26 @@ pub fn plan_prune(meta: &BundleMeta, deleted: &str) -> PrunePlan {
     }
 }
 
+/// Drop the bundle's per-profile DNS override when the bundle disappears.
+pub fn remove_dns_settings(verge: &mut crate::config::IVerge) -> bool {
+    verge.profile_dns_settings.remove(BUNDLE_UID).is_some()
+}
+
+pub async fn clear_dns_state() -> Result<()> {
+    let verge = crate::config::Config::verge().await;
+    let removed = verge
+        .with_data_modify(|mut candidate| async move {
+            let removed = remove_dns_settings(&mut candidate);
+            Ok((candidate, removed))
+        })
+        .await?;
+    if removed {
+        verge.data_arc().save_file().await?;
+        crate::core::notify::announce(crate::core::notify::Refresh::Verge);
+    }
+    Ok(())
+}
+
 /// Remove the bundle item plus generated file and metadata, leaving members
 /// untouched. Returns whether the active profile changed.
 pub async fn teardown(profiles: &Draft<IProfiles>) -> Result<TeardownOutcome> {
@@ -474,6 +540,9 @@ pub async fn teardown(profiles: &Draft<IProfiles>) -> Result<TeardownOutcome> {
         plan.cleanup().await;
     }
     remove_artifacts().await?;
+    if let Err(error) = clear_dns_state().await {
+        logging!(warn, Type::Config, "failed to clear bundle DNS settings: {error:#}");
+    }
     multi_merge::publish_conflicts(Vec::new());
     Ok(TeardownOutcome {
         removed: has_item,

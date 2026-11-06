@@ -26,6 +26,8 @@ import type {
   ConflictEntry,
 } from '@/services/bindings'
 
+import { isDefaultBundleName } from './bundle-constants'
+
 export interface BundleDraftMember {
   uid: string
   name: string
@@ -71,6 +73,9 @@ export function BundleDetailsDialog({
 
   if (!view) return null
 
+  const displayName = isDefaultBundleName(view.name)
+    ? t('profiles.page.bundle.defaultName')
+    : view.name
   const generatedAt =
     view.generated_at > 0
       ? dayjs(view.generated_at * 1000).format('YYYY-MM-DD HH:mm')
@@ -90,7 +95,7 @@ export function BundleDetailsDialog({
           }}
         >
           <Typography variant="h6" component="span">
-            {view.name}
+            {displayName}
           </Typography>
           <Chip
             size="small"

@@ -60,6 +60,7 @@
     },
     "title": "订阅",
     "bundle": {
+      "defaultName": "组合订阅",
       "batch": {
         "create": "组合订阅",
         "update": "更新组合",

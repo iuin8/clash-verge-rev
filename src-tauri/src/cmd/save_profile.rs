@@ -183,6 +183,36 @@ struct SavedFileContext<'a> {
     bundle_artifacts: Option<&'a crate::config::bundle::BundleArtifacts>,
 }
 
+/// Refresh the bundle after a member file save. Active bundles must roll the
+/// whole file back on failure; inactive bundles keep the edit and stay stale
+/// until activation/refresh.
+async fn refresh_saved_member_bundle(context: &SavedFileContext<'_>) -> std::result::Result<(), std::string::String> {
+    let profiles = Config::profiles().await;
+    let snapshot = profiles.latest_arc();
+    let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+    match crate::config::bundle::refresh(snapshot.as_ref(), true, context.affects_runtime).await {
+        Ok(_) => Ok(()),
+        Err(error) if context.affects_runtime => Err(error.to_string()),
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Config,
+                "[cmd配置save] bundle stays stale until it is activated or refreshed: {error:#}"
+            );
+            if let Some(artifacts) = context.bundle_artifacts
+                && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
+            {
+                logging!(
+                    warn,
+                    Type::Config,
+                    "[cmd配置save] failed to restore bundle artifacts: {error:#}"
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
 async fn handle_saved_profile_file(
     file_path_str: &str,
     file_path: &std::path::Path,
@@ -215,20 +245,16 @@ async fn handle_saved_profile_file(
         }
     }
 
-    if context.bundle_member {
-        let profiles = Config::profiles().await;
-        let snapshot = profiles.latest_arc();
-        let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
-        if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true).await {
-            logging!(
-                error,
-                Type::Config,
-                "[cmd配置save] bundle regeneration failed: {error:#}"
-            );
-            restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts)
-                .await?;
-            return Err(error.to_string().into());
-        }
+    if context.bundle_member
+        && let Err(message) = refresh_saved_member_bundle(&context).await
+    {
+        logging!(
+            error,
+            Type::Config,
+            "[cmd配置save] bundle regeneration failed: {message}"
+        );
+        restore_original_and_bundle(file_path, original_content, original_existed, context.bundle_artifacts).await?;
+        return Err(message.into());
     }
 
     if !context.affects_runtime {
