@@ -265,7 +265,7 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
                 announce(Refresh::Clash);
                 if bundle_active
                     && bundle_member
-                    && let Err(error) = crate::config::bundle::mark_validated().await
+                    && let Err(error) = crate::config::bundle::mark_validated_if_current().await
                 {
                     logging!(
                         warn,
