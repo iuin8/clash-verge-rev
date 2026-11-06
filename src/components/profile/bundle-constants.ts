@@ -1,8 +1,8 @@
 /** UID of the single generated Profile Bundle item (see backend `bundle::BUNDLE_UID`). */
-export const BUNDLE_UID = 'bundle-main'
+const BUNDLE_UID = 'bundle-main'
 
 /** Stored default name written by the backend; display it translated. */
-export const DEFAULT_BUNDLE_NAME = 'Profile Bundle'
+const DEFAULT_BUNDLE_NAME = 'Profile Bundle'
 
 export const isBundleUid = (uid?: string | null) => uid === BUNDLE_UID
 
