@@ -363,6 +363,13 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
                 .await
                 .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))?;
             if let Err(error) = crate::config::bundle::refresh(&snapshot, false, true).await {
+                if let Err(error) = crate::config::bundle::restore_artifacts(&artifacts).await {
+                    logging!(
+                        warn,
+                        Type::Cmd,
+                        "failed to restore bundle artifacts after a failed activation refresh: {error:#}"
+                    );
+                }
                 return Err(coded_error(
                     "PROFILE_SWITCH_FAILED",
                     format!("cannot activate the profile bundle: {error:#}"),
@@ -389,6 +396,17 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
             warn,
             Type::Cmd,
             "failed to restore bundle artifacts after a failed activation: {error:#}"
+        );
+    }
+    if matches!(&outcome, Ok(ValidationOutcome::Valid))
+        && switching_to_bundle
+        && bundle_artifacts.is_some()
+        && let Err(error) = crate::config::bundle::mark_validated().await
+    {
+        logging!(
+            warn,
+            Type::Cmd,
+            "failed to mark the activated bundle validated: {error:#}"
         );
     }
     outcome.map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))

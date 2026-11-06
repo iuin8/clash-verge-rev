@@ -18,7 +18,9 @@ fn meta(members: &[&str]) -> BundleMeta {
         version: META_VERSION,
         members: uids(members),
         sources: BTreeMap::new(),
+        members_sha256: String::new(),
         generated_sha256: String::new(),
+        validated: false,
         conflicts: Vec::new(),
         generated_at: 0,
     }
@@ -196,4 +198,37 @@ fn pruning_an_inactive_bundle_markers_it_stale() {
     assert!(!stale.sources.contains_key("a"));
     assert!(!stale.sources.contains_key("b"));
     assert!(stale.conflicts.is_empty());
+}
+
+#[test]
+fn metadata_fingerprint_detects_member_or_order_tampering() {
+    let mut current = meta(&["a", "b"]);
+    current.members_sha256 = members_fingerprint(current.version, &current.members);
+    assert!(metadata_fingerprint_matches(&current));
+
+    current.members.swap(0, 1);
+    assert!(
+        !metadata_fingerprint_matches(&current),
+        "reordering members must invalidate the fingerprint"
+    );
+    assert!(!metadata_trusted(&current));
+
+    current.members.swap(0, 1);
+    current.members[0] = String::from("c");
+    assert!(!metadata_fingerprint_matches(&current));
+
+    current.members_sha256 = String::new();
+    assert!(!metadata_fingerprint_matches(&current), "legacy metadata is stale");
+    assert!(
+        metadata_trusted(&current),
+        "empty fingerprints are legacy, not tampered"
+    );
+}
+
+#[test]
+fn orphan_cleanup_always_clears_dns_for_a_missing_item() {
+    assert_eq!(plan_orphan_cleanup(false, false), (false, true));
+    assert_eq!(plan_orphan_cleanup(false, true), (true, true));
+    assert_eq!(plan_orphan_cleanup(true, false), (false, false));
+    assert_eq!(plan_orphan_cleanup(true, true), (false, false));
 }

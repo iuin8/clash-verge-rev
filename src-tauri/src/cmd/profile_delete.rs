@@ -11,22 +11,31 @@ use clash_verge_draft::Draft;
 use clash_verge_logging::{Type, logging, logging_error};
 use smartstring::alias::String;
 
-async fn load_bundle_meta_for_delete(deleting_bundle: bool) -> CmdResult<Option<crate::config::bundle::BundleMeta>> {
-    match crate::config::bundle::load_meta().await {
-        Ok(meta) => Ok(meta),
+/// Corrupt bundle metadata must never block deleting an unrelated profile.
+/// Deleting the bundle itself remains the repair path. The corrupt file is left
+/// in place (loudly logged), never deleted silently.
+fn resolve_bundle_meta_for_delete(
+    loaded: anyhow::Result<Option<crate::config::bundle::BundleMeta>>,
+    deleting_bundle: bool,
+) -> Option<crate::config::bundle::BundleMeta> {
+    match loaded {
+        Ok(meta) => meta,
         Err(error) if deleting_bundle => {
-            // Corrupt metadata must not block deleting the bundle itself (that is the repair).
             logging!(
                 warn,
                 Type::Cmd,
                 "ignoring corrupt bundle metadata while deleting the bundle: {error:#}"
             );
-            Ok(None)
+            None
         }
-        Err(error) => Err(coded_error(
-            "BUNDLE_META_INVALID",
-            format!("invalid bundle metadata: {error:#}"),
-        )),
+        Err(error) => {
+            logging!(
+                error,
+                Type::Cmd,
+                "bundle metadata is corrupt; skipping bundle prune for this delete (delete the bundle to repair): {error:#}"
+            );
+            None
+        }
     }
 }
 
@@ -119,7 +128,18 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
 
-    let bundle_meta = load_bundle_meta_for_delete(deleting_bundle).await?;
+    let bundle_meta = resolve_bundle_meta_for_delete(crate::config::bundle::load_meta().await, deleting_bundle)
+        .filter(|meta| {
+            let trusted = crate::config::bundle::metadata_trusted(meta);
+            if !trusted {
+                logging!(
+                    error,
+                    Type::Cmd,
+                    "bundle metadata member/order fingerprint mismatch; skipping bundle prune (recreate or delete the bundle to repair)"
+                );
+            }
+            trusted
+        });
 
     let bundle_plan = prepare_bundle_delete(&profiles, &index, deleting_bundle, bundle_meta.as_ref())
         .await
@@ -180,6 +200,16 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             logging!(warn, Type::Cmd, "failed to clear bundle DNS settings: {error:#}");
         }
     }
+    if needs_runtime_update
+        && affects_bundle
+        && let Err(error) = crate::config::bundle::mark_validated().await
+    {
+        logging!(
+            warn,
+            Type::Cmd,
+            "failed to mark the regenerated bundle validated: {error:#}"
+        );
+    }
     if needs_runtime_update {
         profiles::activate_selected_nodes();
     }
@@ -187,4 +217,32 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     drop(profile_write_guard);
     finish_profile_delete(needs_runtime_update, current.as_ref()).await;
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn meta() -> crate::config::bundle::BundleMeta {
+        crate::config::bundle::BundleMeta {
+            version: crate::config::bundle::META_VERSION,
+            members: vec!["a".into(), "b".into()],
+            sources: Default::default(),
+            members_sha256: String::new(),
+            generated_sha256: String::new(),
+            validated: false,
+            conflicts: Vec::new(),
+            generated_at: 0,
+        }
+    }
+
+    #[test]
+    fn corrupt_metadata_is_skipped_for_non_bundle_deletes_but_never_deleted() {
+        let corrupt = || Err(anyhow::anyhow!("invalid bundle metadata"));
+        assert!(resolve_bundle_meta_for_delete(corrupt(), false).is_none());
+        assert!(resolve_bundle_meta_for_delete(corrupt(), true).is_none());
+        assert!(resolve_bundle_meta_for_delete(Ok(Some(meta())), false).is_some());
+        assert!(resolve_bundle_meta_for_delete(Ok(None), false).is_none());
+    }
 }

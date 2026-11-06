@@ -10,7 +10,10 @@ use serde::Deserialize;
 use smartstring::alias::String;
 use tokio::fs;
 
-use super::{BUNDLE_UID, MIN_MEMBERS, commit_generated, generate, is_bundle_uid, upsert_item, validate_member_item};
+use super::{
+    BUNDLE_UID, MIN_MEMBERS, commit_generated, generate, is_bundle_uid, restore_artifacts, snapshot_artifacts,
+    upsert_item, validate_member_item,
+};
 use crate::config::{IProfiles, PrfItem};
 use crate::enhance::multi_merge;
 use crate::utils::dirs;
@@ -148,7 +151,7 @@ pub async fn migrate_legacy(profiles: &Draft<IProfiles>, allow_unvalidated: bool
         });
     };
 
-    let generated = match generate(&snapshot, &plan.members).await {
+    let mut generated = match generate(&snapshot, &plan.members).await {
         Ok(generated) => generated,
         Err(error) => {
             logging!(
@@ -159,7 +162,16 @@ pub async fn migrate_legacy(profiles: &Draft<IProfiles>, allow_unvalidated: bool
             return Ok(MigrationOutcome::default());
         }
     };
-    commit_generated(&generated, allow_unvalidated).await?;
+    let artifacts = snapshot_artifacts().await?;
+    if let Err(error) = commit_generated(&mut generated, allow_unvalidated).await {
+        let _ = restore_artifacts(&artifacts).await;
+        logging!(
+            error,
+            Type::Config,
+            "failed to write the migrated bundle artifacts: {error:#}"
+        );
+        return Ok(MigrationOutcome::default());
+    }
 
     if let Err(error) = profiles
         .with_data_modify(|mut candidate| async move {

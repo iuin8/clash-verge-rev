@@ -133,12 +133,13 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
     let mut profiles = setup_two_members();
     bundle::upsert_item(&mut profiles);
 
-    let generated = bundle::generate(&profiles, &uids(&["alpha", "beta"]))
+    let mut generated = bundle::generate(&profiles, &uids(&["alpha", "beta"]))
         .await
         .expect("members are valid");
     assert_eq!(generated.meta.members, uids(&["alpha", "beta"]));
     assert!(generated.yaml.contains("alpha"));
     assert!(generated.yaml.contains("beta"));
+    generated.meta.validated = true;
 
     bundle::write(&generated).await.unwrap();
     let parsed: Mapping = serde_yaml_ng::from_str(&read_generated()).unwrap();
@@ -162,6 +163,7 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
     );
     let restored = bundle::refresh(&profiles, false, true).await.unwrap().unwrap();
     assert!(restored.regenerated);
+    bundle::mark_validated().await.unwrap();
     assert!(
         read_generated().contains("alpha"),
         "refresh must restore the generated profile"
@@ -185,6 +187,7 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
     assert!(regenerated.contains("beta-renamed"));
     assert!(!regenerated.contains("name: beta\n"));
 
+    bundle::mark_validated().await.unwrap();
     let refreshed_meta = bundle::load_meta().await.unwrap().unwrap();
     assert!(!bundle::is_stale(&profiles, &refreshed_meta).await.unwrap());
     let no_op = bundle::refresh(&profiles, false, true).await.unwrap().unwrap();
@@ -254,6 +257,10 @@ async fn legacy_merged_json_migrates_once_and_is_archived() {
     assert_eq!(snapshot.current.as_deref(), Some(bundle::BUNDLE_UID));
     assert!(bundle::generated_path().unwrap().is_file());
     assert!(bundle::meta_path().unwrap().is_file());
+    assert!(
+        !bundle::load_meta().await.unwrap().unwrap().validated,
+        "migration without a runtime apply must stay unvalidated"
+    );
 
     // Idempotent: a second run must not duplicate or re-create anything.
     let outcome = bundle::migrate_legacy(&draft, true).await.unwrap();
@@ -297,13 +304,15 @@ async fn failed_update_can_restore_the_previous_artifacts_before_any_runtime_reb
     let mut profiles = setup_two_members();
     bundle::upsert_item(&mut profiles);
 
-    let old = bundle::generate(&profiles, &uids(&["alpha", "beta"])).await.unwrap();
+    let mut old = bundle::generate(&profiles, &uids(&["alpha", "beta"])).await.unwrap();
+    old.meta.validated = true;
     bundle::write(&old).await.unwrap();
     let old_generated = fs::read(bundle::generated_path().unwrap()).unwrap();
     let old_meta = fs::read(bundle::meta_path().unwrap()).unwrap();
 
     let snapshot = bundle::snapshot_artifacts().await.unwrap();
-    let proposed = bundle::generate(&profiles, &uids(&["beta", "alpha"])).await.unwrap();
+    let mut proposed = bundle::generate(&profiles, &uids(&["beta", "alpha"])).await.unwrap();
+    proposed.meta.validated = true;
     bundle::write(&proposed).await.unwrap();
     assert_ne!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
 
@@ -339,4 +348,117 @@ async fn refresh_never_recreates_artifacts_without_a_bundle_item() {
         !bundle::cleanup_orphans(&orphaned).await.unwrap(),
         "cleanup is idempotent"
     );
+}
+
+#[tokio::test]
+async fn unvalidated_artifacts_stay_stale_until_marked_validated() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    bundle_profiles.current = Some(bundle::BUNDLE_UID.into());
+
+    let generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    assert!(!generated.meta.validated);
+    bundle::write(&generated).await.unwrap();
+
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(
+        bundle::is_stale(&bundle_profiles, &meta).await.unwrap(),
+        "an unvalidated pair must never be reported fresh"
+    );
+
+    assert!(bundle::mark_validated().await.unwrap());
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(meta.validated);
+    assert!(
+        bundle::metadata_fingerprint_matches(&meta),
+        "marking also upgrades legacy metadata with a member fingerprint"
+    );
+    assert!(!bundle::is_stale(&bundle_profiles, &meta).await.unwrap());
+    assert!(!bundle::mark_validated().await.unwrap(), "marking is idempotent");
+}
+
+#[tokio::test]
+async fn metadata_member_order_tampering_invalidates_freshness() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+
+    let mut generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    generated.meta.validated = true;
+    bundle::write(&generated).await.unwrap();
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(!bundle::is_stale(&bundle_profiles, &meta).await.unwrap());
+
+    let mut tampered = meta.clone();
+    tampered.members.swap(0, 1);
+    bundle::save_meta(&tampered).await.unwrap();
+    let reloaded = bundle::load_meta().await.unwrap().unwrap();
+    assert_eq!(reloaded.members, uids(&["beta", "alpha"]));
+    assert!(
+        bundle::is_stale(&bundle_profiles, &reloaded).await.unwrap(),
+        "member order tampering must invalidate freshness"
+    );
+    let generated_before = fs::read(bundle::generated_path().unwrap()).unwrap();
+    assert!(
+        bundle::refresh(&bundle_profiles, true, true).await.is_err(),
+        "a tampered member order must be refused, not regenerated into"
+    );
+    assert_eq!(
+        fs::read(bundle::generated_path().unwrap()).unwrap(),
+        generated_before,
+        "refusing a tampered refresh must not touch artifacts"
+    );
+}
+
+#[tokio::test]
+async fn migration_requires_validation_when_validation_is_unavailable() {
+    let _home = TempHome::new();
+    let profiles = setup_two_members();
+    let app_home = dirs::app_home_dir().unwrap();
+    fs::create_dir_all(&app_home).unwrap();
+    let legacy = app_home.join("merged.json");
+    fs::write(&legacy, r#"{"uids":["alpha","beta"]}"#).unwrap();
+
+    let draft = Draft::new(profiles);
+    // No app handle in this test => validator unavailable => no write, legacy kept
+    // and the migration reports "not migrated" so the next start retries.
+    let outcome = bundle::migrate_legacy(&draft, false).await.unwrap();
+    assert!(!outcome.migrated);
+    assert!(outcome.archived.is_none());
+    assert!(legacy.is_file(), "legacy state must be kept for retry");
+    assert!(draft.latest_arc().get_item(bundle::BUNDLE_UID).is_err());
+    assert!(!bundle::generated_path().unwrap().exists());
+
+    // An immediate-apply caller may write unvalidated output; it stays stale.
+    let outcome = bundle::migrate_legacy(&draft, true).await.unwrap();
+    assert!(outcome.migrated);
+    assert!(!bundle::load_meta().await.unwrap().unwrap().validated);
+}
+
+#[tokio::test]
+async fn partial_generated_write_is_rolled_back_before_reporting_failure() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    let mut generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    generated.meta.validated = true;
+    bundle::write(&generated).await.unwrap();
+    let old_generated = fs::read(bundle::generated_path().unwrap()).unwrap();
+    let old_meta = fs::read(bundle::meta_path().unwrap()).unwrap();
+
+    let artifacts = bundle::snapshot_artifacts().await.unwrap();
+    // Simulate a crash/failure between generated and metadata writes.
+    bundle::write_generated("# partial bundle write\n").await.unwrap();
+    assert_ne!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
+
+    bundle::restore_artifacts(&artifacts).await.unwrap();
+    assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
+    assert_eq!(fs::read(bundle::meta_path().unwrap()).unwrap(), old_meta);
 }

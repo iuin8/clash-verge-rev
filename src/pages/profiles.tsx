@@ -48,6 +48,11 @@ import {
   BundleDetailsDialog,
   type BundleDraftMember,
 } from '@/components/profile/bundle-dialog'
+import {
+  BUNDLE_CONFLICTS_QUERY_KEY,
+  BUNDLE_VIEW_QUERY_KEY,
+  refreshBundleQueries,
+} from '@/components/profile/bundle-queries'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
@@ -146,12 +151,12 @@ const ProfilePage = () => {
   } = useProfiles()
 
   const bundleViewQuery = useQuery({
-    queryKey: ['getBundleView'],
+    queryKey: BUNDLE_VIEW_QUERY_KEY,
     queryFn: getBundleView,
   })
   const bundleView = bundleViewQuery.data ?? null
   const bundleConflictsQuery = useQuery({
-    queryKey: ['getBundleConflicts'],
+    queryKey: BUNDLE_CONFLICTS_QUERY_KEY,
     queryFn: getBundleConflicts,
     enabled: Boolean(bundleView),
   })
@@ -165,13 +170,6 @@ const ProfilePage = () => {
       showNotice.error(bundleError)
     }
   }, [bundleError])
-
-  const refreshBundleQueries = useCallback(async () => {
-    await Promise.all([
-      revalidateQuery(['getBundleView']),
-      revalidateQuery(['getBundleConflicts']),
-    ])
-  }, [])
 
   useEffect(() => {
     currentProfileRef.current = profiles.current!
@@ -447,6 +445,7 @@ const ProfilePage = () => {
 
         if (outcome.status === 'valid') {
           currentProfileRef.current = profile
+          void refreshBundleQueries()
           void mutateLogs().catch(() => {})
           void mutate(() => closeAllConnections(), {
             id: 'close-all-connections',
@@ -660,7 +659,7 @@ const ProfilePage = () => {
         void refreshBundleQueries()
       }
     },
-    [mutateProfiles, refreshBundleQueries, setLoadingProfiles],
+    [mutateProfiles, setLoadingProfiles],
   )
   const onUpdateAll = useLockFn(async () => {
     const items = profileItems.filter((e) => e.type === 'remote')

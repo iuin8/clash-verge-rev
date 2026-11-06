@@ -83,13 +83,13 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     let profiles = Config::profiles().await;
     let snapshot = profiles.latest_arc();
 
-    let generated = bundle::generate(&snapshot, &members)
+    let mut generated = bundle::generate(&snapshot, &members)
         .await
         .with_error_code("BUNDLE_MEMBER_INVALID")?;
     let artifacts = bundle::snapshot_artifacts()
         .await
         .with_error_code("BUNDLE_WRITE_FAILED")?;
-    if let Err(error) = bundle::commit_generated(&generated, true).await {
+    if let Err(error) = bundle::commit_generated(&mut generated, true).await {
         let _ = bundle::restore_artifacts(&artifacts).await;
         return Err(coded_error("BUNDLE_WRITE_FAILED", error));
     }
@@ -121,6 +121,13 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
         }
     };
 
+    if let Err(error) = bundle::mark_validated().await {
+        logging!(
+            warn,
+            Type::Cmd,
+            "failed to mark the applied bundle validated: {error:#}"
+        );
+    }
     multi_merge::publish_conflicts(generated.conflicts);
     drop(config_update_guard);
     drop(profile_write_guard);
@@ -152,12 +159,18 @@ pub async fn refresh_bundle() -> CmdResult {
         return Err(coded_error("BUNDLE_NOT_FOUND", "no profile bundle exists"));
     };
 
-    if outcome.regenerated
-        && snapshot.current.as_deref() == Some(bundle::BUNDLE_UID)
-        && let Err(error) = apply_runtime().await
-    {
-        rollback_bundle_artifacts(Some(&artifacts), "bundle refresh apply failed").await;
-        return Err(error);
+    if outcome.regenerated && snapshot.current.as_deref() == Some(bundle::BUNDLE_UID) {
+        if let Err(error) = apply_runtime().await {
+            rollback_bundle_artifacts(Some(&artifacts), "bundle refresh apply failed").await;
+            return Err(error);
+        }
+        if let Err(error) = bundle::mark_validated().await {
+            logging!(
+                warn,
+                Type::Cmd,
+                "failed to mark the refreshed bundle validated: {error:#}"
+            );
+        }
     }
     Ok(())
 }

@@ -228,10 +228,17 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
         let active = snapshot.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID);
         if bundle_member {
             let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
-            if active {
-                bundle_artifacts = Some(crate::config::bundle::snapshot_artifacts().await?);
-            }
+            bundle_artifacts = Some(crate::config::bundle::snapshot_artifacts().await?);
             if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true, active).await {
+                if let Some(artifacts) = bundle_artifacts.as_ref()
+                    && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
+                {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "[订阅更新] failed to restore bundle artifacts: {error:#}"
+                    );
+                }
                 if active {
                     logging!(
                         error,
@@ -254,7 +261,19 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
     if should_refresh {
         logging!(debug, Type::Config, "[订阅更新] 更新内核配置");
         match CoreManager::global().update_config_with_force(is_mannual_trigger).await {
-            Ok(outcome) if outcome.is_valid() => announce(Refresh::Clash),
+            Ok(outcome) if outcome.is_valid() => {
+                announce(Refresh::Clash);
+                if bundle_active
+                    && bundle_member
+                    && let Err(error) = crate::config::bundle::mark_validated().await
+                {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "[订阅更新] failed to mark the applied bundle validated: {error:#}"
+                    );
+                }
+            }
             Ok(outcome @ (ValidationOutcome::Skipped { .. } | ValidationOutcome::Busy)) if !is_mannual_trigger => {
                 logging!(info, Type::Config, "[订阅更新] 本次配置刷新已跳过: {}", outcome);
             }
@@ -290,5 +309,15 @@ pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual
 
 /// 增强配置
 pub async fn enhance_profiles() -> Result<ValidationOutcome> {
-    CoreManager::global().update_config_forced().await
+    let outcome = CoreManager::global().update_config_forced().await?;
+    if outcome.is_valid()
+        && let Err(error) = crate::config::bundle::mark_validated_if_current().await
+    {
+        logging!(
+            warn,
+            Type::Config,
+            "[增强配置] failed to mark the active bundle validated: {error:#}"
+        );
+    }
+    Ok(outcome)
 }

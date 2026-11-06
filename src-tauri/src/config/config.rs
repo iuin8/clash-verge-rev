@@ -112,12 +112,23 @@ impl Config {
             Self::generate_and_validate().await?
         };
 
+        let runtime_validated = validation_result.is_none();
         if let Some((msg_type, msg_content)) = validation_result {
             sleep(timing::STARTUP_ERROR_DELAY).await;
             handle::Handle::notice(msg_type, msg_content.as_str());
         }
 
         Self::runtime().await.apply();
+        if !fallback_applied
+            && runtime_validated
+            && let Err(error) = crate::config::bundle::mark_validated_if_current().await
+        {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to mark the startup bundle validated: {error:#}"
+            );
+        }
         logging_error!(Type::Config, Self::sync_dns_override().await);
 
         Ok(())

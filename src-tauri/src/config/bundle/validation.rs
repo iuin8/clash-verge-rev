@@ -72,10 +72,16 @@ pub async fn validate_generated(yaml: &str) -> BundleValidation {
 }
 
 /// Validate (when possible) then write generated + metadata atomically each.
-pub async fn commit_generated(generated: &GeneratedBundle, allow_unvalidated: bool) -> Result<()> {
+/// Artifacts are always written unvalidated: only a successful runtime apply may
+/// call `mark_validated()`. This keeps a crash between write and apply detectable
+/// (`is_stale` stays true) even when the core validator accepted the bytes.
+pub async fn commit_generated(generated: &mut GeneratedBundle, allow_unvalidated: bool) -> Result<()> {
     let validation = validate_generated(&generated.yaml).await;
     match commit_decision(validation, allow_unvalidated) {
-        CommitDecision::Write => write(generated).await,
+        CommitDecision::Write => {
+            generated.meta.validated = false;
+            write(generated).await
+        }
         CommitDecision::Reject => bail!("generated bundle profile is invalid"),
         CommitDecision::KeepStale => {
             bail!("core validator is unavailable; keeping the previous bundle artifacts")

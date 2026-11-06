@@ -268,6 +268,16 @@ async fn handle_saved_profile_file(
     );
     match CoreManager::global().update_config_forced().await {
         Ok(outcome) if outcome.is_valid() => {
+            if context.bundle_member
+                && context.affects_runtime
+                && let Err(error) = crate::config::bundle::mark_validated().await
+            {
+                logging!(
+                    warn,
+                    Type::Config,
+                    "[cmd配置save] failed to mark the applied bundle validated: {error:#}"
+                );
+            }
             handle::Handle::refresh_clash();
             Ok(ValidationOutcome::Valid)
         }

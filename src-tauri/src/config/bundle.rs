@@ -12,8 +12,6 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result, bail};
-use clash_verge_draft::Draft;
-use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 use sha2::{Digest as _, Sha256};
@@ -24,9 +22,11 @@ use crate::config::{IProfiles, PrfItem};
 use crate::enhance::multi_merge::{self, ConflictEntry};
 use crate::utils::{dirs, help, yaml_emitter};
 
+mod lifecycle;
 mod migration;
 mod validation;
 
+pub use lifecycle::{cleanup_orphans, plan_orphan_cleanup, teardown};
 pub use migration::{MigrationOutcome, MigrationPlan, migrate_legacy, plan_migration};
 pub use validation::{BundleValidation, CommitDecision, commit_decision, commit_generated, validate_generated};
 
@@ -51,9 +51,18 @@ pub struct BundleMeta {
     /// Member uid -> SHA-256 of the member file the bundle was generated from.
     #[serde(default)]
     pub sources: BTreeMap<String, String>,
+    /// SHA-256 binding version + ordered members, so metadata member/order
+    /// tampering is detected instead of silently changing what gets merged.
+    #[serde(default)]
+    pub members_sha256: String,
     /// SHA-256 of the generated profile, so manual edits are detected and restored.
     #[serde(default)]
     pub generated_sha256: String,
+    /// True only after the generated profile was accepted by validation/runtime.
+    /// An unvalidated pair written when the validator was unavailable is never
+    /// reported fresh.
+    #[serde(default)]
+    pub validated: bool,
     /// Conflicts from the last generation, re-published on startup so the UI can
     /// show them before the next regeneration.
     #[serde(default)]
@@ -126,6 +135,29 @@ pub(super) fn sha256_hex(bytes: &[u8]) -> String {
         let _ = write!(hex, "{byte:02x}");
     }
     hex.into()
+}
+
+/// Bind metadata version + ordered members into a fingerprint.
+pub fn members_fingerprint(version: u32, members: &[String]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(version.to_le_bytes());
+    hasher.update((members.len() as u64).to_le_bytes());
+    for member in members {
+        hasher.update((member.len() as u64).to_le_bytes());
+        hasher.update(member.as_bytes());
+    }
+    sha256_hex(&hasher.finalize())
+}
+
+pub fn metadata_fingerprint_matches(meta: &BundleMeta) -> bool {
+    !meta.members_sha256.is_empty()
+        && meta.members_sha256.as_str() == members_fingerprint(meta.version, &meta.members).as_str()
+}
+
+/// Empty fingerprints are legacy metadata (upgraded on the next regeneration);
+/// a non-empty mismatch means the stored member set/order was tampered with.
+pub fn metadata_trusted(meta: &BundleMeta) -> bool {
+    meta.members_sha256.is_empty() || metadata_fingerprint_matches(meta)
 }
 
 pub fn parse_meta(text: &str) -> Result<BundleMeta> {
@@ -314,7 +346,9 @@ pub async fn generate(profiles: &IProfiles, members: &[String]) -> Result<Genera
             version: META_VERSION,
             members: members.to_vec(),
             sources,
+            members_sha256: members_fingerprint(META_VERSION, members),
             generated_sha256: sha256_hex(yaml.as_bytes()),
+            validated: false,
             conflicts: conflicts.clone(),
             generated_at: now_secs(),
         },
@@ -325,6 +359,14 @@ pub async fn generate(profiles: &IProfiles, members: &[String]) -> Result<Genera
 
 pub async fn is_stale(profiles: &IProfiles, meta: &BundleMeta) -> Result<bool> {
     if profiles.get_item(BUNDLE_UID).is_err() {
+        return Ok(true);
+    }
+    if !metadata_trusted(meta) {
+        return Ok(true);
+    }
+    // An unvalidated pair is only dangerous while it is the active profile: a
+    // crash between write and apply must be detected and regenerated.
+    if profiles.current.as_deref() == Some(BUNDLE_UID) && !meta.validated {
         return Ok(true);
     }
     let Ok(generated_bytes) = fs::read(generated_path()?).await else {
@@ -363,8 +405,8 @@ pub async fn is_member(uid: &str) -> Result<bool> {
 /// Regenerate the bundle artifacts, replacing the previous generated file and
 /// metadata atomically (each file), and publish the latest conflicts.
 pub async fn regenerate(profiles: &IProfiles, members: &[String], allow_unvalidated: bool) -> Result<GeneratedBundle> {
-    let generated = generate(profiles, members).await?;
-    commit_generated(&generated, allow_unvalidated).await?;
+    let mut generated = generate(profiles, members).await?;
+    commit_generated(&mut generated, allow_unvalidated).await?;
     multi_merge::publish_conflicts(generated.conflicts.clone());
     Ok(generated)
 }
@@ -379,6 +421,9 @@ pub async fn refresh(profiles: &IProfiles, force: bool, allow_unvalidated: bool)
     let Some(meta) = load_meta().await? else {
         return Ok(None);
     };
+    if !metadata_trusted(&meta) {
+        bail!("bundle metadata member/order fingerprint mismatch; recreate the bundle");
+    }
     if !force && !is_stale(profiles, &meta).await? {
         multi_merge::publish_conflicts(meta.conflicts.clone());
         return Ok(Some(RefreshOutcome {
@@ -387,8 +432,8 @@ pub async fn refresh(profiles: &IProfiles, force: bool, allow_unvalidated: bool)
             regenerated: false,
         }));
     }
-    let generated = generate(profiles, &meta.members).await?;
-    commit_generated(&generated, allow_unvalidated).await?;
+    let mut generated = generate(profiles, &meta.members).await?;
+    commit_generated(&mut generated, allow_unvalidated).await?;
     multi_merge::publish_conflicts(generated.conflicts.clone());
     Ok(Some(RefreshOutcome {
         meta: generated.meta,
@@ -401,26 +446,37 @@ pub async fn refresh_if_stale(profiles: &IProfiles, allow_unvalidated: bool) -> 
     refresh(profiles, false, allow_unvalidated).await
 }
 
-/// Remove generated/meta artifacts whose bundle item disappeared (avoid orphans).
-pub async fn cleanup_orphans(profiles: &IProfiles) -> Result<bool> {
-    if profiles.get_item(BUNDLE_UID).is_ok() {
+/// Mark the written artifacts as validated after a successful runtime apply.
+pub async fn mark_validated() -> Result<bool> {
+    let Some(mut meta) = load_meta().await? else {
+        return Ok(false);
+    };
+    if !metadata_trusted(&meta) {
+        bail!("bundle metadata member/order fingerprint mismatch; refusing to mark it validated");
+    }
+    if meta.members_sha256.is_empty() {
+        // Upgrade legacy metadata by binding its member list now that it applied.
+        meta.members_sha256 = members_fingerprint(meta.version, &meta.members);
+    }
+    if meta.validated {
         return Ok(false);
     }
-    let has_meta = fs::try_exists(meta_path()?).await.unwrap_or(false);
-    let has_generated = fs::try_exists(generated_path()?).await.unwrap_or(false);
-    if !has_meta && !has_generated {
-        return Ok(false);
-    }
-    remove_artifacts().await?;
-    multi_merge::publish_conflicts(Vec::new());
-    logging!(
-        warn,
-        Type::Config,
-        "removed orphaned profile bundle artifacts because the bundle item is missing"
-    );
+    meta.validated = true;
+    save_meta(&meta).await?;
     Ok(true)
 }
 
+/// Startup/apply helper: only the current bundle can be considered validated by
+/// a runtime apply.
+pub async fn mark_validated_if_current() -> Result<bool> {
+    let profiles = crate::config::Config::profiles().await.latest_arc();
+    if profiles.current.as_deref() != Some(BUNDLE_UID) {
+        return Ok(false);
+    }
+    mark_validated().await
+}
+
+/// Remove generated/meta artifacts whose bundle item disappeared (avoid orphans).
 /// Metadata-only prune for an inactive bundle: keeps the old generated file
 /// (still valid) but marks it stale so activation/refresh regenerates it.
 pub fn stale_meta_after_prune(meta: &BundleMeta, members: &[String]) -> BundleMeta {
@@ -434,7 +490,9 @@ pub fn stale_meta_after_prune(meta: &BundleMeta, members: &[String]) -> BundleMe
         version: META_VERSION,
         members: members.to_vec(),
         sources,
+        members_sha256: members_fingerprint(META_VERSION, members),
         generated_sha256: String::new(),
+        validated: false,
         conflicts: Vec::new(),
         generated_at: meta.generated_at,
     }
@@ -506,7 +564,7 @@ pub fn remove_dns_settings(verge: &mut crate::config::IVerge) -> bool {
     verge.profile_dns_settings.remove(BUNDLE_UID).is_some()
 }
 
-pub async fn clear_dns_state() -> Result<()> {
+pub async fn clear_dns_state() -> Result<bool> {
     let verge = crate::config::Config::verge().await;
     let removed = verge
         .with_data_modify(|mut candidate| async move {
@@ -518,36 +576,7 @@ pub async fn clear_dns_state() -> Result<()> {
         verge.data_arc().save_file().await?;
         crate::core::notify::announce(crate::core::notify::Refresh::Verge);
     }
-    Ok(())
-}
-
-/// Remove the bundle item plus generated file and metadata, leaving members
-/// untouched. Returns whether the active profile changed.
-pub async fn teardown(profiles: &Draft<IProfiles>) -> Result<TeardownOutcome> {
-    let snapshot = profiles.latest_arc();
-    let was_current = snapshot.current.as_deref() == Some(BUNDLE_UID);
-    let has_item = snapshot.get_item(BUNDLE_UID).is_ok();
-    drop(snapshot);
-
-    if has_item {
-        let plan = profiles
-            .with_data_modify(|mut candidate| async move {
-                let plan = candidate.plan_delete_item(BUNDLE_UID)?;
-                candidate.save_file().await?;
-                Ok((candidate, plan.1))
-            })
-            .await?;
-        plan.cleanup().await;
-    }
-    remove_artifacts().await?;
-    if let Err(error) = clear_dns_state().await {
-        logging!(warn, Type::Config, "failed to clear bundle DNS settings: {error:#}");
-    }
-    multi_merge::publish_conflicts(Vec::new());
-    Ok(TeardownOutcome {
-        removed: has_item,
-        runtime_changed: was_current && has_item,
-    })
+    Ok(removed)
 }
 
 #[cfg(test)]
