@@ -19,6 +19,20 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
+## v2.5.10-fa.2
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.10 的个人 fork 版本。
+
+### ✨ 新增功能
+
+- 新增「组合订阅」：多选订阅后生成一个可单选的普通本地配置，成员顺序即合并顺序，成员更新会自动刷新
+- 旧的合并选择会在启动时迁移为「组合订阅」，不再保留隐藏的全局合并状态
+
+### 🚀 优化改进
+
+- 组合订阅使用单文件覆盖式更新，不增加订阅列表条目；删除组合不会删除原订阅
+
 ## v2.5.10-fa.1
 
 > [!IMPORTANT]
