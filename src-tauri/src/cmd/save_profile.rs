@@ -53,7 +53,7 @@ pub async fn save_profile_file(
     };
 
     // 在异步操作前获取必要元数据并释放锁
-    let (rel_path, is_merge_file, is_script_file, affects_runtime) = {
+    let (rel_path, is_merge_file, is_script_file, affects_runtime, bundle_active) = {
         let profiles = Config::profiles().await;
         let profiles_guard = profiles.latest_arc();
         let item = profiles_guard.get_item(&index).stringify_err()?;
@@ -61,7 +61,10 @@ pub async fn save_profile_file(
         let path = item.file.clone().ok_or("file field is null")?;
         let is_script = item.itype.as_ref().is_some_and(|t| t == "script") || path.ends_with(".js");
         let affects_runtime = profile_affects_runtime(&profiles_guard, &index, bundle_member);
-        (path, is_merge, is_script, affects_runtime)
+        // Bundle validation only tracks the ACTIVE bundle. `affects_runtime` can
+        // also be true when the saved file is the current (non-bundle) member.
+        let bundle_active = profiles_guard.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID);
+        (path, is_merge, is_script, affects_runtime, bundle_active)
     };
 
     let bundle_artifacts = if bundle_member {
@@ -106,6 +109,7 @@ pub async fn save_profile_file(
             is_script_file,
             affects_runtime,
             bundle_member,
+            bundle_active,
             bundle_artifacts: bundle_artifacts.as_ref(),
         },
     )
@@ -180,7 +184,27 @@ struct SavedFileContext<'a> {
     is_script_file: bool,
     affects_runtime: bool,
     bundle_member: bool,
+    bundle_active: bool,
     bundle_artifacts: Option<&'a crate::config::bundle::BundleArtifacts>,
+}
+
+/// Only an active bundle may be refreshed with unvalidated output or have a
+/// refresh failure treated as fatal to the save. Keeping `affects_runtime`
+/// separate prevents an inactive bundle from being falsely marked validated
+/// when the saved member happens to be the current profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MemberSaveBundlePolicy {
+    allow_unvalidated: bool,
+    fatal_refresh_error: bool,
+    mark_after_apply: bool,
+}
+
+const fn member_save_bundle_policy(bundle_active: bool) -> MemberSaveBundlePolicy {
+    MemberSaveBundlePolicy {
+        allow_unvalidated: bundle_active,
+        fatal_refresh_error: bundle_active,
+        mark_after_apply: bundle_active,
+    }
 }
 
 /// Refresh the bundle after a member file save. Active bundles must roll the
@@ -190,9 +214,10 @@ async fn refresh_saved_member_bundle(context: &SavedFileContext<'_>) -> std::res
     let profiles = Config::profiles().await;
     let snapshot = profiles.latest_arc();
     let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
-    match crate::config::bundle::refresh(snapshot.as_ref(), true, context.affects_runtime).await {
+    let policy = member_save_bundle_policy(context.bundle_active);
+    match crate::config::bundle::refresh(snapshot.as_ref(), true, policy.allow_unvalidated).await {
         Ok(_) => Ok(()),
-        Err(error) if context.affects_runtime => Err(error.to_string()),
+        Err(error) if policy.fatal_refresh_error => Err(error.to_string()),
         Err(error) => {
             logging!(
                 warn,
@@ -269,8 +294,8 @@ async fn handle_saved_profile_file(
     match CoreManager::global().update_config_forced().await {
         Ok(outcome) if outcome.is_valid() => {
             if context.bundle_member
-                && context.affects_runtime
-                && let Err(error) = crate::config::bundle::mark_validated().await
+                && member_save_bundle_policy(context.bundle_active).mark_after_apply
+                && let Err(error) = crate::config::bundle::mark_validated_if_current().await
             {
                 logging!(
                     warn,
@@ -294,5 +319,32 @@ async fn handle_saved_profile_file(
                 .await?;
             Err(err.to_string().into())
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::{MemberSaveBundlePolicy, member_save_bundle_policy};
+
+    #[test]
+    fn inactive_bundle_never_uses_member_runtime_state_for_bundle_validation() {
+        // Regression: saving the CURRENT member while the bundle is inactive makes
+        // `affects_runtime` true, but must not allow unvalidated bundle writes,
+        // treat refresh failures as fatal, or mark the bundle validated.
+        let policy = member_save_bundle_policy(false);
+        assert_eq!(
+            policy,
+            MemberSaveBundlePolicy {
+                allow_unvalidated: false,
+                fatal_refresh_error: false,
+                mark_after_apply: false,
+            }
+        );
+
+        let active = member_save_bundle_policy(true);
+        assert!(active.allow_unvalidated);
+        assert!(active.fatal_refresh_error);
+        assert!(active.mark_after_apply);
     }
 }

@@ -361,7 +361,9 @@ pub async fn is_stale(profiles: &IProfiles, meta: &BundleMeta) -> Result<bool> {
     if profiles.get_item(BUNDLE_UID).is_err() {
         return Ok(true);
     }
-    if !metadata_trusted(meta) {
+    // Legacy metadata without a fingerprint must be refreshed first so the next
+    // apply can bind a trusted member list; tampered fingerprints stay stale too.
+    if !metadata_fingerprint_matches(meta) {
         return Ok(true);
     }
     // An unvalidated pair is only dangerous while it is the active profile: a
@@ -451,12 +453,13 @@ pub async fn mark_validated() -> Result<bool> {
     let Some(mut meta) = load_meta().await? else {
         return Ok(false);
     };
+    if meta.members_sha256.is_empty() {
+        // Legacy metadata cannot be trusted as applied: refresh must rewrite it
+        // with a member fingerprint first.
+        bail!("bundle metadata is missing a member fingerprint; refresh the bundle before marking it validated");
+    }
     if !metadata_trusted(&meta) {
         bail!("bundle metadata member/order fingerprint mismatch; refusing to mark it validated");
-    }
-    if meta.members_sha256.is_empty() {
-        // Upgrade legacy metadata by binding its member list now that it applied.
-        meta.members_sha256 = members_fingerprint(meta.version, &meta.members);
     }
     if meta.validated {
         return Ok(false);

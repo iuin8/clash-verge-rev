@@ -55,6 +55,11 @@ async fn finish_profile_delete(needs_runtime_update: bool, current: Option<&Stri
     logging_error!(Type::Timer, Timer::global().refresh().await);
 }
 
+/// Only a runtime apply that actually used the bundle may mark it validated.
+const fn should_mark_bundle_validated(bundle_was_current: bool, affects_bundle: bool) -> bool {
+    bundle_was_current && affects_bundle
+}
+
 struct BundleDeletePlan {
     affects_bundle: bool,
     remove_bundle_item: bool,
@@ -200,9 +205,8 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
             logging!(warn, Type::Cmd, "failed to clear bundle DNS settings: {error:#}");
         }
     }
-    if needs_runtime_update
-        && affects_bundle
-        && let Err(error) = crate::config::bundle::mark_validated().await
+    if should_mark_bundle_validated(bundle_was_current, affects_bundle)
+        && let Err(error) = crate::config::bundle::mark_validated_if_current().await
     {
         logging!(
             warn,
@@ -235,6 +239,14 @@ mod tests {
             conflicts: Vec::new(),
             generated_at: 0,
         }
+    }
+
+    #[test]
+    fn deletion_marks_the_bundle_validated_only_when_it_was_current() {
+        assert!(!super::should_mark_bundle_validated(false, true));
+        assert!(!super::should_mark_bundle_validated(false, false));
+        assert!(!super::should_mark_bundle_validated(true, false));
+        assert!(super::should_mark_bundle_validated(true, true));
     }
 
     #[test]

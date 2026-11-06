@@ -372,10 +372,6 @@ async fn unvalidated_artifacts_stay_stale_until_marked_validated() {
     assert!(bundle::mark_validated().await.unwrap());
     let meta = bundle::load_meta().await.unwrap().unwrap();
     assert!(meta.validated);
-    assert!(
-        bundle::metadata_fingerprint_matches(&meta),
-        "marking also upgrades legacy metadata with a member fingerprint"
-    );
     assert!(!bundle::is_stale(&bundle_profiles, &meta).await.unwrap());
     assert!(!bundle::mark_validated().await.unwrap(), "marking is idempotent");
 }
@@ -461,4 +457,82 @@ async fn partial_generated_write_is_rolled_back_before_reporting_failure() {
     bundle::restore_artifacts(&artifacts).await.unwrap();
     assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), old_generated);
     assert_eq!(fs::read(bundle::meta_path().unwrap()).unwrap(), old_meta);
+}
+
+#[tokio::test]
+async fn legacy_metadata_is_not_marked_validated_until_refresh_binds_it() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    bundle_profiles.current = Some(bundle::BUNDLE_UID.into());
+
+    let generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    bundle::write_generated(&generated.yaml).await.unwrap();
+    let mut legacy = generated.meta.clone();
+    legacy.members_sha256 = "".into();
+    legacy.validated = false;
+    bundle::save_meta(&legacy).await.unwrap();
+
+    assert!(bundle::is_stale(&bundle_profiles, &legacy).await.unwrap());
+    assert!(
+        bundle::mark_validated().await.is_err(),
+        "legacy metadata without a member fingerprint must not be marked validated"
+    );
+    let unchanged = bundle::load_meta().await.unwrap().unwrap();
+    assert!(!unchanged.validated);
+    assert!(unchanged.members_sha256.is_empty());
+
+    // Activation/refresh rewrites a trusted fingerprint first.
+    let refreshed = bundle::refresh(&bundle_profiles, true, true).await.unwrap().unwrap();
+    assert!(refreshed.regenerated);
+    let refreshed_meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(bundle::metadata_fingerprint_matches(&refreshed_meta));
+    assert!(!refreshed_meta.validated);
+    assert!(bundle::mark_validated().await.unwrap());
+    assert!(bundle::load_meta().await.unwrap().unwrap().validated);
+}
+
+#[tokio::test]
+async fn inactive_bundle_with_current_member_does_not_refresh_or_validate() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+
+    let mut generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    generated.meta.validated = true;
+    bundle::write(&generated).await.unwrap();
+    let before_generated = fs::read(bundle::generated_path().unwrap()).unwrap();
+    let before_meta = fs::read(bundle::meta_path().unwrap()).unwrap();
+
+    // The bundle is inactive and the saved member is the current profile:
+    // `affects_runtime` would be true, but bundle validation must stay inactive.
+    bundle_profiles.current = Some("alpha".into());
+    write_member(
+        "beta",
+        &profile(&[("beta-renamed", "b.example")], &["DOMAIN,beta.example,DIRECT"]),
+    );
+
+    // Correct command wiring uses allow_unvalidated = bundle_active (false):
+    // validator unavailable => no write, no fresh marker.
+    assert!(bundle::refresh(&bundle_profiles, true, false).await.is_err());
+    assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), before_generated);
+    assert_eq!(fs::read(bundle::meta_path().unwrap()).unwrap(), before_meta);
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(
+        bundle::is_stale(&bundle_profiles, &meta).await.unwrap(),
+        "the changed member keeps the inactive bundle stale"
+    );
+
+    // Activation refreshes (validator unavailable, immediate-apply path) and only
+    // the following apply may mark it validated.
+    bundle_profiles.current = Some(bundle::BUNDLE_UID.into());
+    let refreshed = bundle::refresh(&bundle_profiles, false, true).await.unwrap().unwrap();
+    assert!(refreshed.regenerated);
+    assert!(read_generated().contains("beta-renamed"));
+    assert!(!bundle::load_meta().await.unwrap().unwrap().validated);
+    assert!(bundle::mark_validated().await.unwrap());
 }
