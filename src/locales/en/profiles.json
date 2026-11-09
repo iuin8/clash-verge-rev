@@ -106,6 +106,7 @@
         "created": "Profile bundle created.",
         "updated": "Profile bundle updated.",
         "refreshed": "Profile bundle refreshed.",
+        "refreshPartial": "Bundle refreshed, but {{count}} member update(s) failed.",
         "deleted": "Profile bundle deleted."
       },
       "conflict": {

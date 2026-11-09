@@ -81,6 +81,7 @@ export interface ProfileItemProps {
   bundleConflictCount?: number
   onBundleEditMembers?: () => void
   onBundleDetails?: () => void
+  onBundleRefresh?: () => void
   onBundleDelete?: () => void
   timerUpdateRevision: number
   completedUpdateRevision: number
@@ -105,6 +106,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     bundleConflictCount,
     onBundleEditMembers,
     onBundleDetails,
+    onBundleRefresh,
     onBundleDelete,
     timerUpdateRevision,
     completedUpdateRevision,
@@ -453,6 +455,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     openFile: 'profiles.components.menu.openFile',
     bundleEditMembers: 'profiles.page.bundle.actions.editMembers',
     bundleConflicts: 'profiles.page.bundle.actions.conflicts',
+    bundleRefresh: 'profiles.page.bundle.actions.refresh',
     bundleDelete: 'profiles.page.bundle.actions.delete',
     update: 'profiles.components.menu.update',
     updateViaProxy: 'profiles.components.menu.updateViaProxy',
@@ -626,6 +629,14 @@ const ProfileItemBase = (props: ProfileItemProps) => {
         onBundleDetails?.()
       },
       disabled: !onBundleDetails,
+    },
+    {
+      label: menuLabels.bundleRefresh,
+      handler: () => {
+        setAnchorEl(null)
+        onBundleRefresh?.()
+      },
+      disabled: activating || !onBundleRefresh,
     },
     {
       label: menuLabels.bundleDelete,

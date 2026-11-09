@@ -106,6 +106,7 @@
         "created": "Paquete de perfiles creado.",
         "updated": "Paquete de perfiles actualizado.",
         "refreshed": "Paquete de perfiles actualizado.",
+        "refreshPartial": "Paquete actualizado, pero {{count}} actualización(es) de miembros fallaron.",
         "deleted": "Paquete de perfiles eliminado."
       },
       "conflict": {

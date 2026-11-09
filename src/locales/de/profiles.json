@@ -106,6 +106,7 @@
         "created": "Profilbündel erstellt.",
         "updated": "Profilbündel aktualisiert.",
         "refreshed": "Profilbündel aktualisiert.",
+        "refreshPartial": "Bündel aktualisiert, aber {{count}} Mitglieds-Aktualisierung(en) fehlgeschlagen.",
         "deleted": "Profilbündel gelöscht."
       },
       "conflict": {

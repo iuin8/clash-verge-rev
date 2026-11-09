@@ -505,6 +505,7 @@ export interface TranslationResources {
             created: string
             deleted: string
             refreshed: string
+            refreshPartial: string
             updated: string
           }
         }

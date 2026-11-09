@@ -816,7 +816,7 @@ const ProfilePage = () => {
   const refreshBundleAction = useLockFn(async () => {
     setBundleBusy(true)
     try {
-      await mutate(() => refreshBundle(), {
+      const result = await mutate(() => refreshBundle(), {
         id: 'refresh-bundle',
         errorNotice: false,
         revalidate: [
@@ -825,7 +825,15 @@ const ProfilePage = () => {
           ['getBundleConflicts'],
         ],
       })
-      showNotice.success('profiles.page.bundle.notices.refreshed')
+      if (!result.ok) return
+      const failed = result.value.failed.length
+      if (failed === 0) {
+        showNotice.success('profiles.page.bundle.notices.refreshed')
+      } else {
+        showNotice.warning('profiles.page.bundle.notices.refreshPartial', {
+          count: failed,
+        })
+      }
     } catch (err: any) {
       showNotice.error(err)
     } finally {
@@ -1155,6 +1163,11 @@ const ProfilePage = () => {
                 onBundleDetails={
                   isBundleUid(item.uid) && bundleView
                     ? () => setBundleDetailsOpen(true)
+                    : undefined
+                }
+                onBundleRefresh={
+                  isBundleUid(item.uid)
+                    ? () => void refreshBundleAction()
                     : undefined
                 }
                 onBundleDelete={

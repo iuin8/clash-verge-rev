@@ -3,7 +3,7 @@
 
 use super::{CmdResult, WithErrorCode as _, coded_error};
 use crate::cmd::validate::{ValidationNoticeTarget, handle_validation_notice};
-use crate::config::{Config, bundle, profiles::PROFILE_WRITE_LOCK};
+use crate::config::{Config, PrfItem, bundle, profiles::PROFILE_WRITE_LOCK};
 use crate::core::{CoreManager, handle, tray::Tray};
 use crate::enhance::multi_merge::{self, ConflictEntry};
 use clash_verge_logging::{Type, logging};
@@ -23,6 +23,21 @@ pub struct BundleView {
     pub members: Vec<BundleMemberView>,
     pub stale: bool,
     pub generated_at: u64,
+}
+
+#[derive(serde::Serialize, specta::Type)]
+pub struct BundleRefreshFailure {
+    pub uid: std::string::String,
+    pub message: std::string::String,
+}
+
+/// Outcome of a manual full refresh: remote member updates first, then one
+/// regeneration from the updated member files.
+#[derive(serde::Serialize, specta::Type)]
+pub struct BundleRefreshReport {
+    pub updated: Vec<std::string::String>,
+    pub failed: Vec<BundleRefreshFailure>,
+    pub regenerated: bool,
 }
 
 /// FORK: describe the reusable bundle item and its ordered members.
@@ -135,10 +150,75 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     Ok(())
 }
 
-/// FORK: regenerate the bundle from its stored members (stale member recovery).
+/// Remote subscriptions that belong to the bundle, in bundle order.
+fn remote_bundle_members(meta: &bundle::BundleMeta, items: &[PrfItem]) -> Vec<String> {
+    meta.members
+        .iter()
+        .filter(|uid| {
+            items
+                .iter()
+                .find(|item| item.uid.as_deref() == Some(uid.as_str()))
+                .is_some_and(|item| item.itype.as_deref() == Some("remote"))
+        })
+        .cloned()
+        .collect()
+}
+
+fn build_bundle_refresh_report(
+    updated: Vec<String>,
+    failed: Vec<BundleRefreshFailure>,
+    regenerated: bool,
+) -> BundleRefreshReport {
+    BundleRefreshReport {
+        updated: updated.into_iter().map(Into::into).collect(),
+        failed,
+        regenerated,
+    }
+}
+
+/// FORK: full manual bundle refresh — update every remote member subscription
+/// sequentially (manual semantics, regardless of auto-update settings), continue
+/// past per-member failures, then regenerate the bundle from the updated files
+/// and apply it when the bundle is the active profile.
+///
+/// The profile write lock is not held across the network/update calls; it is
+/// acquired only for the final regeneration/apply.
 #[tauri::command]
 #[specta::specta]
-pub async fn refresh_bundle() -> CmdResult {
+pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
+    let remote_members = {
+        let profiles = Config::profiles().await;
+        let snapshot = profiles.latest_arc();
+        if snapshot.get_item(bundle::BUNDLE_UID).is_err() {
+            return Err(coded_error("BUNDLE_NOT_FOUND", "no profile bundle exists"));
+        }
+        let Some(meta) = bundle::load_meta().await.with_error_code("BUNDLE_META_INVALID")? else {
+            return Err(coded_error("BUNDLE_NOT_FOUND", "no profile bundle exists"));
+        };
+        if !bundle::metadata_trusted(&meta) {
+            return Err(coded_error(
+                "BUNDLE_META_INVALID",
+                "bundle metadata member/order fingerprint mismatch; recreate the bundle",
+            ));
+        }
+        remote_bundle_members(&meta, snapshot.items.as_deref().unwrap_or_default())
+    };
+
+    let mut updated: Vec<String> = Vec::with_capacity(remote_members.len());
+    let mut failed: Vec<BundleRefreshFailure> = Vec::new();
+    for uid in remote_members {
+        match crate::feat::update_profile(&uid, None, true).await {
+            Ok(()) => updated.push(uid),
+            Err(error) => {
+                logging!(warn, Type::Cmd, "failed to update bundle member '{uid}': {error:#}");
+                failed.push(BundleRefreshFailure {
+                    uid: uid.to_string(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+
     let _profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
     let snapshot = profiles.latest_arc();
@@ -149,7 +229,7 @@ pub async fn refresh_bundle() -> CmdResult {
     let artifacts = bundle::snapshot_artifacts()
         .await
         .with_error_code("BUNDLE_REFRESH_FAILED")?;
-    let Some(outcome) = (match bundle::refresh(&snapshot, true, false).await {
+    let Some(outcome) = (match bundle::refresh(&snapshot, true, true).await {
         Ok(outcome) => outcome,
         Err(error) => {
             let _ = bundle::restore_artifacts(&artifacts).await;
@@ -172,7 +252,7 @@ pub async fn refresh_bundle() -> CmdResult {
             );
         }
     }
-    Ok(())
+    Ok(build_bundle_refresh_report(updated, failed, outcome.regenerated))
 }
 
 /// FORK: remove the bundle item, generated file and metadata; members stay.
@@ -245,5 +325,74 @@ async fn apply_runtime() -> CmdResult {
     } else {
         handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
         Err(coded_error("BUNDLE_APPLY_FAILED", outcome))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn item(uid: &str, itype: &str) -> PrfItem {
+        PrfItem {
+            uid: Some(uid.into()),
+            itype: Some(itype.into()),
+            file: Some(format!("{uid}.yaml").into()),
+            ..PrfItem::default()
+        }
+    }
+
+    fn meta(members: &[&str]) -> bundle::BundleMeta {
+        bundle::BundleMeta {
+            version: bundle::META_VERSION,
+            members: members.iter().map(|uid| (*uid).into()).collect(),
+            sources: Default::default(),
+            members_sha256: bundle::members_fingerprint(
+                bundle::META_VERSION,
+                &members.iter().map(|uid| (*uid).into()).collect::<Vec<_>>(),
+            ),
+            generated_sha256: "generated".into(),
+            validated: true,
+            conflicts: Vec::new(),
+            generated_at: 0,
+        }
+    }
+
+    #[test]
+    fn remote_members_are_selected_in_bundle_order() {
+        let items = vec![
+            item("remote-a", "remote"),
+            item("local-b", "local"),
+            item("remote-c", "remote"),
+            item("outside", "remote"),
+        ];
+        let meta = meta(&["local-b", "remote-c", "missing", "remote-a"]);
+        assert_eq!(
+            remote_bundle_members(&meta, &items),
+            vec![String::from("remote-c"), String::from("remote-a")]
+        );
+    }
+
+    #[test]
+    fn refresh_report_preserves_update_and_failure_lists() {
+        let report = build_bundle_refresh_report(
+            vec![String::from("remote-a"), String::from("remote-b")],
+            vec![BundleRefreshFailure {
+                uid: std::string::String::from("remote-c"),
+                message: std::string::String::from("timeout"),
+            }],
+            true,
+        );
+        assert_eq!(
+            report.updated,
+            vec![
+                std::string::String::from("remote-a"),
+                std::string::String::from("remote-b")
+            ]
+        );
+        assert_eq!(report.failed.len(), 1);
+        assert_eq!(report.failed[0].uid, "remote-c");
+        assert_eq!(report.failed[0].message, "timeout");
+        assert!(report.regenerated);
     }
 }

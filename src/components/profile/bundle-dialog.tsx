@@ -190,15 +190,13 @@ export function BundleDetailsDialog({
         >
           {t('profiles.page.bundle.actions.editMembers')}
         </Button>
-        {view.stale && (
-          <Button
-            startIcon={<RefreshRounded />}
-            onClick={onRefresh}
-            disabled={busy}
-          >
-            {t('profiles.page.bundle.actions.refresh')}
-          </Button>
-        )}
+        <Button
+          startIcon={<RefreshRounded />}
+          onClick={onRefresh}
+          disabled={busy}
+        >
+          {t('profiles.page.bundle.actions.refresh')}
+        </Button>
         <Button
           color="error"
           startIcon={<DeleteOutlineRounded />}

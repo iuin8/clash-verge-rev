@@ -106,6 +106,7 @@
         "created": "Pacote de perfis criado.",
         "updated": "Pacote de perfis atualizado.",
         "refreshed": "Pacote de perfis atualizado.",
+        "refreshPartial": "Pacote atualizado, mas {{count}} atualização(ões) de membros falharam.",
         "deleted": "Pacote de perfis excluído."
       },
       "conflict": {

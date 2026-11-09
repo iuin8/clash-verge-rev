@@ -106,6 +106,7 @@
         "created": "Paket profil dibuat.",
         "updated": "Paket profil diperbarui.",
         "refreshed": "Paket profil disegarkan.",
+        "refreshPartial": "Paket disegarkan, tetapi {{count}} pembaruan anggota gagal.",
         "deleted": "Paket profil dihapus."
       },
       "conflict": {

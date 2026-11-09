@@ -154,8 +154,16 @@ export const commands = {
    */
   setBundleMembers: (uids: string[]) =>
     __TAURI_INVOKE<null>('set_bundle_members', { uids }),
-  /**  FORK: regenerate the bundle from its stored members (stale member recovery). */
-  refreshBundle: () => __TAURI_INVOKE<null>('refresh_bundle'),
+  /**
+   *  FORK: full manual bundle refresh — update every remote member subscription
+   *  sequentially (manual semantics, regardless of auto-update settings), continue
+   *  past per-member failures, then regenerate the bundle from the updated files
+   *  and apply it when the bundle is the active profile.
+   *
+   *  The profile write lock is not held across the network/update calls; it is
+   *  acquired only for the final regeneration/apply.
+   */
+  refreshBundle: () => __TAURI_INVOKE<BundleRefreshReport>('refresh_bundle'),
   /**  FORK: remove the bundle item, generated file and metadata; members stay. */
   deleteBundle: () => __TAURI_INVOKE<null>('delete_bundle'),
   /**  FORK: conflicts produced by the most recent bundle generation. */
@@ -260,6 +268,21 @@ export type BundleMemberView = {
   uid: string
   name: string
   kind: string
+}
+
+export type BundleRefreshFailure = {
+  uid: string
+  message: string
+}
+
+/**
+ *  Outcome of a manual full refresh: remote member updates first, then one
+ *  regeneration from the updated member files.
+ */
+export type BundleRefreshReport = {
+  updated: string[]
+  failed: BundleRefreshFailure[]
+  regenerated: boolean
 }
 
 export type BundleView = {

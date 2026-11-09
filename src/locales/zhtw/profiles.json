@@ -106,6 +106,7 @@
         "created": "組合訂閱已建立。",
         "updated": "組合訂閱已更新。",
         "refreshed": "組合訂閱已重新整理。",
+        "refreshPartial": "組合已重新整理，但有 {{count}} 個成員更新失敗。",
         "deleted": "組合訂閱已刪除。"
       },
       "conflict": {
