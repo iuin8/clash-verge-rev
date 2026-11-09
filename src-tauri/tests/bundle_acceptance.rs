@@ -132,6 +132,7 @@ async fn generated_profile_is_plain_and_refreshes_when_a_member_changes() {
     let _home = TempHome::new();
     let mut profiles = setup_two_members();
     bundle::upsert_item(&mut profiles);
+    profiles.current = Some(bundle::BUNDLE_UID.into());
 
     let mut generated = bundle::generate(&profiles, &uids(&["alpha", "beta"]))
         .await
@@ -535,4 +536,65 @@ async fn inactive_bundle_with_current_member_does_not_refresh_or_validate() {
     assert!(read_generated().contains("beta-renamed"));
     assert!(!bundle::load_meta().await.unwrap().unwrap().validated);
     assert!(bundle::mark_validated().await.unwrap());
+}
+
+#[tokio::test]
+async fn inactive_refresh_ignores_caller_allow_unvalidated() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    let mut generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    generated.meta.validated = true;
+    bundle::write(&generated).await.unwrap();
+    let before_generated = fs::read(bundle::generated_path().unwrap()).unwrap();
+    let before_meta = fs::read(bundle::meta_path().unwrap()).unwrap();
+    // Inactive bundle: even a caller that asks for an immediate-apply write must
+    // not persist unvalidated output.
+    bundle_profiles.current = Some("alpha".into());
+    write_member(
+        "beta",
+        &profile(&[("beta-renamed", "b.example")], &["DOMAIN,beta.example,DIRECT"]),
+    );
+    assert!(
+        bundle::refresh(&bundle_profiles, true, true).await.is_err(),
+        "inactive refresh must force allow_unvalidated=false"
+    );
+    assert_eq!(fs::read(bundle::generated_path().unwrap()).unwrap(), before_generated);
+    assert_eq!(fs::read(bundle::meta_path().unwrap()).unwrap(), before_meta);
+    // The active bundle is still allowed to write on an immediate-apply path.
+    bundle_profiles.current = Some(bundle::BUNDLE_UID.into());
+    let refreshed = bundle::refresh(&bundle_profiles, true, true).await.unwrap().unwrap();
+    assert!(refreshed.regenerated);
+    assert!(read_generated().contains("beta-renamed"));
+    assert!(!bundle::load_meta().await.unwrap().unwrap().validated);
+    assert!(bundle::mark_validated().await.unwrap());
+}
+#[tokio::test]
+async fn mark_validated_requires_the_recorded_generated_file() {
+    let _home = TempHome::new();
+    let mut bundle_profiles = setup_two_members();
+    bundle::upsert_item(&mut bundle_profiles);
+    bundle_profiles.current = Some(bundle::BUNDLE_UID.into());
+    let generated = bundle::generate(&bundle_profiles, &uids(&["alpha", "beta"]))
+        .await
+        .unwrap();
+    let original_generated = generated.yaml.clone();
+    bundle::write(&generated).await.unwrap();
+    // Concurrent/replaced generated file must not be marked validated.
+    fs::write(bundle::generated_path().unwrap(), "# replaced by another writer\n").unwrap();
+    assert!(bundle::mark_validated().await.is_err());
+    let meta = bundle::load_meta().await.unwrap().unwrap();
+    assert!(!meta.validated);
+    // Restoring the recorded bytes allows marking again.
+    bundle::write_generated(&original_generated).await.unwrap();
+    assert!(bundle::mark_validated().await.unwrap());
+    // Missing generated hash is refused too.
+    let mut no_hash = bundle::load_meta().await.unwrap().unwrap();
+    no_hash.validated = false;
+    no_hash.generated_sha256 = "".into();
+    bundle::save_meta(&no_hash).await.unwrap();
+    assert!(bundle::mark_validated().await.is_err());
+    assert!(!bundle::load_meta().await.unwrap().unwrap().validated);
 }

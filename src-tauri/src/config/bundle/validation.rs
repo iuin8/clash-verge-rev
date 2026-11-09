@@ -2,8 +2,9 @@
 
 use anyhow::{Result, bail};
 use clash_verge_logging::{Type, logging};
+use tokio::fs;
 
-use super::{GeneratedBundle, write};
+use super::{BUNDLE_UID, GeneratedBundle, generated_path, load_meta, metadata_trusted, save_meta, sha256_hex, write};
 
 /// Result of asking the app's core validator about a generated bundle profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,4 +88,44 @@ pub async fn commit_generated(generated: &mut GeneratedBundle, allow_unvalidated
             bail!("core validator is unavailable; keeping the previous bundle artifacts")
         }
     }
+}
+
+/// Mark the written artifacts as validated after a successful runtime apply.
+pub async fn mark_validated() -> Result<bool> {
+    let Some(mut meta) = load_meta().await? else {
+        return Ok(false);
+    };
+    if meta.members_sha256.is_empty() {
+        // Legacy metadata cannot be trusted as applied: refresh must rewrite it
+        // with a member fingerprint first.
+        bail!("bundle metadata is missing a member fingerprint; refresh the bundle before marking it validated");
+    }
+    if !metadata_trusted(&meta) {
+        bail!("bundle metadata member/order fingerprint mismatch; refusing to mark it validated");
+    }
+    if meta.generated_sha256.is_empty() {
+        bail!("bundle metadata is missing a generated hash; refresh the bundle before marking it validated");
+    }
+    let Ok(generated_bytes) = fs::read(generated_path()?).await else {
+        bail!("generated bundle profile is missing; refresh the bundle before marking it validated");
+    };
+    if sha256_hex(&generated_bytes).as_str() != meta.generated_sha256.as_str() {
+        bail!("generated bundle profile changed since generation; refresh before marking it validated");
+    }
+    if meta.validated {
+        return Ok(false);
+    }
+    meta.validated = true;
+    save_meta(&meta).await?;
+    Ok(true)
+}
+
+/// Startup/apply helper: only the current bundle can be considered validated by
+/// a runtime apply.
+pub async fn mark_validated_if_current() -> Result<bool> {
+    let profiles = crate::config::Config::profiles().await.latest_arc();
+    if profiles.current.as_deref() != Some(BUNDLE_UID) {
+        return Ok(false);
+    }
+    mark_validated().await
 }

@@ -28,7 +28,10 @@ mod validation;
 
 pub use lifecycle::{cleanup_orphans, plan_orphan_cleanup, teardown};
 pub use migration::{MigrationOutcome, MigrationPlan, migrate_legacy, plan_migration};
-pub use validation::{BundleValidation, CommitDecision, commit_decision, commit_generated, validate_generated};
+pub use validation::{
+    BundleValidation, CommitDecision, commit_decision, commit_generated, mark_validated, mark_validated_if_current,
+    validate_generated,
+};
 
 pub const BUNDLE_UID: &str = "bundle-main";
 pub const BUNDLE_FILE: &str = "bundle-main.yaml";
@@ -154,8 +157,9 @@ pub fn metadata_fingerprint_matches(meta: &BundleMeta) -> bool {
         && meta.members_sha256.as_str() == members_fingerprint(meta.version, &meta.members).as_str()
 }
 
-/// Empty fingerprints are legacy metadata (upgraded on the next regeneration);
-/// a non-empty mismatch means the stored member set/order was tampered with.
+/// Policy: empty fingerprints are legacy (tolerated, refresh rewrites them); a
+/// non-empty mismatch is malformed/tampered and is refused (repair = delete the
+/// bundle), never silently upgraded.
 pub fn metadata_trusted(meta: &BundleMeta) -> bool {
     meta.members_sha256.is_empty() || metadata_fingerprint_matches(meta)
 }
@@ -434,6 +438,9 @@ pub async fn refresh(profiles: &IProfiles, force: bool, allow_unvalidated: bool)
             regenerated: false,
         }));
     }
+    // Only the active bundle may be written with unvalidated output, regardless
+    // of what a caller passed (activation/apply paths only exist for `current`).
+    let allow_unvalidated = allow_unvalidated && profiles.current.as_deref() == Some(BUNDLE_UID);
     let mut generated = generate(profiles, &meta.members).await?;
     commit_generated(&mut generated, allow_unvalidated).await?;
     multi_merge::publish_conflicts(generated.conflicts.clone());
@@ -446,37 +453,6 @@ pub async fn refresh(profiles: &IProfiles, force: bool, allow_unvalidated: bool)
 
 pub async fn refresh_if_stale(profiles: &IProfiles, allow_unvalidated: bool) -> Result<Option<RefreshOutcome>> {
     refresh(profiles, false, allow_unvalidated).await
-}
-
-/// Mark the written artifacts as validated after a successful runtime apply.
-pub async fn mark_validated() -> Result<bool> {
-    let Some(mut meta) = load_meta().await? else {
-        return Ok(false);
-    };
-    if meta.members_sha256.is_empty() {
-        // Legacy metadata cannot be trusted as applied: refresh must rewrite it
-        // with a member fingerprint first.
-        bail!("bundle metadata is missing a member fingerprint; refresh the bundle before marking it validated");
-    }
-    if !metadata_trusted(&meta) {
-        bail!("bundle metadata member/order fingerprint mismatch; refusing to mark it validated");
-    }
-    if meta.validated {
-        return Ok(false);
-    }
-    meta.validated = true;
-    save_meta(&meta).await?;
-    Ok(true)
-}
-
-/// Startup/apply helper: only the current bundle can be considered validated by
-/// a runtime apply.
-pub async fn mark_validated_if_current() -> Result<bool> {
-    let profiles = crate::config::Config::profiles().await.latest_arc();
-    if profiles.current.as_deref() != Some(BUNDLE_UID) {
-        return Ok(false);
-    }
-    mark_validated().await
 }
 
 /// Remove generated/meta artifacts whose bundle item disappeared (avoid orphans).

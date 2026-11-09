@@ -133,6 +133,8 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
 
+    // Legacy empty-fingerprint metadata is tolerated for prune/upgrade; a
+    // malformed/tampered non-empty fingerprint is skipped (repair = delete bundle).
     let bundle_meta = resolve_bundle_meta_for_delete(crate::config::bundle::load_meta().await, deleting_bundle)
         .filter(|meta| {
             let trusted = crate::config::bundle::metadata_trusted(meta);
