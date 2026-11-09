@@ -199,17 +199,30 @@ async fn perform_profile_update(
     bail!(last_err)
 }
 
-#[tracing::instrument(skip_all, level = "info", fields(uid = %uid, manual = is_mannual_trigger))]
-pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual_trigger: bool) -> Result<()> {
+/// Fetch and persist a remote profile **without** regenerating or applying the
+/// bundle/runtime. Used by batch flows (Profile Bundle refresh) that must apply
+/// exactly once after all members are updated.
+///
+/// Returns whether new profile content was persisted; `false` means the update was
+/// intentionally skipped (e.g. auto-update disabled, non-remote, exiting).
+pub async fn fetch_and_persist_profile(
+    uid: &String,
+    option: Option<&PrfOption>,
+    is_mannual_trigger: bool,
+) -> Result<bool> {
     let url_opt = should_update_profile(uid, is_mannual_trigger).await?;
-
-    let profile_persisted = match url_opt {
+    match url_opt {
         Some((url, opt)) => {
             perform_profile_update(uid, &url, opt.as_ref(), option, is_mannual_trigger).await?;
-            true
+            Ok(true)
         }
-        None => false,
-    };
+        None => Ok(false),
+    }
+}
+
+#[tracing::instrument(skip_all, level = "info", fields(uid = %uid, manual = is_mannual_trigger))]
+pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual_trigger: bool) -> Result<()> {
+    let profile_persisted = fetch_and_persist_profile(uid, option, is_mannual_trigger).await?;
     let profiles = Config::profiles().await;
     let bundle_member = match crate::config::bundle::is_member(uid).await {
         Ok(is_member) => is_member,

@@ -204,21 +204,54 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
         remote_bundle_members(&meta, snapshot.items.as_deref().unwrap_or_default())
     };
 
+    refresh_bundle_flow(
+        remote_members,
+        |uid| async move {
+            crate::feat::fetch_and_persist_profile(&uid, None, true)
+                .await
+                .map_err(|error| error.to_string())
+                .map(|_persisted| ())
+        },
+        finalize_bundle_refresh,
+    )
+    .await
+}
+
+/// Orchestration seam: fetch/persist every remote member sequentially, then call
+/// `finalize` exactly once. No bundle regeneration/apply happens per member.
+async fn refresh_bundle_flow<Update, UpdateFut, Finalize, FinalizeFut>(
+    remote_members: Vec<String>,
+    mut update: Update,
+    finalize: Finalize,
+) -> CmdResult<BundleRefreshReport>
+where
+    Update: FnMut(String) -> UpdateFut + Send,
+    UpdateFut: std::future::Future<Output = std::result::Result<(), std::string::String>> + Send,
+    Finalize: FnOnce() -> FinalizeFut + Send,
+    FinalizeFut: std::future::Future<Output = CmdResult<bool>> + Send,
+{
     let mut updated: Vec<String> = Vec::with_capacity(remote_members.len());
     let mut failed: Vec<BundleRefreshFailure> = Vec::new();
     for uid in remote_members {
-        match crate::feat::update_profile(&uid, None, true).await {
+        match update(uid.clone()).await {
             Ok(()) => updated.push(uid),
-            Err(error) => {
-                logging!(warn, Type::Cmd, "failed to update bundle member '{uid}': {error:#}");
+            Err(message) => {
+                logging!(warn, Type::Cmd, "failed to update bundle member '{uid}': {message}");
                 failed.push(BundleRefreshFailure {
                     uid: uid.to_string(),
-                    message: error.to_string(),
+                    message,
                 });
             }
         }
     }
 
+    let regenerated = finalize().await?;
+    Ok(build_bundle_refresh_report(updated, failed, regenerated))
+}
+
+/// Lock once, regenerate from the updated member files, and apply once when the
+/// bundle is current. Restores artifacts on regeneration/apply failure.
+async fn finalize_bundle_refresh() -> CmdResult<bool> {
     let _profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
     let snapshot = profiles.latest_arc();
@@ -252,7 +285,7 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
             );
         }
     }
-    Ok(build_bundle_refresh_report(updated, failed, outcome.regenerated))
+    Ok(outcome.regenerated)
 }
 
 /// FORK: remove the bundle item, generated file and metadata; members stay.
@@ -394,5 +427,97 @@ mod tests {
         assert_eq!(report.failed[0].uid, "remote-c");
         assert_eq!(report.failed[0].message, "timeout");
         assert!(report.regenerated);
+    }
+
+    #[tokio::test]
+    async fn full_refresh_updates_each_member_and_finalizes_exactly_once() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let updates = Arc::new(AtomicUsize::new(0));
+        let finalizes = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let update_counter = Arc::clone(&updates);
+        let seen_uids = Arc::clone(&seen);
+        let finalize_counter = Arc::clone(&finalizes);
+
+        let report = refresh_bundle_flow(
+            vec![
+                String::from("remote-a"),
+                String::from("remote-b"),
+                String::from("remote-c"),
+            ],
+            move |uid: String| {
+                let counter = Arc::clone(&update_counter);
+                let seen = Arc::clone(&seen_uids);
+                async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    seen.lock().unwrap().push(uid.to_string());
+                    if uid.as_str() == "remote-b" {
+                        Err(std::string::String::from("timeout"))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+            move || async move {
+                finalize_counter.fetch_add(1, Ordering::SeqCst);
+                Ok(true)
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updates.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            finalizes.load(Ordering::SeqCst),
+            1,
+            "bundle regeneration/apply must happen exactly once"
+        );
+        assert_eq!(
+            seen.lock().unwrap().clone(),
+            vec![
+                std::string::String::from("remote-a"),
+                std::string::String::from("remote-b"),
+                std::string::String::from("remote-c")
+            ]
+        );
+        assert_eq!(
+            report.updated,
+            vec![
+                std::string::String::from("remote-a"),
+                std::string::String::from("remote-c")
+            ]
+        );
+        assert_eq!(report.failed[0].uid, "remote-b");
+        assert!(report.regenerated);
+    }
+
+    #[tokio::test]
+    async fn full_refresh_finalizes_once_even_when_every_update_fails() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let finalizes = Arc::new(AtomicUsize::new(0));
+        let finalize_counter = Arc::clone(&finalizes);
+        let report = refresh_bundle_flow(
+            vec![String::from("remote-a"), String::from("remote-b")],
+            |_uid: String| async move { Err(std::string::String::from("offline")) },
+            move || async move {
+                finalize_counter.fetch_add(1, Ordering::SeqCst);
+                Ok(false)
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(finalizes.load(Ordering::SeqCst), 1);
+        assert!(report.updated.is_empty());
+        assert_eq!(report.failed.len(), 2);
+        assert!(!report.regenerated);
     }
 }
