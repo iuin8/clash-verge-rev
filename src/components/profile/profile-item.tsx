@@ -786,8 +786,8 @@ const ProfileItemBase = (props: ProfileItemProps) => {
               sx={{
                 width: isBundle
                   ? batchMode
-                    ? 'calc(100% - 116px)'
-                    : 'calc(100% - 96px)'
+                    ? 'calc(100% - 148px)'
+                    : 'calc(100% - 128px)'
                   : batchMode
                     ? 'calc(100% - 56px)'
                     : 'calc(100% - 36px)',
@@ -810,6 +810,21 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                 label={t('profiles.components.bundle.badge')}
                 sx={{ ml: 0.5, height: 20, flexShrink: 0 }}
               />
+            )}
+            {isBundle && (
+              <IconButton
+                title={t('profiles.page.bundle.actions.refresh')}
+                size="small"
+                color="inherit"
+                disabled={activating || !onBundleRefresh}
+                sx={{ ml: 'auto', p: '3px', flexShrink: 0 }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onBundleRefresh?.()
+                }}
+              >
+                <RefreshRounded fontSize="small" />
+              </IconButton>
             )}
           </Box>
 
@@ -876,21 +891,6 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                       {from}
                     </Typography>
                   )
-                )}
-                {isBundle && (
-                  <IconButton
-                    title={t('profiles.page.bundle.actions.refresh')}
-                    size="small"
-                    color="inherit"
-                    disabled={activating || !onBundleRefresh}
-                    sx={{ ml: 'auto', p: '3px', flexShrink: 0 }}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onBundleRefresh?.()
-                    }}
-                  >
-                    <RefreshRounded fontSize="small" />
-                  </IconButton>
                 )}
                 {hasUrl && (
                   <Box
