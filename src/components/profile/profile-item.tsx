@@ -877,6 +877,21 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                     </Typography>
                   )
                 )}
+                {isBundle && (
+                  <IconButton
+                    title={t('profiles.page.bundle.actions.refresh')}
+                    size="small"
+                    color="inherit"
+                    disabled={activating || !onBundleRefresh}
+                    sx={{ ml: 'auto', p: '3px', flexShrink: 0 }}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onBundleRefresh?.()
+                    }}
+                  >
+                    <RefreshRounded fontSize="small" />
+                  </IconButton>
+                )}
                 {hasUrl && (
                   <Box
                     sx={{
