@@ -90,8 +90,9 @@ import { isValidUrl } from '@/utils/network'
 // 与 src-tauri/src/main.rs 的 worker_limit 上限(8)保持一致，避免前后端更新风暴不对齐
 const PROFILE_UPDATE_WORKER_LIMIT = 8
 const PROFILE_SWITCH_LOADING_DELAY = 400
-// Auto timer updates materialize the bundle ~750ms after the tick; wait past that.
-const PROFILE_BUNDLE_TIMER_REFRESH_DELAY = 1200
+// Auto timer updates materialize the bundle after a ~750ms debounce plus finalize;
+// wait past that before revalidating the freshness label.
+const PROFILE_BUNDLE_TIMER_REFRESH_DELAY = 2500
 const profilePointerSensor = PointerSensor.configure({
   activationConstraints: () => undefined,
 })

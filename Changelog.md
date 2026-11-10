@@ -19,6 +19,20 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
+## v2.5.10-fa.4
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.10 的个人 fork 版本。
+
+### ✨ 新增功能
+
+- 组合卡片和详情显示最近刷新时间（相对时间，悬停可看完整时间）
+
+### 🚀 优化改进
+
+- 单个成员订阅的自动更新会合并为一次组合重建和一次内核应用，避免多成员同时到期时重复重载
+- 自动更新只刷新成员文件，组合由 single-flight 防抖 materializer 统一生成
+
 ## v2.5.10-fa.3
 
 > [!IMPORTANT]
