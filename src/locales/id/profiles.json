@@ -99,7 +99,6 @@
         "conflicts": "Konflik",
         "noConflicts": "Tidak ada konflik yang dilaporkan.",
         "stale": "Anggota berubah sejak paket dibuat. Segarkan untuk membuat ulang.",
-        "generatedAt": "Dibuat: {{time}}",
         "missing": "Profil hilang"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "Anggota: {{count}}",
       "primary": "Dasar: {{name}}",
       "conflicts": "Konflik: {{count}}",
-      "stale": "Usang"
+      "stale": "Usang",
+      "refreshed": "Diperbarui {{time}}",
+      "refreshedUnknown": "Belum diperbarui"
     }
   },
   "modals": {

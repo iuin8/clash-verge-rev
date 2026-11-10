@@ -54,6 +54,7 @@ import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
 import { isBundleUid, isDefaultBundleName } from './bundle-constants'
+import { bundleRefreshTime } from './bundle-time'
 import { EnhanceHint } from './enhance-hint'
 import { ProfileBox } from './profile-box'
 import { ProxiesEditorViewer } from './proxies-editor-viewer'
@@ -147,6 +148,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     isBundle && isDefaultBundleName(name)
       ? t('profiles.page.bundle.defaultName')
       : name
+  const refreshed = bundleRefreshTime(bundleView?.generated_at)
 
   const fetchNextUpdateTimeCallback = useCallback(
     async (forceRefresh = false) => {
@@ -937,21 +939,54 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           </Box>
         )}
         {isBundle ? (
-          <Box sx={{ ...boxStyle, fontSize: 12 }}>
-            <span>
+          <Box sx={{ ...boxStyle, fontSize: 12, gap: 1 }}>
+            <span style={{ whiteSpace: 'nowrap' }}>
               {t('profiles.components.bundle.conflicts', {
                 count: bundleConflictCount ?? 0,
               })}
             </span>
-            {bundleView?.stale && (
+            <Box
+              component="span"
+              sx={{
+                ml: 'auto',
+                minWidth: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 0.75,
+                overflow: 'hidden',
+              }}
+            >
+              {bundleView?.stale && (
+                <Box
+                  component="span"
+                  sx={{
+                    color: 'warning.main',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                  title={t('profiles.components.bundle.stale')}
+                >
+                  {t('profiles.components.bundle.stale')}
+                </Box>
+              )}
               <Box
                 component="span"
-                sx={{ color: 'warning.main' }}
-                title={t('profiles.components.bundle.stale')}
+                sx={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={refreshed.absolute ?? undefined}
               >
-                {t('profiles.components.bundle.stale')}
+                {refreshed.relative
+                  ? t('profiles.components.bundle.refreshed', {
+                      time: refreshed.relative,
+                    })
+                  : t('profiles.components.bundle.refreshedUnknown')}
               </Box>
-            )}
+            </Box>
           </Box>
         ) : hasExtra ? (
           <Box sx={{ ...boxStyle, fontSize: 14 }}>

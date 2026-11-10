@@ -99,7 +99,6 @@
         "conflicts": "衝突",
         "noConflicts": "沒有回報衝突。",
         "stale": "產生後成員已變更，請重新整理組合以重新產生。",
-        "generatedAt": "產生於：{{time}}",
         "missing": "訂閱缺失"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "成員：{{count}}",
       "primary": "基礎：{{name}}",
       "conflicts": "衝突：{{count}}",
-      "stale": "已過期"
+      "stale": "已過期",
+      "refreshed": "重新整理於 {{time}}",
+      "refreshedUnknown": "尚未重新整理"
     }
   },
   "modals": {

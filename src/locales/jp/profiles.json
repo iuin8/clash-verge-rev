@@ -99,7 +99,6 @@
         "conflicts": "競合",
         "noConflicts": "競合は報告されていません。",
         "stale": "生成後にメンバーが変更されました。更新して再生成してください。",
-        "generatedAt": "生成日時: {{time}}",
         "missing": "プロファイルが見つかりません"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "メンバー: {{count}}",
       "primary": "ベース: {{name}}",
       "conflicts": "競合: {{count}}",
-      "stale": "要更新"
+      "stale": "要更新",
+      "refreshed": "{{time}}に更新",
+      "refreshedUnknown": "まだ更新されていません"
     }
   },
   "modals": {

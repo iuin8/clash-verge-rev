@@ -270,6 +270,8 @@ export interface TranslationResources {
           conflicts: string
           members: string
           primary: string
+          refreshed: string
+          refreshedUnknown: string
           stale: string
         }
         card: {
@@ -487,7 +489,6 @@ export interface TranslationResources {
           defaultName: string
           details: {
             conflicts: string
-            generatedAt: string
             members: string
             missing: string
             noConflicts: string

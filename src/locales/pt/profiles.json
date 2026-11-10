@@ -99,7 +99,6 @@
         "conflicts": "Conflitos",
         "noConflicts": "Nenhum conflito foi relatado.",
         "stale": "Os membros mudaram desde que o pacote foi gerado. Atualize para regenerar.",
-        "generatedAt": "Gerado: {{time}}",
         "missing": "Perfil ausente"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "Membros: {{count}}",
       "primary": "Base: {{name}}",
       "conflicts": "Conflitos: {{count}}",
-      "stale": "Desatualizado"
+      "stale": "Desatualizado",
+      "refreshed": "Atualizado {{time}}",
+      "refreshedUnknown": "Ainda não atualizado"
     }
   },
   "modals": {

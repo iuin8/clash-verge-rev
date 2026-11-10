@@ -90,6 +90,8 @@ import { isValidUrl } from '@/utils/network'
 // 与 src-tauri/src/main.rs 的 worker_limit 上限(8)保持一致，避免前后端更新风暴不对齐
 const PROFILE_UPDATE_WORKER_LIMIT = 8
 const PROFILE_SWITCH_LOADING_DELAY = 400
+// Auto timer updates materialize the bundle ~750ms after the tick; wait past that.
+const PROFILE_BUNDLE_TIMER_REFRESH_DELAY = 1200
 const profilePointerSensor = PointerSensor.configure({
   activationConstraints: () => undefined,
 })
@@ -162,8 +164,15 @@ const ProfilePage = () => {
   })
   const bundleConflicts = bundleConflictsQuery.data ?? []
   const bundleError = bundleViewQuery.error
+  const bundleViewRef = useRef(bundleView)
+  bundleViewRef.current = bundleView
+  const bundleMemberUids = useMemo(
+    () => bundleView?.members.map((member) => member.uid).join('|') ?? '',
+    [bundleView],
+  )
 
   const notifiedBundleErrorRef = useRef<unknown>(null)
+  const bundleMemberTimerRevisionsRef = useRef<Map<string, number>>(new Map())
   useEffect(() => {
     if (bundleError && notifiedBundleErrorRef.current !== bundleError) {
       notifiedBundleErrorRef.current = bundleError
@@ -620,6 +629,29 @@ const ProfilePage = () => {
   const { updateRevisions: completedUpdateRevisions, timerRevisions } =
     useProfileUpdates()
   const setLoadingProfiles = useSetProfileLoading()
+
+  // Timer updates for bundle members regenerate the bundle shortly after the
+  // tick; debounce past that materializer before revalidating the bundle state.
+  useEffect(() => {
+    const view = bundleViewRef.current
+    if (!view) return
+    const previous = bundleMemberTimerRevisionsRef.current
+    const next = new Map<string, number>()
+    let memberTicked = false
+    for (const member of view.members) {
+      const revision = timerRevisions.get(member.uid) ?? 0
+      next.set(member.uid, revision)
+      if (previous.has(member.uid) && previous.get(member.uid) !== revision) {
+        memberTicked = true
+      }
+    }
+    bundleMemberTimerRevisionsRef.current = next
+    if (!memberTicked) return
+    const timer = setTimeout(() => {
+      void refreshBundleQueries()
+    }, PROFILE_BUNDLE_TIMER_REFRESH_DELAY)
+    return () => clearTimeout(timer)
+  }, [bundleMemberUids, timerRevisions])
 
   const runProfileUpdates = useCallback(
     async (uids: string[]) => {

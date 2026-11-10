@@ -99,7 +99,6 @@
         "conflicts": "Conflicts",
         "noConflicts": "No conflicts were reported.",
         "stale": "Members changed since the bundle was generated. Refresh it to regenerate.",
-        "generatedAt": "Generated: {{time}}",
         "missing": "Missing profile"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "Members: {{count}}",
       "primary": "Base: {{name}}",
       "conflicts": "Conflicts: {{count}}",
-      "stale": "Stale"
+      "stale": "Stale",
+      "refreshed": "Refreshed {{time}}",
+      "refreshedUnknown": "Not refreshed yet"
     }
   },
   "modals": {

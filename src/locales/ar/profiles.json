@@ -99,7 +99,6 @@
         "conflicts": "التعارضات",
         "noConflicts": "لم يتم الإبلاغ عن أي تعارضات.",
         "stale": "تغيّر الأعضاء منذ إنشاء الحزمة. حدّثها لإعادة الإنشاء.",
-        "generatedAt": "أُنشئت: {{time}}",
         "missing": "الملف الشخصي مفقود"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "الأعضاء: {{count}}",
       "primary": "الأساس: {{name}}",
       "conflicts": "التعارضات: {{count}}",
-      "stale": "قديمة"
+      "stale": "قديمة",
+      "refreshed": "تم التحديث {{time}}",
+      "refreshedUnknown": "لم يتم التحديث بعد"
     }
   },
   "modals": {

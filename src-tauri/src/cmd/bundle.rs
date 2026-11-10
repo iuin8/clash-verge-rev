@@ -9,6 +9,10 @@ use crate::enhance::multi_merge::{self, ConflictEntry};
 use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 
+mod materialize;
+
+pub(crate) use materialize::mark_bundle_dirty;
+
 #[derive(serde::Serialize, specta::Type)]
 pub struct BundleMemberView {
     pub uid: std::string::String,

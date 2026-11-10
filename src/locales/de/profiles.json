@@ -99,7 +99,6 @@
         "conflicts": "Konflikte",
         "noConflicts": "Es wurden keine Konflikte gemeldet.",
         "stale": "Die Mitglieder haben sich seit der Generierung geändert. Aktualisieren Sie das Bündel.",
-        "generatedAt": "Generiert: {{time}}",
         "missing": "Profil fehlt"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "Mitglieder: {{count}}",
       "primary": "Basis: {{name}}",
       "conflicts": "Konflikte: {{count}}",
-      "stale": "Veraltet"
+      "stale": "Veraltet",
+      "refreshed": "Aktualisiert {{time}}",
+      "refreshedUnknown": "Noch nicht aktualisiert"
     }
   },
   "modals": {

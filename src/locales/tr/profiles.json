@@ -99,7 +99,6 @@
         "conflicts": "Çakışmalar",
         "noConflicts": "Bildirilen çakışma yok.",
         "stale": "Paket oluşturulduktan sonra üyeler değişti. Yeniden oluşturmak için yenileyin.",
-        "generatedAt": "Oluşturulma: {{time}}",
         "missing": "Profil eksik"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "Üyeler: {{count}}",
       "primary": "Temel: {{name}}",
       "conflicts": "Çakışmalar: {{count}}",
-      "stale": "Güncel değil"
+      "stale": "Güncel değil",
+      "refreshed": "{{time}} güncellendi",
+      "refreshedUnknown": "Henüz yenilenmedi"
     }
   },
   "modals": {

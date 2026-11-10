@@ -99,7 +99,6 @@
         "conflicts": "تضادها",
         "noConflicts": "هیچ تضادی گزارش نشده است.",
         "stale": "اعضا پس از ایجاد بسته تغییر کرده‌اند. برای تولید دوباره، بسته را تازه‌سازی کنید.",
-        "generatedAt": "ایجادشده: {{time}}",
         "missing": "پروفایل موجود نیست"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "اعضا: {{count}}",
       "primary": "پایه: {{name}}",
       "conflicts": "تضادها: {{count}}",
-      "stale": "قدیمی"
+      "stale": "قدیمی",
+      "refreshed": "به‌روزرسانی {{time}}",
+      "refreshedUnknown": "هنوز به‌روزرسانی نشده"
     }
   },
   "modals": {

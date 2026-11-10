@@ -99,7 +99,6 @@
         "conflicts": "冲突",
         "noConflicts": "没有报告冲突。",
         "stale": "生成后成员已变更，请刷新组合以重新生成。",
-        "generatedAt": "生成于：{{time}}",
         "missing": "订阅缺失"
       },
       "notices": {
@@ -172,7 +171,9 @@
       "members": "成员：{{count}}",
       "primary": "基础：{{name}}",
       "conflicts": "冲突：{{count}}",
-      "stale": "已过期"
+      "stale": "已过期",
+      "refreshed": "刷新于 {{time}}",
+      "refreshedUnknown": "尚未刷新"
     }
   },
   "modals": {

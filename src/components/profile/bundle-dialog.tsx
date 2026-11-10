@@ -17,7 +17,6 @@ import {
   ListItem,
   Typography,
 } from '@mui/material'
-import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 
 import type {
@@ -27,6 +26,7 @@ import type {
 } from '@/services/bindings'
 
 import { isDefaultBundleName } from './bundle-constants'
+import { bundleRefreshTime } from './bundle-time'
 
 export interface BundleDraftMember {
   uid: string
@@ -76,10 +76,7 @@ export function BundleDetailsDialog({
   const displayName = isDefaultBundleName(view.name)
     ? t('profiles.page.bundle.defaultName')
     : view.name
-  const generatedAt =
-    view.generated_at > 0
-      ? dayjs(view.generated_at * 1000).format('YYYY-MM-DD HH:mm')
-      : '-'
+  const refreshed = bundleRefreshTime(view.generated_at)
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -113,11 +110,14 @@ export function BundleDetailsDialog({
         <Typography
           variant="caption"
           color="text.secondary"
+          title={refreshed.absolute ?? undefined}
           sx={{ display: 'block', mb: 1 }}
         >
-          {t('profiles.page.bundle.details.generatedAt', {
-            time: generatedAt,
-          })}
+          {refreshed.relative
+            ? t('profiles.components.bundle.refreshed', {
+                time: refreshed.relative,
+              })
+            : t('profiles.components.bundle.refreshedUnknown')}
         </Typography>
         {view.stale && (
           <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
