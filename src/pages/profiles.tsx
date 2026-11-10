@@ -172,7 +172,7 @@ const ProfilePage = () => {
   )
 
   const notifiedBundleErrorRef = useRef<unknown>(null)
-  const bundleMemberTimerRevisionsRef = useRef<Map<string, number>>(new Map())
+  const bundleMemberUpdateRevisionsRef = useRef<Map<string, number>>(new Map())
   useEffect(() => {
     if (bundleError && notifiedBundleErrorRef.current !== bundleError) {
       notifiedBundleErrorRef.current = bundleError
@@ -630,28 +630,28 @@ const ProfilePage = () => {
     useProfileUpdates()
   const setLoadingProfiles = useSetProfileLoading()
 
-  // Timer updates for bundle members regenerate the bundle shortly after the
-  // tick; debounce past that materializer before revalidating the bundle state.
+  // Automatic member updates regenerate the bundle shortly after completion;
+  // debounce past the materializer before revalidating the bundle state.
   useEffect(() => {
     const view = bundleViewRef.current
     if (!view) return
-    const previous = bundleMemberTimerRevisionsRef.current
+    const previous = bundleMemberUpdateRevisionsRef.current
     const next = new Map<string, number>()
     let memberTicked = false
     for (const member of view.members) {
-      const revision = timerRevisions.get(member.uid) ?? 0
+      const revision = completedUpdateRevisions.get(member.uid) ?? 0
       next.set(member.uid, revision)
       if (previous.has(member.uid) && previous.get(member.uid) !== revision) {
         memberTicked = true
       }
     }
-    bundleMemberTimerRevisionsRef.current = next
+    bundleMemberUpdateRevisionsRef.current = next
     if (!memberTicked) return
     const timer = setTimeout(() => {
       void refreshBundleQueries()
     }, PROFILE_BUNDLE_TIMER_REFRESH_DELAY)
     return () => clearTimeout(timer)
-  }, [bundleMemberUids, timerRevisions])
+  }, [bundleMemberUids, completedUpdateRevisions])
 
   const runProfileUpdates = useCallback(
     async (uids: string[]) => {
