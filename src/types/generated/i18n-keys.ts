@@ -222,6 +222,7 @@ export const translationKeys = [
   'profiles.page.bundle.notices.updated',
   'profiles.page.bundle.notices.refreshed',
   'profiles.page.bundle.notices.refreshPartial',
+  'profiles.page.bundle.notices.refreshBusy',
   'profiles.page.bundle.notices.deleted',
   'profiles.page.bundle.conflict.primaryFieldMalformed',
   'profiles.page.bundle.conflict.groupMembersMalformed',

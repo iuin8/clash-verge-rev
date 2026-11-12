@@ -1,4 +1,5 @@
 mod backup;
+pub mod bundle_update;
 mod clash;
 mod config;
 mod core_upgrade;

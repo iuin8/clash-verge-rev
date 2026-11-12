@@ -60,5 +60,8 @@ jobs:
       - name: Validate workflows, needs/expressions, scripts and tag expectations
         run: python3 scripts-workflow/check-release-workflow.py --no-act
 
+      - name: Validate fork/upstream release workflow isolation
+        run: python3 scripts-workflow/check-release-isolation.py
+
       - name: Fork-owned file-length gate (in-repo subset)
         run: python3 scripts-workflow/check-fork-lengths.py

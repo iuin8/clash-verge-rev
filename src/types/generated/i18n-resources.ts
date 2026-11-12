@@ -505,6 +505,7 @@ export interface TranslationResources {
           notices: {
             created: string
             deleted: string
+            refreshBusy: string
             refreshed: string
             refreshPartial: string
             updated: string

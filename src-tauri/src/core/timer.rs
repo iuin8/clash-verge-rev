@@ -472,7 +472,7 @@ impl Timer {
 
         run_timer_profile_update_transition(
             || Self::emit_update_event(uid, true),
-            || feat::update_profile(uid, None, false),
+            || feat::bundle_update::update_profile(uid, None, false),
             |result| match result {
                 Ok(_) => {
                     logging!(debug, Type::Timer, "timer task completed for uid: {}", uid);

@@ -140,7 +140,7 @@ pub async fn create_profile(item: ProfileCreate, file_data: Option<std::string::
 #[specta::specta]
 pub async fn update_profile(index: std::string::String, option: Option<PrfOption>) -> CmdResult {
     let index: String = index.into();
-    match feat::update_profile(&index, option.as_ref(), true).await {
+    match feat::bundle_update::update_profile(&index, option.as_ref(), true).await {
         Ok(_) => Ok(()),
         Err(e) => {
             logging!(error, Type::Cmd, "update profile failed: {e:#}");

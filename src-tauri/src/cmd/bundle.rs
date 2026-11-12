@@ -11,7 +11,7 @@ use smartstring::alias::String;
 
 mod materialize;
 
-pub(crate) use materialize::mark_bundle_dirty;
+pub(crate) use materialize::{begin_manual_materialize, end_manual_materialize, mark_bundle_dirty};
 
 #[derive(serde::Serialize, specta::Type)]
 pub struct BundleMemberView {
@@ -211,12 +211,12 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
     refresh_bundle_flow(
         remote_members,
         |uid| async move {
-            crate::feat::fetch_and_persist_profile(&uid, None, true)
+            crate::feat::bundle_update::fetch_and_persist_profile(&uid, None, true)
                 .await
                 .map_err(|error| error.to_string())
                 .map(|_persisted| ())
         },
-        finalize_bundle_refresh,
+        finalize_manual_bundle_refresh,
     )
     .await
 }
@@ -234,6 +234,7 @@ where
     Finalize: FnOnce() -> FinalizeFut + Send,
     FinalizeFut: std::future::Future<Output = CmdResult<bool>> + Send,
 {
+    let had_remote = !remote_members.is_empty();
     let mut updated: Vec<String> = Vec::with_capacity(remote_members.len());
     let mut failed: Vec<BundleRefreshFailure> = Vec::new();
     for uid in remote_members {
@@ -249,8 +250,42 @@ where
         }
     }
 
-    let regenerated = finalize().await?;
+    if had_remote && updated.is_empty() {
+        // Nothing changed on disk; regeneration/apply would be a no-op.
+        logging!(
+            warn,
+            Type::Cmd,
+            "all {} remote bundle member update(s) failed; skipping regeneration",
+            failed.len()
+        );
+        return Ok(build_bundle_refresh_report(updated, failed, false));
+    }
+
+    let regenerated = match finalize().await {
+        Ok(regenerated) => regenerated,
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Cmd,
+                "bundle refresh finalization failed after updating {} member(s) ({} failed): {error}",
+                updated.len(),
+                failed.len()
+            );
+            return Err(error);
+        }
+    };
     Ok(build_bundle_refresh_report(updated, failed, regenerated))
+}
+
+/// Manual finalizer: a successful manual regeneration covers pending automatic
+/// dirty marks that arrived before it started.
+async fn finalize_manual_bundle_refresh() -> CmdResult<bool> {
+    let generation = begin_manual_materialize();
+    let result = finalize_bundle_refresh().await;
+    if result.is_ok() {
+        end_manual_materialize(generation, true);
+    }
+    result
 }
 
 /// Lock once, regenerate from the updated member files, and apply once when the
@@ -500,7 +535,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_refresh_finalizes_once_even_when_every_update_fails() {
+    async fn all_remote_failures_skip_finalize_but_keep_the_report() {
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
@@ -519,9 +554,43 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(finalizes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            finalizes.load(Ordering::SeqCst),
+            0,
+            "all remote members failed: no files changed, so no finalize/apply"
+        );
         assert!(report.updated.is_empty());
         assert_eq!(report.failed.len(), 2);
         assert!(!report.regenerated);
+    }
+
+    #[tokio::test]
+    async fn local_only_refresh_still_finalizes_once() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let finalizes = Arc::new(AtomicUsize::new(0));
+        let finalize_counter = Arc::clone(&finalizes);
+        let report = refresh_bundle_flow(
+            Vec::new(),
+            |_uid: String| async move { Ok(()) },
+            move || async move {
+                finalize_counter.fetch_add(1, Ordering::SeqCst);
+                Ok(true)
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            finalizes.load(Ordering::SeqCst),
+            1,
+            "a bundle without remote members still regenerates local files"
+        );
+        assert!(report.updated.is_empty());
+        assert!(report.failed.is_empty());
+        assert!(report.regenerated);
     }
 }

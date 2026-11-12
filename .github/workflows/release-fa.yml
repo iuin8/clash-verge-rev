@@ -1,0 +1,336 @@
+# FORK-ONLY workflow: fork release behavior lives here so upstream release.yml
+# stays mergeable. Upstream release.yml skips tags containing "-fa.".
+name: Release Build (fa)
+
+on:
+  push:
+    tags:
+      - 'v*-fa.*'
+permissions: write-all
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  HUSKY: 0
+concurrency:
+  group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check_tag_version:
+    name: Check Release Tag and package.json Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check if tag is from main branch
+        run: |
+          TAG_REF="${GITHUB_REF##*/}"
+          echo "Checking if tag $TAG_REF is from main branch..."
+
+          TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
+          MAIN_COMMITS=$(git rev-list origin/main)
+          FA_COMMITS=$(git rev-list --remotes='origin/fa/*' 2>/dev/null || true)
+
+          if echo "$MAIN_COMMITS" | grep -q "$TAG_COMMIT"; then
+            echo "✅ Tag $TAG_REF is from main branch"
+          elif echo "$FA_COMMITS" | grep -q "$TAG_COMMIT"; then
+            echo "✅ Tag $TAG_REF is from a fa/v* branch"
+          else
+            echo "❌ Tag $TAG_REF is not from main branch or any fa/v* branch"
+            echo "This release workflow only accepts tags from main or fa/v* branches."
+            exit 1
+          fi
+
+      - name: Check tag and package.json version
+        run: |
+          TAG_REF="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          echo "Current tag: $TAG_REF"
+
+          PKG_VERSION=$(jq -r .version package.json)
+          echo "package.json version: $PKG_VERSION"
+
+          EXPECTED_TAG="v$PKG_VERSION"
+
+          if [[ "$TAG_REF" != "$EXPECTED_TAG" && "$TAG_REF" != "$EXPECTED_TAG-"* ]]; then
+            echo "❌ Version mismatch:"
+            echo "   Git tag       : $TAG_REF"
+            echo "   package.json  : $EXPECTED_TAG"
+            exit 1
+          fi
+
+          echo "✅ Tag and package.json version are consistent."
+
+  prepare_release:
+    name: Prepare Draft Release
+    runs-on: ubuntu-latest
+    needs: [check_tag_version]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check Changelog.md has entry for this tag
+        run: |
+          TAG_REF="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+
+          if grep -q "^## ${TAG_REF}" Changelog.md; then
+            echo "✅ Changelog.md has entry for ${TAG_REF}"
+          else
+            LATEST=$(grep "^## v" Changelog.md | head -1 | sed 's/^## //')
+            echo "❌ Changelog.md missing entry for ${TAG_REF}"
+            echo "   Latest entry: ${LATEST}"
+            echo ""
+            echo "Run before tagging:"
+            echo "   ./scripts/prepare-release.sh ${TAG_REF}"
+            exit 1
+          fi
+
+      - name: Create or update draft release
+        id: prepare_release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: 'Clash Verge Rev ${{ github.ref_name }}'
+          body: 'Draft release, will be updated later.'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+
+  update_tag:
+    name: Update tag
+    runs-on: ubuntu-latest
+    needs: [prepare_release, release]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Group changelog platforms
+        run: bash ./scripts-workflow/group_platforms.sh
+
+      - name: Fetch UPDATE logs
+        id: fetch_update_logs
+        run: bash ./scripts/extract_update_logs.sh
+        shell: bash
+
+      - name: Set Env
+        run: |
+          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+          TAG_REF="${GITHUB_REF##*/}"
+          echo "TAG_NAME=$TAG_REF" >> $GITHUB_ENV
+          VERSION=$(echo "$TAG_REF" | sed 's/^v//')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/$TAG_REF" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Generate release body
+        run: |
+          if [ -z "$UPDATE_LOGS" ]; then
+            echo "No update logs found, using default message"
+            UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
+          else
+            echo "Using found update logs"
+          fi
+
+          cat > release.txt << EOF
+          $UPDATE_LOGS
+
+          ## 下载地址
+
+          ### Windows (不再支持Win7)
+          - [64位安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
+
+          ### macOS
+          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg)
+
+          ### Linux
+          #### DEB包(Debian/Ubuntu系) 使用 apt install ./路径 安装
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
+
+          ### FAQ
+          - [常见问题](https://clash-verge-rev.github.io/faq/windows.html)
+
+          ### 稳定机场VPN推荐
+          - [狗狗加速](https://cvr.dginv.click/#/register?code=oaxsAGo6)
+
+          Created at ${{ env.BUILDTIME }}.
+          EOF
+
+      # 采用上游 v2.5.1 发布机制：release job 的 tauri-action (releaseDraft: true) 先创建 draft，
+      # 此处 gh-api PATCH 翻转 draft→false 并写入 body（update_tag needs:[release] 保证顺序）。
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ contains(github.ref_name, '-rc') }}
+        run: |
+          matches=$(gh api repos/{owner}/{repo}/releases --paginate --jq '.[] | select(.tag_name == env.TAG_NAME) | [.id, .draft, (.assets | length), .html_url] | @tsv')
+          release_count=$(grep -c . <<< "$matches" || true)
+
+          if [ "$release_count" -eq 0 ]; then
+            echo "::error::No release found for $TAG_NAME."
+            exit 1
+          fi
+
+          if [ "$release_count" -gt 1 ]; then
+            printf '%s\n' "$matches"
+            echo "::error::Multiple releases found for $TAG_NAME. Merge or delete duplicate releases before rerunning."
+            exit 1
+          fi
+
+          IFS=$'\t' read -r release_id _ asset_count release_url <<< "$matches"
+          echo "Publishing release $release_id ($release_url) with $asset_count assets."
+
+          gh api --method PATCH repos/{owner}/{repo}/releases/"$release_id" \
+            -f name="Clash Verge Rev $TAG_NAME" \
+            -F body=@release.txt \
+            -F draft=false \
+            -F prerelease="$PRERELEASE" \
+            --silent
+
+  release:
+    name: Release Build
+    needs: [prepare_release]
+    permissions:
+      contents: write
+      # 上游 v2.5.1 新增 actions/attest-build-provenance 步骤，需 id-token + attestations；
+      # 本 job 的 permissions 块会覆盖顶层 write-all（且 id-token 即便 write-all 也需显式声明）
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1'
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.21.0'
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Pnpm install and check
+        run: |
+          pnpm i
+          pnpm run prebuild ${{ matrix.target }}
+
+      - name: Add Rust Target
+        run: |
+          rustup target add ${{ matrix.target }} --toolchain 1.99.1 || rustup target add ${{ matrix.target }}
+          rustup target list --installed
+          echo "Rust target ${{ matrix.target }} installed."
+
+      - name: Patch version from tag
+        run: |
+          TAG_REF="${GITHUB_REF##*/}"
+          VERSION=$(echo "$TAG_REF" | sed 's/^v//')
+          echo "Patching version to: $VERSION"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version='$VERSION'; fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')); p.version='$VERSION'; fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(p,null,2)+'\n');"
+        shell: bash
+
+      - name: Tauri build
+        # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseBody: 'Draft release, will be updated later.'
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }} ${{ matrix.os == 'ubuntu-22.04' && '--bundles deb' || '' }} # FORK: RPM cannot encode -fa.N
+          includeUpdaterJson: true
+
+      - name: Verify macOS signing
+        if: matrix.os == 'macos-latest'
+        run: bash scripts/verify-macos-signing.sh ${{ matrix.target }}
+
+      - name: Attest Windows bundles
+        if: matrix.os == 'windows-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+
+      - name: Attest macOS bundles
+        if: matrix.os == 'macos-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Attest Linux bundles
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+
+  release-update:
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    name: Release Update
+    runs-on: ubuntu-latest
+    needs: [update_tag]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.21.0'
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Pnpm install
+        run: pnpm i
+
+      - name: Release updater file
+        run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}

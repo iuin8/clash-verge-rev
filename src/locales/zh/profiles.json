@@ -106,6 +106,7 @@
         "updated": "组合订阅已更新。",
         "refreshed": "组合订阅已刷新。",
         "refreshPartial": "组合已刷新，但有 {{count}} 个成员更新失败。",
+        "refreshBusy": "组合刷新正在进行，请稍候。",
         "deleted": "组合订阅已删除。"
       },
       "conflict": {

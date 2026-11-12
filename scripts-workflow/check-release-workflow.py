@@ -353,11 +353,11 @@ class Checker:
                 f"{release_path}: tag {tag} matches none of {tag_patterns}"
             )
 
-        jobs = data.get("jobs", {})
-        if "check_tag_version" in jobs:
-            self.ok(f"{release_path}: check_tag_version job present")
+        first = next(iter(data.get("jobs", {})), "")
+        if first in {"check_tag_version", "prepare_release"}:
+            self.ok(f"{release_path}: first job {first} present")
         else:
-            self.fail(f"{release_path}: check_tag_version job missing")
+            self.fail(f"{release_path}: unexpected first job {first!r}")
 
         changelog = self.root / "Changelog.md"
         if changelog.is_file():
@@ -432,7 +432,7 @@ class Checker:
                 listed = set(
                     re.findall(r"^\d+\s+(\S+)\s", proc.stdout, re.MULTILINE)
                 )
-                expected = set(jobs)
+                expected = set(data.get("jobs", {}))
                 if listed == expected:
                     self.ok(f"act --list lists all {len(expected)} release jobs")
                 else:

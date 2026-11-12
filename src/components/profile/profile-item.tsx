@@ -80,6 +80,7 @@ export interface ProfileItemProps {
   onSelectionChange?: () => void
   bundleView?: BundleView | null
   bundleConflictCount?: number
+  bundleBusy?: boolean
   onBundleEditMembers?: () => void
   onBundleDetails?: () => void
   onBundleRefresh?: () => void
@@ -105,6 +106,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     onSelectionChange,
     bundleView,
     bundleConflictCount,
+    bundleBusy,
     onBundleEditMembers,
     onBundleDetails,
     onBundleRefresh,
@@ -638,7 +640,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
         setAnchorEl(null)
         onBundleRefresh?.()
       },
-      disabled: activating || !onBundleRefresh,
+      disabled: activating || bundleBusy || !onBundleRefresh,
     },
     {
       label: menuLabels.bundleDelete,
@@ -1026,6 +1028,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           (item) => (
             <MenuItem
               key={item.label}
+              aria-label={t(item.label)}
               onClick={item.handler}
               disabled={item.disabled}
               sx={[

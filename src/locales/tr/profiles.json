@@ -106,6 +106,7 @@
         "updated": "Profil paketi güncellendi.",
         "refreshed": "Profil paketi yenilendi.",
         "refreshPartial": "Paket yenilendi ancak {{count}} üye güncellemesi başarısız oldu.",
+        "refreshBusy": "Paket güncellemesi zaten çalışıyor. Lütfen bekleyin.",
         "deleted": "Profil paketi silindi."
       },
       "conflict": {

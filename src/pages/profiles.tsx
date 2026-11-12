@@ -42,37 +42,27 @@ import {
   BaseStyledTextField,
   type DialogRef,
 } from '@/components/base'
-import { isBundleUid } from '@/components/profile/bundle-constants'
 import {
   BundleConfirmDialog,
   BundleDetailsDialog,
-  type BundleDraftMember,
 } from '@/components/profile/bundle-dialog'
-import {
-  BUNDLE_CONFLICTS_QUERY_KEY,
-  BUNDLE_VIEW_QUERY_KEY,
-  refreshBundleQueries,
-} from '@/components/profile/bundle-queries'
+import { refreshBundleQueries } from '@/components/profile/bundle-queries'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
   ProfileViewer,
   type ProfileViewerRef,
 } from '@/components/profile/profile-viewer'
+import { useProfileBundle } from '@/components/profile/use-profile-bundle'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
   createProfile,
-  deleteBundle,
   deleteProfile,
   enhanceProfiles,
-  getBundleConflicts,
-  getBundleView,
   getRuntimeLogs,
   importProfile,
-  refreshBundle,
   reorderProfile,
-  setBundleMembers,
   updateProfile,
 } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
@@ -90,9 +80,6 @@ import { isValidUrl } from '@/utils/network'
 // 与 src-tauri/src/main.rs 的 worker_limit 上限(8)保持一致，避免前后端更新风暴不对齐
 const PROFILE_UPDATE_WORKER_LIMIT = 8
 const PROFILE_SWITCH_LOADING_DELAY = 400
-// Auto timer updates materialize the bundle after a ~750ms debounce plus finalize;
-// wait past that before revalidating the freshness label.
-const PROFILE_BUNDLE_TIMER_REFRESH_DELAY = 2500
 const profilePointerSensor = PointerSensor.configure({
   activationConstraints: () => undefined,
 })
@@ -122,17 +109,9 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(false)
 
   const [batchMode, setBatchMode] = useState(false)
-  const [bundleEditMode, setBundleEditMode] = useState(false)
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
     () => new Set(),
   )
-  const [bundleDetailsOpen, setBundleDetailsOpen] = useState(false)
-  const [bundleDeleteOpen, setBundleDeleteOpen] = useState(false)
-  const [bundleBusy, setBundleBusy] = useState(false)
-  const [bundleConfirm, setBundleConfirm] = useState<{
-    mode: 'create' | 'overwrite'
-    members: BundleDraftMember[]
-  } | null>(null)
 
   // Profile 切换在前端串行执行；队列中只保留用户最后一次选择。
   const latestSwitchTargetRef = useRef<string | null>(null)
@@ -152,34 +131,6 @@ const ProfilePage = () => {
     error,
     isStale,
   } = useProfiles()
-
-  const bundleViewQuery = useQuery({
-    queryKey: BUNDLE_VIEW_QUERY_KEY,
-    queryFn: getBundleView,
-  })
-  const bundleView = bundleViewQuery.data ?? null
-  const bundleConflictsQuery = useQuery({
-    queryKey: BUNDLE_CONFLICTS_QUERY_KEY,
-    queryFn: getBundleConflicts,
-    enabled: Boolean(bundleView),
-  })
-  const bundleConflicts = bundleConflictsQuery.data ?? []
-  const bundleError = bundleViewQuery.error
-  const bundleViewRef = useRef(bundleView)
-  bundleViewRef.current = bundleView
-  const bundleMemberUids = useMemo(
-    () => bundleView?.members.map((member) => member.uid).join('|') ?? '',
-    [bundleView],
-  )
-
-  const notifiedBundleErrorRef = useRef<unknown>(null)
-  const bundleMemberUpdateRevisionsRef = useRef<Map<string, number>>(new Map())
-  useEffect(() => {
-    if (bundleError && notifiedBundleErrorRef.current !== bundleError) {
-      notifiedBundleErrorRef.current = bundleError
-      showNotice.error(bundleError)
-    }
-  }, [bundleError])
 
   useEffect(() => {
     currentProfileRef.current = profiles.current!
@@ -268,32 +219,6 @@ const ProfilePage = () => {
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
   }
-
-  const bundleExists = useMemo(
-    () => profileItems.some((item) => isBundleUid(item.uid)),
-    [profileItems],
-  )
-
-  // The generated bundle is not a normal batch target: it has its own confirmed
-  // delete flow and can never be a bundle member.
-  const selectableProfiles = useMemo(
-    () => profileItems.filter((item) => !isBundleUid(item.uid)),
-    [profileItems],
-  )
-
-  // Bundle members follow the visible list order; the bundle itself is never a member.
-  const selectedBundleMembers = useMemo<BundleDraftMember[]>(
-    () =>
-      profileItems
-        .filter(
-          (item) =>
-            item.uid &&
-            !isBundleUid(item.uid) &&
-            selectedProfiles.has(item.uid),
-        )
-        .map((item) => ({ uid: item.uid!, name: item.name || item.uid! })),
-    [profileItems, selectedProfiles],
-  )
 
   const onImport = async () => {
     if (!url) return
@@ -631,28 +556,20 @@ const ProfilePage = () => {
     useProfileUpdates()
   const setLoadingProfiles = useSetProfileLoading()
 
-  // Automatic member updates regenerate the bundle shortly after completion;
-  // debounce past the materializer before revalidating the bundle state.
-  useEffect(() => {
-    const view = bundleViewRef.current
-    if (!view) return
-    const previous = bundleMemberUpdateRevisionsRef.current
-    const next = new Map<string, number>()
-    let memberTicked = false
-    for (const member of view.members) {
-      const revision = completedUpdateRevisions.get(member.uid) ?? 0
-      next.set(member.uid, revision)
-      if (previous.has(member.uid) && previous.get(member.uid) !== revision) {
-        memberTicked = true
-      }
-    }
-    bundleMemberUpdateRevisionsRef.current = next
-    if (!memberTicked) return
-    const timer = setTimeout(() => {
-      void refreshBundleQueries()
-    }, PROFILE_BUNDLE_TIMER_REFRESH_DELAY)
-    return () => clearTimeout(timer)
-  }, [bundleMemberUids, completedUpdateRevisions])
+  const bundle = useProfileBundle({
+    profileItems,
+    selectedProfiles,
+    completedUpdateRevisions,
+    onLogsChanged: mutateLogs,
+    onEditMembers: (uids) => {
+      setBatchMode(true)
+      setSelectedProfiles(new Set(uids))
+    },
+    onSelectionCleared: () => {
+      setBatchMode(false)
+      setSelectedProfiles(new Set())
+    },
+  })
 
   const runProfileUpdates = useCallback(
     async (uids: string[]) => {
@@ -711,14 +628,14 @@ const ProfilePage = () => {
 
   const toggleBatchMode = () => {
     setBatchMode(!batchMode)
-    setBundleEditMode(false)
+    bundle.endEdit()
     if (!batchMode) {
       setSelectedProfiles(new Set())
     }
   }
 
   const toggleProfileSelection = (uid: string) => {
-    if (isBundleUid(uid)) return
+    if (bundle.isBundleItem(uid)) return
     setSelectedProfiles((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(uid)) {
@@ -731,7 +648,9 @@ const ProfilePage = () => {
   }
 
   const selectAllProfiles = () => {
-    setSelectedProfiles(new Set(selectableProfiles.map((item) => item.uid!)))
+    setSelectedProfiles(
+      new Set(bundle.selectableProfiles.map((item) => item.uid!)),
+    )
   }
 
   const clearAllSelections = () => {
@@ -740,18 +659,18 @@ const ProfilePage = () => {
 
   const isAllSelected = () => {
     return (
-      selectableProfiles.length > 0 &&
-      selectableProfiles.every((item) => selectedProfiles.has(item.uid!))
+      bundle.selectableProfiles.length > 0 &&
+      bundle.selectableProfiles.every((item) => selectedProfiles.has(item.uid!))
     )
   }
 
   const getSelectionState = () => {
-    const selectedCount = selectableProfiles.filter((item) =>
+    const selectedCount = bundle.selectableProfiles.filter((item) =>
       selectedProfiles.has(item.uid!),
     ).length
     if (selectedCount === 0) {
       return 'none'
-    } else if (selectedCount === selectableProfiles.length) {
+    } else if (selectedCount === bundle.selectableProfiles.length) {
       return 'all'
     } else {
       return 'partial'
@@ -759,7 +678,9 @@ const ProfilePage = () => {
   }
 
   const deleteSelectedProfiles = useLockFn(async () => {
-    const targets = [...selectedProfiles].filter((uid) => !isBundleUid(uid))
+    const targets = [...selectedProfiles].filter(
+      (uid) => !bundle.isBundleItem(uid),
+    )
     if (targets.length === 0) return
 
     try {
@@ -787,113 +708,13 @@ const ProfilePage = () => {
 
       setSelectedProfiles(new Set())
       setBatchMode(false)
-      setBundleEditMode(false)
+      bundle.endEdit()
 
       showNotice.success('profiles.page.feedback.notifications.batchDeleted')
     } catch (err: any) {
       showNotice.error(err)
     } finally {
       setActivatings([])
-    }
-  })
-
-  const openBundleAction = () => {
-    if (selectedBundleMembers.length < 2 || switchTarget) return
-    setBundleConfirm({
-      mode: bundleExists ? 'overwrite' : 'create',
-      members: selectedBundleMembers,
-    })
-  }
-
-  const confirmBundleAction = useLockFn(async () => {
-    if (!bundleConfirm || bundleConfirm.members.length < 2) return
-    setBundleBusy(true)
-    try {
-      await mutate(
-        () =>
-          setBundleMembers(bundleConfirm.members.map((member) => member.uid)),
-        {
-          id: 'set-bundle-members',
-          errorNotice: false,
-          revalidate: [
-            ['getProfiles'],
-            ['getBundleView'],
-            ['getBundleConflicts'],
-          ],
-        },
-      )
-      setBundleConfirm(null)
-      setBatchMode(false)
-      setBundleEditMode(false)
-      setSelectedProfiles(new Set())
-      showNotice.success(
-        bundleConfirm.mode === 'overwrite'
-          ? 'profiles.page.bundle.notices.updated'
-          : 'profiles.page.bundle.notices.created',
-      )
-      void mutateLogs()
-    } catch (err: any) {
-      showNotice.error(err)
-    } finally {
-      setBundleBusy(false)
-    }
-  })
-
-  const editBundleMembers = () => {
-    setBundleDetailsOpen(false)
-    setBatchMode(true)
-    setBundleEditMode(true)
-    setSelectedProfiles(new Set((bundleView?.members ?? []).map((m) => m.uid)))
-  }
-
-  const refreshBundleAction = useLockFn(async () => {
-    setBundleBusy(true)
-    try {
-      const result = await mutate(() => refreshBundle(), {
-        id: 'refresh-bundle',
-        errorNotice: false,
-        revalidate: [
-          ['getProfiles'],
-          ['getBundleView'],
-          ['getBundleConflicts'],
-        ],
-      })
-      if (!result.ok) return
-      const failed = result.value.failed.length
-      if (failed === 0) {
-        showNotice.success('profiles.page.bundle.notices.refreshed')
-      } else {
-        showNotice.warning('profiles.page.bundle.notices.refreshPartial', {
-          count: failed,
-        })
-      }
-    } catch (err: any) {
-      showNotice.error(err)
-    } finally {
-      setBundleBusy(false)
-    }
-  })
-
-  const deleteBundleAction = useLockFn(async () => {
-    setBundleBusy(true)
-    try {
-      await mutate(() => deleteBundle(), {
-        id: 'delete-bundle',
-        errorNotice: false,
-        revalidate: [
-          ['getProfiles'],
-          ['getBundleView'],
-          ['getBundleConflicts'],
-        ],
-      })
-      setBundleDeleteOpen(false)
-      setBundleDetailsOpen(false)
-      showNotice.success('profiles.page.bundle.notices.deleted')
-      void mutateLogs()
-    } catch (err: any) {
-      showNotice.error(err)
-    } finally {
-      setBundleBusy(false)
     }
   })
 
@@ -1012,23 +833,23 @@ const ProfilePage = () => {
                 variant="outlined"
                 startIcon={<LayersRounded />}
                 title={
-                  selectedBundleMembers.length < 2
+                  bundle.selectedMembers.length < 2
                     ? t('profiles.page.bundle.batch.hint')
                     : undefined
                 }
-                onClick={openBundleAction}
+                onClick={bundle.requestBundleAction}
                 disabled={
-                  selectedBundleMembers.length < 2 ||
+                  bundle.selectedMembers.length < 2 ||
                   switchTarget !== null ||
-                  bundleBusy
+                  bundle.busy
                 }
                 sx={{ whiteSpace: 'nowrap' }}
               >
-                {bundleExists
+                {bundle.bundleExists
                   ? t('profiles.page.bundle.batch.update')
                   : t('profiles.page.bundle.batch.create')}
               </Button>
-              {!bundleEditMode && (
+              {!bundle.editMode && (
                 <IconButton
                   size="small"
                   color="error"
@@ -1184,28 +1005,31 @@ const ProfilePage = () => {
                 batchMode={batchMode}
                 isSelected={selectedProfiles.has(item.uid!)}
                 onSelectionChange={() => toggleProfileSelection(item.uid!)}
-                bundleView={isBundleUid(item.uid) ? bundleView : undefined}
-                bundleConflictCount={
-                  isBundleUid(item.uid) ? bundleConflicts.length : undefined
+                bundleView={
+                  bundle.isBundleItem(item.uid) ? bundle.view : undefined
                 }
+                bundleConflictCount={
+                  bundle.isBundleItem(item.uid)
+                    ? bundle.conflicts.length
+                    : undefined
+                }
+                bundleBusy={bundle.isBundleItem(item.uid) && bundle.busy}
                 onBundleEditMembers={
-                  isBundleUid(item.uid) && bundleView
-                    ? editBundleMembers
+                  bundle.isBundleItem(item.uid) && bundle.view
+                    ? bundle.editMembers
                     : undefined
                 }
                 onBundleDetails={
-                  isBundleUid(item.uid) && bundleView
-                    ? () => setBundleDetailsOpen(true)
+                  bundle.isBundleItem(item.uid) && bundle.view
+                    ? bundle.openDetails
                     : undefined
                 }
                 onBundleRefresh={
-                  isBundleUid(item.uid)
-                    ? () => void refreshBundleAction()
-                    : undefined
+                  bundle.isBundleItem(item.uid) ? bundle.refresh : undefined
                 }
                 onBundleDelete={
-                  isBundleUid(item.uid)
-                    ? () => setBundleDeleteOpen(true)
+                  bundle.isBundleItem(item.uid)
+                    ? bundle.openDeleteConfirm
                     : undefined
                 }
               />
@@ -1255,35 +1079,35 @@ const ProfilePage = () => {
       />
       <ConfigViewer ref={configRef} />
       <BundleDetailsDialog
-        open={bundleDetailsOpen}
-        view={bundleView}
-        conflicts={bundleConflicts}
-        busy={bundleBusy || switchTarget !== null}
-        onClose={() => setBundleDetailsOpen(false)}
-        onEditMembers={editBundleMembers}
-        onRefresh={() => void refreshBundleAction()}
-        onDelete={() => setBundleDeleteOpen(true)}
+        open={bundle.detailsOpen}
+        view={bundle.view}
+        conflicts={bundle.conflicts}
+        busy={bundle.busy || switchTarget !== null}
+        onClose={bundle.closeDetails}
+        onEditMembers={bundle.editMembers}
+        onRefresh={bundle.refresh}
+        onDelete={bundle.openDeleteConfirm}
       />
-      {bundleConfirm && (
+      {bundle.confirm && (
         <BundleConfirmDialog
           open
-          mode={bundleConfirm.mode}
-          members={bundleConfirm.members}
-          currentMembers={bundleView?.members ?? []}
-          busy={bundleBusy}
-          onCancel={() => setBundleConfirm(null)}
-          onConfirm={() => void confirmBundleAction()}
+          mode={bundle.confirm.mode}
+          members={bundle.confirm.members}
+          currentMembers={bundle.view?.members ?? []}
+          busy={bundle.busy}
+          onCancel={bundle.cancelConfirm}
+          onConfirm={bundle.confirmBundle}
         />
       )}
       <BaseDialog
         title={t('profiles.page.bundle.confirm.delete.title')}
-        open={bundleDeleteOpen}
+        open={bundle.deleteOpen}
         okBtn={t('shared.actions.confirm')}
         cancelBtn={t('shared.actions.cancel')}
-        loading={bundleBusy}
-        onCancel={() => setBundleDeleteOpen(false)}
-        onClose={() => setBundleDeleteOpen(false)}
-        onOk={() => void deleteBundleAction()}
+        loading={bundle.busy}
+        onCancel={bundle.closeDeleteConfirm}
+        onClose={bundle.closeDeleteConfirm}
+        onOk={bundle.confirmDelete}
       >
         <Typography variant="body2">
           {t('profiles.page.bundle.confirm.delete.message')}

@@ -106,6 +106,7 @@
         "updated": "Paquete de perfiles actualizado.",
         "refreshed": "Paquete de perfiles actualizado.",
         "refreshPartial": "Paquete actualizado, pero {{count}} actualización(es) de miembros fallaron.",
+        "refreshBusy": "Ya hay una actualización del paquete en curso. Espera un momento.",
         "deleted": "Paquete de perfiles eliminado."
       },
       "conflict": {

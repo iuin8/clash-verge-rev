@@ -69,7 +69,10 @@ pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
     }
 }
 
-async fn should_update_profile(uid: &String, ignore_auto_update: bool) -> Result<Option<(String, Option<PrfOption>)>> {
+pub(crate) async fn should_update_profile(
+    uid: &String,
+    ignore_auto_update: bool,
+) -> Result<Option<(String, Option<PrfOption>)>> {
     let profiles = Config::profiles().await;
     let profiles = profiles.latest_arc();
     let item = profiles.get_item(uid)?;
@@ -103,7 +106,7 @@ async fn should_update_profile(uid: &String, ignore_auto_update: bool) -> Result
 }
 
 #[tracing::instrument(skip_all, level = "info", fields(uid = %uid, strategy = tracing::field::Empty, configured_elapsed = tracing::field::Empty, clash_elapsed = tracing::field::Empty, system_elapsed = tracing::field::Empty))]
-async fn perform_profile_update(
+pub(crate) async fn perform_profile_update(
     uid: &String,
     url: &String,
     opt: Option<&PrfOption>,
@@ -199,141 +202,29 @@ async fn perform_profile_update(
     bail!(last_err)
 }
 
-/// Fetch and persist a remote profile **without** regenerating or applying the
-/// bundle/runtime. Used by batch flows (Profile Bundle refresh) that must apply
-/// exactly once after all members are updated.
-///
-/// Returns whether new profile content was persisted; `false` means the update was
-/// intentionally skipped (e.g. auto-update disabled, non-remote, exiting).
-pub async fn fetch_and_persist_profile(
-    uid: &String,
-    option: Option<&PrfOption>,
-    is_mannual_trigger: bool,
-) -> Result<bool> {
-    let url_opt = should_update_profile(uid, is_mannual_trigger).await?;
-    match url_opt {
-        Some((url, opt)) => {
-            perform_profile_update(uid, &url, opt.as_ref(), option, is_mannual_trigger).await?;
-            Ok(true)
-        }
-        None => Ok(false),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ProfileUpdatePolicy {
-    /// Automatic bundle-member updates only fetch/persist and leave the bundle
-    /// regeneration to the coalescing worker.
-    defer_bundle_materialize: bool,
-    mark_bundle_dirty: bool,
-    refresh_runtime: bool,
-}
-
-const fn profile_update_policy(
-    is_manual: bool,
-    bundle_member: bool,
-    profile_persisted: bool,
-    is_current: bool,
-    bundle_active: bool,
-) -> ProfileUpdatePolicy {
-    // Manual updates keep the immediate/synchronous behavior; only automatic
-    // (timer) member updates are coalesced.
-    let defer_bundle_materialize = !is_manual && bundle_member;
-    ProfileUpdatePolicy {
-        defer_bundle_materialize,
-        mark_bundle_dirty: defer_bundle_materialize && profile_persisted,
-        refresh_runtime: is_current
-            || (!defer_bundle_materialize && bundle_member && bundle_active)
-            || (!profile_persisted && is_manual),
-    }
-}
-
 #[tracing::instrument(skip_all, level = "info", fields(uid = %uid, manual = is_mannual_trigger))]
 pub async fn update_profile(uid: &String, option: Option<&PrfOption>, is_mannual_trigger: bool) -> Result<()> {
-    let profile_persisted = fetch_and_persist_profile(uid, option, is_mannual_trigger).await?;
+    let url_opt = should_update_profile(uid, is_mannual_trigger).await?;
+
+    let profile_persisted = match url_opt {
+        Some((url, opt)) => {
+            perform_profile_update(uid, &url, opt.as_ref(), option, is_mannual_trigger).await?;
+            true
+        }
+        None => false,
+    };
     let profiles = Config::profiles().await;
-    let bundle_member = match crate::config::bundle::is_member(uid).await {
-        Ok(is_member) => is_member,
-        Err(error) => {
-            logging!(
-                warn,
-                Type::Config,
-                "[订阅更新] failed to read bundle metadata: {error:#}"
-            );
-            false
-        }
-    };
-    let mut bundle_artifacts = None;
-    let (bundle_active, policy) = {
-        let snapshot = profiles.latest_arc();
-        let active = snapshot.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID);
-        let is_current = snapshot.current.as_ref() == Some(uid);
-        let policy = profile_update_policy(is_mannual_trigger, bundle_member, profile_persisted, is_current, active);
-        if bundle_member && !policy.defer_bundle_materialize {
-            let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
-            bundle_artifacts = Some(crate::config::bundle::snapshot_artifacts().await?);
-            if let Err(error) = crate::config::bundle::refresh(snapshot.as_ref(), true, active).await {
-                if let Some(artifacts) = bundle_artifacts.as_ref()
-                    && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
-                {
-                    logging!(
-                        warn,
-                        Type::Config,
-                        "[订阅更新] failed to restore bundle artifacts: {error:#}"
-                    );
-                }
-                if active {
-                    logging!(
-                        error,
-                        Type::Config,
-                        "[订阅更新] failed to regenerate the profile bundle: {error:#}"
-                    );
-                    bail!("profile updated but the profile bundle could not be regenerated: {error:#}");
-                }
-                logging!(
-                    warn,
-                    Type::Config,
-                    "[订阅更新] bundle stays stale until it is activated or refreshed: {error:#}"
-                );
-            }
-        }
-        (active, policy)
-    };
-    if policy.mark_bundle_dirty {
-        // Automatic member updates: one coalesced regeneration/apply later.
-        crate::cmd::bundle::mark_bundle_dirty();
-    }
-    let should_refresh = policy.refresh_runtime;
+    let is_current = profiles.latest_arc().current.as_ref() == Some(uid);
+    let should_refresh = is_current || (!profile_persisted && is_mannual_trigger);
 
     if should_refresh {
         logging!(debug, Type::Config, "[订阅更新] 更新内核配置");
         match CoreManager::global().update_config_with_force(is_mannual_trigger).await {
-            Ok(outcome) if outcome.is_valid() => {
-                announce(Refresh::Clash);
-                if bundle_active
-                    && bundle_member
-                    && let Err(error) = crate::config::bundle::mark_validated_if_current().await
-                {
-                    logging!(
-                        warn,
-                        Type::Config,
-                        "[订阅更新] failed to mark the applied bundle validated: {error:#}"
-                    );
-                }
-            }
+            Ok(outcome) if outcome.is_valid() => announce(Refresh::Clash),
             Ok(outcome @ (ValidationOutcome::Skipped { .. } | ValidationOutcome::Busy)) if !is_mannual_trigger => {
                 logging!(info, Type::Config, "[订阅更新] 本次配置刷新已跳过: {}", outcome);
             }
             result => {
-                if let Some(artifacts) = bundle_artifacts.as_ref()
-                    && let Err(error) = crate::config::bundle::restore_artifacts(artifacts).await
-                {
-                    logging!(
-                        warn,
-                        Type::Config,
-                        "[订阅更新] failed to restore bundle artifacts: {error:#}"
-                    );
-                }
                 let message = match result {
                     Ok(outcome) => outcome.to_string(),
                     Err(err) => err.to_string(),
@@ -367,82 +258,4 @@ pub async fn enhance_profiles() -> Result<ValidationOutcome> {
         );
     }
     Ok(outcome)
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod update_policy_tests {
-    use super::{ProfileUpdatePolicy, profile_update_policy};
-
-    #[test]
-    fn automatic_bundle_member_updates_defer_to_the_materializer() {
-        // Active bundle: member update is persisted, dirty-marked, no synchronous
-        // runtime refresh.
-        assert_eq!(
-            profile_update_policy(false, true, true, false, true),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: true,
-                mark_bundle_dirty: true,
-                refresh_runtime: false,
-            }
-        );
-        // Inactive bundle, updated member is not current: same coalescing.
-        assert_eq!(
-            profile_update_policy(false, true, true, false, false),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: true,
-                mark_bundle_dirty: true,
-                refresh_runtime: false,
-            }
-        );
-        // The updated member is the current profile: keep applying the member
-        // runtime normally, while the inactive bundle materializes separately.
-        assert_eq!(
-            profile_update_policy(false, true, true, true, false),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: true,
-                mark_bundle_dirty: true,
-                refresh_runtime: true,
-            }
-        );
-        // No new bytes persisted: nothing to materialize.
-        assert_eq!(
-            profile_update_policy(false, true, false, false, true),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: true,
-                mark_bundle_dirty: false,
-                refresh_runtime: false,
-            }
-        );
-    }
-
-    #[test]
-    fn manual_updates_and_non_members_keep_immediate_behavior() {
-        assert_eq!(
-            profile_update_policy(true, true, true, false, true),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: false,
-                mark_bundle_dirty: false,
-                refresh_runtime: true,
-            }
-        );
-        // Manual fallback when nothing was persisted (e.g. forced refresh).
-        assert_eq!(
-            profile_update_policy(true, true, false, false, true),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: false,
-                mark_bundle_dirty: false,
-                refresh_runtime: true,
-            }
-        );
-        // Automatic update of the current non-member still applies immediately.
-        assert_eq!(
-            profile_update_policy(false, false, true, true, false),
-            ProfileUpdatePolicy {
-                defer_bundle_materialize: false,
-                mark_bundle_dirty: false,
-                refresh_runtime: true,
-            }
-        );
-    }
 }

@@ -106,6 +106,7 @@
         "updated": "Profilbündel aktualisiert.",
         "refreshed": "Profilbündel aktualisiert.",
         "refreshPartial": "Bündel aktualisiert, aber {{count}} Mitglieds-Aktualisierung(en) fehlgeschlagen.",
+        "refreshBusy": "Eine Bündel-Aktualisierung läuft bereits. Bitte warten.",
         "deleted": "Profilbündel gelöscht."
       },
       "conflict": {

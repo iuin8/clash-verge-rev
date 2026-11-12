@@ -192,6 +192,7 @@ export function BundleDetailsDialog({
         </Button>
         <Button
           startIcon={<RefreshRounded />}
+          aria-label={t('profiles.page.bundle.actions.refresh')}
           onClick={onRefresh}
           disabled={busy}
         >

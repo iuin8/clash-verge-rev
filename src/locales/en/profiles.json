@@ -106,6 +106,7 @@
         "updated": "Profile bundle updated.",
         "refreshed": "Profile bundle refreshed.",
         "refreshPartial": "Bundle refreshed, but {{count}} member update(s) failed.",
+        "refreshBusy": "A bundle refresh is already running. Please wait.",
         "deleted": "Profile bundle deleted."
       },
       "conflict": {
