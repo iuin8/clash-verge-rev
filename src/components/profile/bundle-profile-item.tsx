@@ -64,11 +64,17 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
     : storedName
   const refreshed = bundleRefreshTime(view?.generated_at)
 
+  // The bundle has no batch checkbox; keep batch mode from switching profiles.
+  const selectBundle = (force: boolean) => {
+    if (batchMode) return
+    onSelect(force)
+  }
+
   const menu: ContextMenuItem[] = [
     {
       label: 'profiles.components.menu.select',
-      handler: () => onSelect(true),
-      disabled: false,
+      handler: () => selectBundle(true),
+      disabled: batchMode === true,
     },
     {
       label: 'profiles.page.bundle.actions.editMembers',
@@ -83,7 +89,7 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
     {
       label: 'profiles.page.bundle.actions.refresh',
       handler: onRefresh,
-      disabled: activating || busy,
+      disabled: activating || busy || !view,
     },
     {
       label: 'profiles.page.bundle.actions.delete',
@@ -107,7 +113,7 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
         title={t('profiles.page.bundle.actions.refresh')}
         size="small"
         color="inherit"
-        disabled={activating || busy}
+        disabled={activating || busy || !view}
         sx={{ ml: 'auto', p: '3px', flexShrink: 0 }}
         onClick={(event) => {
           event.stopPropagation()
@@ -197,7 +203,7 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
       activating={activating}
       itemData={itemData}
       mutateProfiles={mutateProfiles}
-      onSelect={onSelect}
+      onSelect={selectBundle}
       onEdit={() => {}}
       onDelete={onDelete}
       batchMode={batchMode}

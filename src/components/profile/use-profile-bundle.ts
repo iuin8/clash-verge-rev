@@ -12,6 +12,7 @@ import {
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { revalidateQuery, useQuery } from '@/services/query-client'
+import { debugLog } from '@/utils/debug'
 
 import { isBundleUid } from './bundle-constants'
 import type { BundleDraftMember } from './bundle-dialog'
@@ -19,6 +20,7 @@ import {
   BUNDLE_CONFLICTS_QUERY_KEY,
   BUNDLE_VIEW_QUERY_KEY,
   refreshBundleQueries,
+  shouldRetryBundleRefresh,
 } from './bundle-queries'
 
 // Auto member updates materialize the bundle after a debounce plus finalize;
@@ -114,12 +116,25 @@ export function useProfileBundle({
     let retry: ReturnType<typeof setTimeout> | undefined
     const first = setTimeout(() => {
       void (async () => {
-        const result = await refetchViewRef.current()
-        void revalidateQuery(BUNDLE_CONFLICTS_QUERY_KEY)
-        if (cancelled || !result.data?.stale) return
-        retry = setTimeout(() => {
-          void refreshBundleQueries()
-        }, TIMER_REFRESH_RETRY_DELAY)
+        try {
+          const result = await refetchViewRef.current()
+          await revalidateQuery(BUNDLE_CONFLICTS_QUERY_KEY)
+          if (!shouldRetryBundleRefresh(cancelled, result.data?.stale)) return
+          retry = setTimeout(() => {
+            void refreshBundleQueries().catch((retryError) => {
+              debugLog(
+                '[ProfileBundle] slow-finalize revalidation failed',
+                retryError,
+              )
+            })
+          }, TIMER_REFRESH_RETRY_DELAY)
+        } catch (error) {
+          // Background freshness check; never leave an unhandled rejection.
+          debugLog(
+            '[ProfileBundle] bundle freshness revalidation failed',
+            error,
+          )
+        }
       })()
     }, TIMER_REFRESH_DELAY)
     return () => {

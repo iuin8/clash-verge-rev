@@ -9,3 +9,7 @@ export const refreshBundleQueries = () =>
     revalidateQuery(BUNDLE_VIEW_QUERY_KEY),
     revalidateQuery(BUNDLE_CONFLICTS_QUERY_KEY),
   ])
+
+/** A slow-finalize retry is only needed while the view is still stale. */
+export const shouldRetryBundleRefresh = (cancelled: boolean, stale?: boolean) =>
+  !cancelled && stale === true

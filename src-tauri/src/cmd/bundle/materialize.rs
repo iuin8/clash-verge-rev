@@ -16,23 +16,27 @@ const BUNDLE_MATERIALIZE_MAX_ATTEMPTS: u32 = 3;
 /// Single-flight + debounce state for automatic bundle materialization.
 #[derive(Debug, Default)]
 struct BundleMaterializerState {
-    running: bool,
+    /// Owner token of the worker allowed to run; `None` means no worker.
+    running: Option<u64>,
     dirty: bool,
     /// Increments on every externally requested mark; manual finalizers use it
     /// to clear only marks that were already covered by their run.
     generation: u64,
+    /// Monotonic token source for workers.
+    next_owner: u64,
 }
 
 impl BundleMaterializerState {
-    /// Mark dirty; returns true when the caller must start the worker.
-    const fn mark(&mut self) -> bool {
+    /// Mark dirty; returns the owner token when the caller must start a worker.
+    const fn mark(&mut self) -> Option<u64> {
         self.dirty = true;
         self.generation = self.generation.wrapping_add(1);
-        if self.running {
-            return false;
+        if self.running.is_some() {
+            return None;
         }
-        self.running = true;
-        true
+        self.next_owner = self.next_owner.wrapping_add(1);
+        self.running = Some(self.next_owner);
+        Some(self.next_owner)
     }
 
     /// Consume the dirty mark for one materialization run.
@@ -42,13 +46,27 @@ impl BundleMaterializerState {
         dirty
     }
 
-    /// Stop only when no mark arrived during the run; otherwise keep coalescing.
-    const fn stop_if_clean(&mut self) -> bool {
-        if self.dirty {
+    /// Stop only when no mark arrived during the run and this owner is still the
+    /// current worker; otherwise keep coalescing.
+    fn stop_if_clean(&mut self, owner: u64) -> bool {
+        if self.dirty || self.running != Some(owner) {
             return false;
         }
-        self.running = false;
+        self.running = None;
         true
+    }
+
+    /// Release a worker token only if it still belongs to `owner`; a newer worker
+    /// must never be untracked by an older guard.
+    fn release_owner(&mut self, owner: u64, panicked: bool) {
+        if self.running != Some(owner) {
+            return;
+        }
+        self.running = None;
+        if panicked {
+            // Keep a recoverable dirty mark; the next mark restarts the worker.
+            self.dirty = true;
+        }
     }
 
     const fn current_generation(&self) -> u64 {
@@ -87,14 +105,14 @@ pub(crate) fn end_manual_materialize(generation: u64, succeeded: bool) {
 }
 
 pub(crate) fn mark_bundle_dirty() {
-    let start = {
+    let owner = {
         let mut state = BUNDLE_MATERIALIZER.lock();
         state.mark()
     };
-    if start {
+    if let Some(owner) = owner {
         let state = Arc::clone(&BUNDLE_MATERIALIZER);
         crate::process::AsyncHandler::spawn(move || async move {
-            run_bundle_materializer(state, BUNDLE_MATERIALIZE_DEBOUNCE, finalize_bundle_refresh).await;
+            run_bundle_materializer(state, owner, BUNDLE_MATERIALIZE_DEBOUNCE, finalize_bundle_refresh).await;
         });
     }
 }
@@ -103,21 +121,19 @@ pub(crate) fn mark_bundle_dirty() {
 /// wedged with `running = true`.
 struct MaterializerRunningGuard {
     state: Arc<Mutex<BundleMaterializerState>>,
+    owner: u64,
 }
 
 impl Drop for MaterializerRunningGuard {
     fn drop(&mut self) {
-        let mut state = self.state.lock();
-        state.running = false;
-        if std::thread::panicking() {
-            // Keep a recoverable dirty mark; the next mark restarts the worker.
-            state.dirty = true;
-        }
+        let panicked = std::thread::panicking();
+        self.state.lock().release_owner(self.owner, panicked);
     }
 }
 
 async fn run_bundle_materializer<F, Fut>(
     state: Arc<Mutex<BundleMaterializerState>>,
+    owner: u64,
     debounce: Duration,
     mut finalize: F,
 ) where
@@ -126,6 +142,7 @@ async fn run_bundle_materializer<F, Fut>(
 {
     let _running_guard = MaterializerRunningGuard {
         state: Arc::clone(&state),
+        owner,
     };
     let mut attempts: u32 = 0;
     loop {
@@ -137,7 +154,7 @@ async fn run_bundle_materializer<F, Fut>(
         if !dirty {
             let done = {
                 let mut state = state.lock();
-                state.stop_if_clean()
+                state.stop_if_clean(owner)
             };
             if done {
                 break;
@@ -181,20 +198,55 @@ async fn run_bundle_materializer<F, Fut>(
 mod tests {
     use super::*;
 
+    fn start(state: &mut BundleMaterializerState) -> u64 {
+        state.mark().expect("worker starts")
+    }
+
     #[test]
     fn materializer_state_is_single_flight_and_coalesces_marks() {
         let mut state = BundleMaterializerState::default();
-        assert!(state.mark(), "first mark starts the worker");
-        assert!(!state.mark(), "marks while running must not start another worker");
+        let owner = start(&mut state);
+        assert!(
+            state.mark().is_none(),
+            "marks while running must not start another worker"
+        );
         assert!(state.take(), "the pending mark runs once");
         assert!(!state.take());
 
         // A mark that arrives during a run is coalesced into the next run.
-        assert!(!state.mark(), "a mark during a run must not start another worker");
-        assert!(!state.stop_if_clean());
+        assert!(state.mark().is_none());
+        assert!(!state.stop_if_clean(owner));
         assert!(state.take());
-        assert!(state.stop_if_clean());
-        assert!(state.mark(), "a clean stop allows a later mark to restart");
+        assert!(state.stop_if_clean(owner));
+        assert!(state.mark().is_some(), "a clean stop allows a later mark to restart");
+    }
+
+    #[test]
+    fn old_guard_does_not_clear_a_new_owner() {
+        let state = Arc::new(Mutex::new(BundleMaterializerState::default()));
+        let old = {
+            let mut guard = state.lock();
+            start(&mut guard)
+        };
+        let old_guard = MaterializerRunningGuard {
+            state: Arc::clone(&state),
+            owner: old,
+        };
+        assert!(state.lock().take());
+        assert!(state.lock().stop_if_clean(old));
+        let new = {
+            let mut guard = state.lock();
+            start(&mut guard)
+        };
+        assert_ne!(old, new);
+
+        // The old worker finishing after a new one started must not untrack it.
+        drop(old_guard);
+        assert_eq!(
+            state.lock().running,
+            Some(new),
+            "an old guard must only clear its own owner token"
+        );
     }
 
     #[tokio::test]
@@ -205,14 +257,20 @@ mod tests {
         };
 
         let state = Arc::new(Mutex::new(BundleMaterializerState::default()));
+        let mut owner = None;
         for _ in 0..5 {
-            state.lock().mark();
+            let mut guard = state.lock();
+            if let Some(id) = guard.mark() {
+                owner = Some(id);
+            }
         }
+        let owner = owner.expect("the first mark starts a worker");
         let runs = Arc::new(AtomicUsize::new(0));
         let run_counter = Arc::clone(&runs);
         let worker_state = Arc::clone(&state);
         let handle = tokio::spawn(run_bundle_materializer(
             worker_state,
+            owner,
             Duration::from_millis(20),
             move || {
                 let run_counter = Arc::clone(&run_counter);
@@ -226,7 +284,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 let running = state.lock().running;
-                if !running {
+                if running.is_none() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -250,16 +308,17 @@ mod tests {
         };
 
         let state = Arc::new(Mutex::new(BundleMaterializerState::default()));
-        {
+        let owner = {
             let mut guard = state.lock();
-            guard.mark();
-        }
+            start(&mut guard)
+        };
         let runs = Arc::new(AtomicUsize::new(0));
         let run_counter = Arc::clone(&runs);
         let finalize_state = Arc::clone(&state);
         let worker_state = Arc::clone(&state);
         let handle = tokio::spawn(run_bundle_materializer(
             worker_state,
+            owner,
             Duration::from_millis(20),
             move || {
                 let run_counter = Arc::clone(&run_counter);
@@ -277,7 +336,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 let running = state.lock().running;
-                if !running {
+                if running.is_none() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -296,11 +355,11 @@ mod tests {
     #[test]
     fn manual_finalize_clears_only_marks_covered_by_its_generation() {
         let mut state = BundleMaterializerState::default();
-        assert!(state.mark());
+        assert!(state.mark().is_some());
         let covered = state.current_generation();
 
         // A newer mark must survive the older manual finalizer.
-        assert!(!state.mark());
+        assert!(state.mark().is_none());
         assert!(!state.clear_dirty_if_generation(covered));
         assert!(state.dirty);
 
@@ -312,13 +371,14 @@ mod tests {
     #[tokio::test]
     async fn panic_in_finalize_resets_running_and_keeps_a_recoverable_dirty_mark() {
         let state = Arc::new(Mutex::new(BundleMaterializerState::default()));
-        {
+        let owner = {
             let mut guard = state.lock();
-            guard.mark();
-        }
+            start(&mut guard)
+        };
         let worker_state = Arc::clone(&state);
         let handle = tokio::spawn(run_bundle_materializer(
             worker_state,
+            owner,
             Duration::from_millis(5),
             move || async move {
                 panic!("finalize panic");
@@ -326,7 +386,7 @@ mod tests {
         ));
         assert!(handle.await.is_err(), "the panic must reach the join handle");
         let guard = state.lock();
-        assert!(!guard.running, "RAII guard must reset running on panic");
+        assert!(guard.running.is_none(), "RAII guard must reset running on panic");
         assert!(guard.dirty, "a panicked run leaves a recoverable dirty mark");
         drop(guard);
     }
@@ -339,12 +399,16 @@ mod tests {
         };
 
         let state = Arc::new(Mutex::new(BundleMaterializerState::default()));
-        state.lock().mark();
+        let owner = {
+            let mut guard = state.lock();
+            start(&mut guard)
+        };
         let runs = Arc::new(AtomicUsize::new(0));
         let run_counter = Arc::clone(&runs);
         let worker_state = Arc::clone(&state);
         let handle = tokio::spawn(run_bundle_materializer(
             worker_state,
+            owner,
             Duration::from_millis(5),
             move || {
                 let run_counter = Arc::clone(&run_counter);
@@ -358,7 +422,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
                 let running = state.lock().running;
-                if !running {
+                if running.is_none() {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -373,7 +437,7 @@ mod tests {
             "retries are bounded"
         );
         let guard = state.lock();
-        assert!(!guard.running);
+        assert!(guard.running.is_none());
         assert!(
             !guard.dirty,
             "after giving up, the next external mark starts a fresh worker"

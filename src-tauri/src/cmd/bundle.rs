@@ -214,7 +214,6 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
             crate::feat::bundle_update::fetch_and_persist_profile(&uid, None, true)
                 .await
                 .map_err(|error| error.to_string())
-                .map(|_persisted| ())
         },
         finalize_manual_bundle_refresh,
     )
@@ -230,7 +229,7 @@ async fn refresh_bundle_flow<Update, UpdateFut, Finalize, FinalizeFut>(
 ) -> CmdResult<BundleRefreshReport>
 where
     Update: FnMut(String) -> UpdateFut + Send,
-    UpdateFut: std::future::Future<Output = std::result::Result<(), std::string::String>> + Send,
+    UpdateFut: std::future::Future<Output = std::result::Result<bool, std::string::String>> + Send,
     Finalize: FnOnce() -> FinalizeFut + Send,
     FinalizeFut: std::future::Future<Output = CmdResult<bool>> + Send,
 {
@@ -239,7 +238,18 @@ where
     let mut failed: Vec<BundleRefreshFailure> = Vec::new();
     for uid in remote_members {
         match update(uid.clone()).await {
-            Ok(()) => updated.push(uid),
+            Ok(true) => updated.push(uid),
+            Ok(false) => {
+                logging!(
+                    warn,
+                    Type::Cmd,
+                    "bundle member '{uid}' update was skipped; no new profile content"
+                );
+                failed.push(BundleRefreshFailure {
+                    uid: uid.to_string(),
+                    message: "update skipped; no new profile content".into(),
+                });
+            }
             Err(message) => {
                 logging!(warn, Type::Cmd, "failed to update bundle member '{uid}': {message}");
                 failed.push(BundleRefreshFailure {
@@ -497,7 +507,7 @@ mod tests {
                     if uid.as_str() == "remote-b" {
                         Err(std::string::String::from("timeout"))
                     } else {
-                        Ok(())
+                        Ok(true)
                     }
                 }
             },
@@ -575,7 +585,7 @@ mod tests {
         let finalize_counter = Arc::clone(&finalizes);
         let report = refresh_bundle_flow(
             Vec::new(),
-            |_uid: String| async move { Ok(()) },
+            |_uid: String| async move { Ok(true) },
             move || async move {
                 finalize_counter.fetch_add(1, Ordering::SeqCst);
                 Ok(true)
@@ -592,5 +602,62 @@ mod tests {
         assert!(report.updated.is_empty());
         assert!(report.failed.is_empty());
         assert!(report.regenerated);
+    }
+
+    #[tokio::test]
+    async fn skipped_member_update_is_not_reported_as_updated() {
+        let report = refresh_bundle_flow(
+            vec![String::from("remote-a"), String::from("remote-b")],
+            |uid: String| async move {
+                if uid.as_str() == "remote-a" {
+                    Ok(false)
+                } else {
+                    Ok(true)
+                }
+            },
+            || async { Ok(true) },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            report.updated,
+            vec![std::string::String::from("remote-b")],
+            "only persisted updates count as updated"
+        );
+        assert_eq!(report.failed.len(), 1);
+        assert_eq!(report.failed[0].uid, "remote-a");
+        assert!(report.failed[0].message.contains("skipped"));
+        assert!(report.regenerated);
+    }
+
+    #[tokio::test]
+    async fn all_skipped_updates_skip_finalize() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let finalizes = Arc::new(AtomicUsize::new(0));
+        let finalize_counter = Arc::clone(&finalizes);
+        let report = refresh_bundle_flow(
+            vec![String::from("remote-a"), String::from("remote-b")],
+            |_uid: String| async move { Ok(false) },
+            move || async move {
+                finalize_counter.fetch_add(1, Ordering::SeqCst);
+                Ok(true)
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(report.updated.is_empty());
+        assert_eq!(report.failed.len(), 2);
+        assert!(!report.regenerated);
+        assert_eq!(
+            finalizes.load(Ordering::SeqCst),
+            0,
+            "nothing persisted: regeneration/apply is unnecessary"
+        );
     }
 }
