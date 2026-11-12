@@ -96,6 +96,7 @@ pub mod app;
 pub mod backup;
 pub mod bundle;
 mod bundle_delete;
+mod bundle_save;
 pub mod clash;
 pub mod lightweight;
 pub mod listener;
