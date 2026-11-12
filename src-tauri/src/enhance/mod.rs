@@ -1,4 +1,5 @@
 use crate::core::notify::NoticeStatus;
+mod bundle_chain;
 mod chain;
 pub mod field;
 mod merge;
@@ -183,83 +184,19 @@ async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
         }
     };
 
-    // A generated bundle has no per-profile chain items; applying the global
-    // Merge/Script fallback here would run them twice (process_global_items
-    // already did).
-    let is_bundle = crate::config::bundle::is_bundle_uid(&current_profile_uid);
-    let merge_uid = (!is_bundle).then(|| current_item.current_merge().cloned().unwrap_or_else(|| "Merge".into()));
-    let script_uid = (!is_bundle).then(|| {
-        current_item
-            .current_script()
-            .cloned()
-            .unwrap_or_else(|| "Script".into())
-    });
-    let rules_uid = (!is_bundle).then(|| current_item.current_rules().cloned().unwrap_or_else(|| "Rules".into()));
-    let proxies_uid = (!is_bundle).then(|| {
-        current_item
-            .current_proxies()
-            .cloned()
-            .unwrap_or_else(|| "Proxies".into())
-    });
-    let groups_uid = (!is_bundle).then(|| {
-        current_item
-            .current_groups()
-            .cloned()
-            .unwrap_or_else(|| "Groups".into())
-    });
+    let chain = bundle_chain::collect_chain_items(profiles, current_item, &current_profile_uid).await;
 
     let name = current_item.name.clone().unwrap_or_default();
 
-    let (merge_item, script_item, rules_item, proxies_item, groups_item, global_merge, global_script) = tokio::join!(
-        chain_item_or_default(merge_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
-            ChainItem {
-                uid: "".into(),
-                data: ChainType::Merge(Mapping::new()),
-            }
-        },),
-        chain_item_or_default(script_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
-            ChainItem {
-                uid: "".into(),
-                data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-            }
-        },),
-        chain_item_or_default(rules_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
-            ChainItem {
-                uid: "".into(),
-                data: ChainType::Rules(SeqMap::default()),
-            }
-        },),
-        chain_item_or_default(proxies_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
-            ChainItem {
-                uid: "".into(),
-                data: ChainType::Proxies(SeqMap::default()),
-            }
-        },),
-        chain_item_or_default(groups_uid.as_ref().and_then(|uid| profiles.get_item(uid).ok()), || {
-            ChainItem {
-                uid: "".into(),
-                data: ChainType::Groups(SeqMap::default()),
-            }
-        },),
-        chain_item_or_default(profiles.get_item("Merge").ok(), || ChainItem {
-            uid: "Merge".into(),
-            data: ChainType::Merge(Mapping::new()),
-        },),
-        chain_item_or_default(profiles.get_item("Script").ok(), || ChainItem {
-            uid: "Script".into(),
-            data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
-        },),
-    );
-
     Ok(ProfileItems {
         config: current,
-        merge_item,
-        script_item,
-        rules_item,
-        proxies_item,
-        groups_item,
-        global_merge,
-        global_script,
+        merge_item: chain.merge_item,
+        script_item: chain.script_item,
+        rules_item: chain.rules_item,
+        proxies_item: chain.proxies_item,
+        groups_item: chain.groups_item,
+        global_merge: chain.global_merge,
+        global_script: chain.global_script,
         profile_name: name,
     })
 }

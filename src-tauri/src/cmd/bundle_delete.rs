@@ -125,10 +125,37 @@ async fn prepare_bundle_delete(
     }
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn delete_profile(index: std::string::String) -> CmdResult {
-    let index: String = index.into();
+const fn should_delete_with_bundle(is_bundle: bool, is_member: bool) -> bool {
+    is_bundle || is_member
+}
+
+async fn is_bundle_member(index: &String) -> bool {
+    match crate::config::bundle::is_member(index).await {
+        Ok(is_member) => is_member,
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Cmd,
+                "failed to read bundle metadata while routing a delete: {error:#}"
+            );
+            false
+        }
+    }
+}
+
+/// FORK: run the transactional bundle delete path for bundle/member deletes.
+/// Returns `None` so the untouched upstream `delete_profile` handles the rest.
+pub(crate) async fn try_delete(index: String) -> Option<CmdResult> {
+    let is_bundle = crate::config::bundle::is_bundle_uid(&index);
+    let is_member = !is_bundle && is_bundle_member(&index).await;
+    if should_delete_with_bundle(is_bundle, is_member) {
+        Some(delete_profile_with_bundle(index).await)
+    } else {
+        None
+    }
+}
+
+async fn delete_profile_with_bundle(index: String) -> CmdResult {
     let deleting_bundle = crate::config::bundle::is_bundle_uid(&index);
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
@@ -249,6 +276,14 @@ mod tests {
         assert!(!super::should_mark_bundle_validated(false, false));
         assert!(!super::should_mark_bundle_validated(true, false));
         assert!(super::should_mark_bundle_validated(true, true));
+    }
+
+    #[test]
+    fn only_bundle_or_member_deletes_use_the_bundle_path() {
+        assert!(!should_delete_with_bundle(false, false));
+        assert!(should_delete_with_bundle(true, false));
+        assert!(should_delete_with_bundle(false, true));
+        assert!(should_delete_with_bundle(true, true));
     }
 
     #[test]

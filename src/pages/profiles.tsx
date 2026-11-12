@@ -46,6 +46,7 @@ import {
   BundleConfirmDialog,
   BundleDetailsDialog,
 } from '@/components/profile/bundle-dialog'
+import { BundleProfileItem } from '@/components/profile/bundle-profile-item'
 import { refreshBundleQueries } from '@/components/profile/bundle-queries'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
@@ -971,69 +972,66 @@ const ProfilePage = () => {
               px: 0.5,
             }}
           >
-            {profileItems.map((item, index) => (
-              <ProfileItem
-                key={item.uid}
-                id={item.uid!}
-                index={index}
-                selected={(switchTarget ?? profiles.current) === item.uid}
-                activating={
-                  activatings.includes(item.uid!) ||
-                  visibleSwitchingProfile === item.uid
-                }
-                itemData={item}
-                timerUpdateRevision={timerRevisions.get(item.uid!) ?? 0}
-                completedUpdateRevision={
-                  completedUpdateRevisions.get(item.uid!) ?? 0
-                }
-                mutateProfiles={mutateProfiles}
-                onSelect={(f) => onSelect(item.uid!, f)}
-                onEdit={() => viewerRef.current?.edit(item)}
-                onSave={async (prev, curr) => {
-                  void refreshBundleQueries()
-                  if (prev !== curr && profiles.current === item.uid) {
-                    await onEnhance(false)
+            {profileItems.map((item, index) =>
+              bundle.isBundleItem(item.uid) ? (
+                <BundleProfileItem
+                  key={item.uid}
+                  id={item.uid!}
+                  index={index}
+                  selected={(switchTarget ?? profiles.current) === item.uid}
+                  activating={
+                    activatings.includes(item.uid!) ||
+                    visibleSwitchingProfile === item.uid
                   }
-                }}
-                onDelete={() => {
-                  if (batchMode) {
-                    toggleProfileSelection(item.uid!)
-                  } else {
-                    onDelete(item.uid!)
+                  itemData={item}
+                  mutateProfiles={mutateProfiles}
+                  onSelect={(force) => onSelect(item.uid!, force)}
+                  batchMode={batchMode}
+                  view={bundle.view}
+                  conflicts={bundle.conflicts}
+                  busy={bundle.busy}
+                  onEditMembers={bundle.editMembers}
+                  onDetails={bundle.openDetails}
+                  onRefresh={bundle.refresh}
+                  onDelete={bundle.openDeleteConfirm}
+                />
+              ) : (
+                <ProfileItem
+                  key={item.uid}
+                  id={item.uid!}
+                  index={index}
+                  selected={(switchTarget ?? profiles.current) === item.uid}
+                  activating={
+                    activatings.includes(item.uid!) ||
+                    visibleSwitchingProfile === item.uid
                   }
-                }}
-                batchMode={batchMode}
-                isSelected={selectedProfiles.has(item.uid!)}
-                onSelectionChange={() => toggleProfileSelection(item.uid!)}
-                bundleView={
-                  bundle.isBundleItem(item.uid) ? bundle.view : undefined
-                }
-                bundleConflictCount={
-                  bundle.isBundleItem(item.uid)
-                    ? bundle.conflicts.length
-                    : undefined
-                }
-                bundleBusy={bundle.isBundleItem(item.uid) && bundle.busy}
-                onBundleEditMembers={
-                  bundle.isBundleItem(item.uid) && bundle.view
-                    ? bundle.editMembers
-                    : undefined
-                }
-                onBundleDetails={
-                  bundle.isBundleItem(item.uid) && bundle.view
-                    ? bundle.openDetails
-                    : undefined
-                }
-                onBundleRefresh={
-                  bundle.isBundleItem(item.uid) ? bundle.refresh : undefined
-                }
-                onBundleDelete={
-                  bundle.isBundleItem(item.uid)
-                    ? bundle.openDeleteConfirm
-                    : undefined
-                }
-              />
-            ))}
+                  itemData={item}
+                  timerUpdateRevision={timerRevisions.get(item.uid!) ?? 0}
+                  completedUpdateRevision={
+                    completedUpdateRevisions.get(item.uid!) ?? 0
+                  }
+                  mutateProfiles={mutateProfiles}
+                  onSelect={(f) => onSelect(item.uid!, f)}
+                  onEdit={() => viewerRef.current?.edit(item)}
+                  onSave={async (prev, curr) => {
+                    void refreshBundleQueries()
+                    if (prev !== curr && profiles.current === item.uid) {
+                      await onEnhance(false)
+                    }
+                  }}
+                  onDelete={() => {
+                    if (batchMode) {
+                      toggleProfileSelection(item.uid!)
+                    } else {
+                      onDelete(item.uid!)
+                    }
+                  }}
+                  batchMode={batchMode}
+                  isSelected={selectedProfiles.has(item.uid!)}
+                  onSelectionChange={() => toggleProfileSelection(item.uid!)}
+                />
+              ),
+            )}
           </Box>
         </DragDropProvider>
         <Divider

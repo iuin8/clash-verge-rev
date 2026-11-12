@@ -12,7 +12,7 @@ use crate::{
         },
         profiles_append_item_safe,
     },
-    core::{CoreManager, handle, timer::Timer, validate::ValidationOutcome},
+    core::{CoreManager, handle, timer::Timer, tray::Tray, validate::ValidationOutcome},
     feat,
     utils::{dirs, help},
 };
@@ -147,6 +147,69 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
             Err(coded_error("PROFILE_UPDATE_FAILED", e))
         }
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_profile(index: std::string::String) -> CmdResult {
+    let index: String = index.into();
+    // FORK: Profile Bundle members/bundle take the fork-only transactional path.
+    if let Some(result) = super::bundle_delete::try_delete(index.clone()).await {
+        return result;
+    }
+    let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
+
+    let profiles = Config::profiles().await;
+    let result = profiles
+        .with_data_modify(|mut candidate| async move {
+            let original = candidate.clone();
+            let (should_update, plan) = candidate.plan_delete_item(&index)?;
+            let guard = if should_update {
+                match CoreManager::global()
+                    .update_config_forced_with_profiles(&candidate, &original)
+                    .await?
+                {
+                    Ok(guard) => Some(guard),
+                    Err(outcome) => return Ok((original, Err(outcome))),
+                }
+            } else {
+                candidate.save_file().await?;
+                None
+            };
+            let current = candidate.current.clone();
+            plan.cleanup().await;
+            Ok((candidate, Ok((should_update, current, guard))))
+        })
+        .await
+        .with_error_code("PROFILE_DELETE_FAILED")?;
+    let (should_update, current, config_update_guard) = match result {
+        Ok(result) => result,
+        Err(outcome) => {
+            handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
+            return Err(coded_error("PROFILE_DELETE_FAILED", outcome));
+        }
+    };
+    if should_update {
+        profiles::activate_selected_nodes();
+    }
+    drop(config_update_guard);
+    drop(profile_write_guard);
+
+    if let Err(e) = Tray::global().update_tooltip().await {
+        logging!(warn, Type::Cmd, "异步更新托盘提示失败: {e:#}");
+    }
+
+    if let Err(e) = Tray::global().update_menu().await {
+        logging!(warn, Type::Cmd, "异步更新托盘菜单失败: {e:#}");
+    }
+    if should_update {
+        handle::Handle::refresh_clash();
+        if let Some(current) = current.as_ref() {
+            handle::Handle::notify_profile_changed(current);
+        }
+    }
+    logging_error!(Type::Timer, Timer::global().refresh().await);
+    Ok(())
 }
 
 async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {

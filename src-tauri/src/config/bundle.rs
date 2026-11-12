@@ -22,9 +22,12 @@ use crate::config::{IProfiles, PrfItem};
 use crate::enhance::multi_merge::{self, ConflictEntry};
 use crate::utils::{dirs, help, yaml_emitter};
 
+mod init;
 mod lifecycle;
 mod migration;
 mod validation;
+
+pub(crate) use init::init_bundle_state;
 
 pub use lifecycle::{cleanup_orphans, plan_orphan_cleanup, teardown};
 pub use migration::{MigrationOutcome, MigrationPlan, migrate_legacy, plan_migration};
