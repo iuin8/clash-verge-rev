@@ -58,67 +58,7 @@
         "forceRefreshStaleData": "Os dados do perfil estão indisponíveis; clique para forçar a atualização"
       }
     },
-    "title": "Perfis",
-    "bundle": {
-      "defaultName": "Pacote de perfis",
-      "batch": {
-        "create": "Pacote de perfis",
-        "update": "Atualizar pacote",
-        "hint": "Selecione pelo menos dois perfis."
-      },
-      "actions": {
-        "editMembers": "Editar membros",
-        "conflicts": "Conflitos",
-        "refresh": "Atualizar pacote",
-        "delete": "Excluir pacote"
-      },
-      "confirm": {
-        "create": {
-          "title": "Criar pacote de perfis?",
-          "message": "Os perfis selecionados serão combinados na ordem abaixo em um perfil gerado."
-        },
-        "overwrite": {
-          "title": "Atualizar pacote de perfis?",
-          "message": "Os membros e a ordem do pacote serão substituídos por:"
-        },
-        "delete": {
-          "title": "Excluir pacote de perfis?",
-          "message": "O perfil de pacote gerado será excluído. As assinaturas dos membros são mantidas."
-        }
-      },
-      "diff": {
-        "added": "Adicionado",
-        "removed": "Removido",
-        "moved": "Movido",
-        "unchanged": "Inalterado"
-      },
-      "details": {
-        "title": "Pacote de perfis",
-        "members": "Ordem dos membros",
-        "primary": "Base",
-        "conflicts": "Conflitos",
-        "noConflicts": "Nenhum conflito foi relatado.",
-        "stale": "Os membros mudaram desde que o pacote foi gerado. Atualize para regenerar.",
-        "missing": "Perfil ausente"
-      },
-      "notices": {
-        "created": "Pacote de perfis criado.",
-        "updated": "Pacote de perfis atualizado.",
-        "refreshed": "Pacote de perfis atualizado.",
-        "refreshPartial": "Pacote atualizado, mas {{count}} atualização(ões) de membros falharam.",
-        "refreshBusy": "Já existe uma atualização do pacote em andamento. Aguarde.",
-        "deleted": "Pacote de perfis excluído."
-      },
-      "conflict": {
-        "primaryFieldMalformed": "O campo {{field}} em {{source}} é inválido e foi substituído durante a combinação.",
-        "groupMembersMalformed": "A lista de membros do grupo {{name}} ({{source}}) é inválida e foi substituída durante a combinação.",
-        "groupIncompatible": "O grupo {{name}} de {{source}} já existe no perfil principal com configurações incompatíveis; o grupo existente foi mantido.",
-        "topLevelKeyKept": "A chave {{name}} de {{source}} já existe no perfil principal; o valor principal foi mantido.",
-        "topLevelKeyIgnored": "A chave {{name}} de {{source}} não é combinada; apenas o perfil principal pode defini-la.",
-        "groupReferenceMissing": "O grupo {{source}} referencia um proxy/provedor/grupo inexistente {{name}}; a referência foi descartada.",
-        "unknown": "Ocorreu um conflito de combinação desconhecido para {{name}} em {{source}} ({{field}})."
-      }
-    }
+    "title": "Perfis"
   },
   "components": {
     "card": {
@@ -166,15 +106,6 @@
         "unknown": "Desconhecido",
         "autoUpdateDisabled": "Atualização automática desativada"
       }
-    },
-    "bundle": {
-      "badge": "Pacote",
-      "members": "Membros: {{count}}",
-      "primary": "Base: {{name}}",
-      "conflicts": "Conflitos: {{count}}",
-      "stale": "Desatualizado",
-      "refreshed": "Atualizado {{time}}",
-      "refreshedUnknown": "Ainda não atualizado"
     }
   },
   "modals": {

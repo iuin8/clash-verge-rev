@@ -1,0 +1,71 @@
+{
+  "page": {
+    "defaultName": "Profil paketi",
+    "batch": {
+      "create": "Profil paketi",
+      "update": "Paketi güncelle",
+      "hint": "En az iki profil seçin."
+    },
+    "actions": {
+      "editMembers": "Üyeleri düzenle",
+      "conflicts": "Çakışmalar",
+      "refresh": "Paketi yenile",
+      "delete": "Paketi sil"
+    },
+    "confirm": {
+      "create": {
+        "title": "Profil paketi oluşturulsun mu?",
+        "message": "Seçilen profiller aşağıdaki sırayla tek bir oluşturulmuş profilde birleştirilir."
+      },
+      "overwrite": {
+        "title": "Profil paketi güncellensin mi?",
+        "message": "Paket üyeleri ve sırası şununla değiştirilecek:"
+      },
+      "delete": {
+        "title": "Profil paketi silinsin mi?",
+        "message": "Oluşturulan paket profili silinir. Üye abonelikleri korunur."
+      }
+    },
+    "diff": {
+      "added": "Eklendi",
+      "removed": "Kaldırıldı",
+      "moved": "Taşındı",
+      "unchanged": "Değişmedi"
+    },
+    "details": {
+      "title": "Profil paketi",
+      "members": "Üye sırası",
+      "primary": "Temel",
+      "conflicts": "Çakışmalar",
+      "noConflicts": "Bildirilen çakışma yok.",
+      "stale": "Paket oluşturulduktan sonra üyeler değişti. Yeniden oluşturmak için yenileyin.",
+      "missing": "Profil eksik"
+    },
+    "notices": {
+      "created": "Profil paketi oluşturuldu.",
+      "updated": "Profil paketi güncellendi.",
+      "refreshed": "Profil paketi yenilendi.",
+      "refreshPartial": "Paket yenilendi ancak {{count}} üye güncellemesi başarısız oldu.",
+      "refreshBusy": "Paket güncellemesi zaten çalışıyor. Lütfen bekleyin.",
+      "deleted": "Profil paketi silindi."
+    },
+    "conflict": {
+      "primaryFieldMalformed": "{{source}} içindeki {{field}} alanı geçersiz ve birleştirme sırasında değiştirildi.",
+      "groupMembersMalformed": "{{name}} grubunun ({{source}}) üye listesi geçersiz ve birleştirme sırasında değiştirildi.",
+      "groupIncompatible": "{{source}} içindeki {{name}} grubu, ana profilde uyumsuz ayarlarla zaten mevcut; mevcut grup korundu.",
+      "topLevelKeyKept": "{{source}} içindeki {{name}} anahtarı ana profilde zaten mevcut; ana değer korundu.",
+      "topLevelKeyIgnored": "{{source}} içindeki {{name}} anahtarı birleştirilmez; bu anahtarı yalnızca ana profil tanımlayabilir.",
+      "groupReferenceMissing": "{{source}} grubu, mevcut olmayan bir proxy/sağlayıcı/grup olan {{name}} öğesine başvuruyor; başvuru kaldırıldı.",
+      "unknown": "{{source}} içindeki {{name}} için bilinmeyen bir birleştirme çakışması oluştu ({{field}})."
+    }
+  },
+  "components": {
+    "badge": "Paket",
+    "members": "Üyeler: {{count}}",
+    "primary": "Temel: {{name}}",
+    "conflicts": "Çakışmalar: {{count}}",
+    "stale": "Güncel değil",
+    "refreshed": "{{time}} güncellendi",
+    "refreshedUnknown": "Henüz yenilenmedi"
+  }
+}

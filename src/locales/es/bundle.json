@@ -1,0 +1,71 @@
+{
+  "page": {
+    "defaultName": "Paquete de perfiles",
+    "batch": {
+      "create": "Paquete de perfiles",
+      "update": "Actualizar paquete",
+      "hint": "Selecciona al menos dos perfiles."
+    },
+    "actions": {
+      "editMembers": "Editar miembros",
+      "conflicts": "Conflictos",
+      "refresh": "Actualizar paquete",
+      "delete": "Eliminar paquete"
+    },
+    "confirm": {
+      "create": {
+        "title": "¿Crear paquete de perfiles?",
+        "message": "Los perfiles seleccionados se combinarán en el siguiente orden en un perfil generado."
+      },
+      "overwrite": {
+        "title": "¿Actualizar paquete de perfiles?",
+        "message": "Los miembros y el orden del paquete se reemplazarán por:"
+      },
+      "delete": {
+        "title": "¿Eliminar paquete de perfiles?",
+        "message": "Se eliminará el perfil de paquete generado. Las suscripciones de los miembros se conservan."
+      }
+    },
+    "diff": {
+      "added": "Añadido",
+      "removed": "Eliminado",
+      "moved": "Movido",
+      "unchanged": "Sin cambios"
+    },
+    "details": {
+      "title": "Paquete de perfiles",
+      "members": "Orden de miembros",
+      "primary": "Base",
+      "conflicts": "Conflictos",
+      "noConflicts": "No se informaron conflictos.",
+      "stale": "Los miembros cambiaron desde que se generó el paquete. Actualízalo para regenerarlo.",
+      "missing": "Perfil ausente"
+    },
+    "notices": {
+      "created": "Paquete de perfiles creado.",
+      "updated": "Paquete de perfiles actualizado.",
+      "refreshed": "Paquete de perfiles actualizado.",
+      "refreshPartial": "Paquete actualizado, pero {{count}} actualización(es) de miembros fallaron.",
+      "refreshBusy": "Ya hay una actualización del paquete en curso. Espera un momento.",
+      "deleted": "Paquete de perfiles eliminado."
+    },
+    "conflict": {
+      "primaryFieldMalformed": "El campo {{field}} de {{source}} no es válido y se reemplazó durante la combinación.",
+      "groupMembersMalformed": "La lista de miembros del grupo {{name}} ({{source}}) no es válida y se reemplazó durante la combinación.",
+      "groupIncompatible": "El grupo {{name}} de {{source}} ya existe en el perfil principal con ajustes incompatibles; se mantuvo el grupo existente.",
+      "topLevelKeyKept": "La clave {{name}} de {{source}} ya existe en el perfil principal; se mantuvo el valor principal.",
+      "topLevelKeyIgnored": "La clave {{name}} de {{source}} no se combina; solo el perfil principal puede definirla.",
+      "groupReferenceMissing": "El grupo {{source}} hace referencia a un proxy/proveedor/grupo inexistente {{name}}; se descartó la referencia.",
+      "unknown": "Se produjo un conflicto de combinación desconocido para {{name}} en {{source}} ({{field}})."
+    }
+  },
+  "components": {
+    "badge": "Paquete",
+    "members": "Miembros: {{count}}",
+    "primary": "Base: {{name}}",
+    "conflicts": "Conflictos: {{count}}",
+    "stale": "Desactualizado",
+    "refreshed": "Actualizado {{time}}",
+    "refreshedUnknown": "Aún no actualizado"
+  }
+}

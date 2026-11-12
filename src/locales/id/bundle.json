@@ -1,0 +1,71 @@
+{
+  "page": {
+    "defaultName": "Paket profil",
+    "batch": {
+      "create": "Paket profil",
+      "update": "Perbarui paket",
+      "hint": "Pilih minimal dua profil."
+    },
+    "actions": {
+      "editMembers": "Edit anggota",
+      "conflicts": "Konflik",
+      "refresh": "Segarkan paket",
+      "delete": "Hapus paket"
+    },
+    "confirm": {
+      "create": {
+        "title": "Buat paket profil?",
+        "message": "Profil yang dipilih akan digabungkan dalam urutan berikut menjadi satu profil yang dihasilkan."
+      },
+      "overwrite": {
+        "title": "Perbarui paket profil?",
+        "message": "Anggota dan urutan paket akan diganti dengan:"
+      },
+      "delete": {
+        "title": "Hapus paket profil?",
+        "message": "Profil paket yang dihasilkan akan dihapus. Langganan anggota tetap disimpan."
+      }
+    },
+    "diff": {
+      "added": "Ditambahkan",
+      "removed": "Dihapus",
+      "moved": "Dipindah",
+      "unchanged": "Tidak berubah"
+    },
+    "details": {
+      "title": "Paket profil",
+      "members": "Urutan anggota",
+      "primary": "Dasar",
+      "conflicts": "Konflik",
+      "noConflicts": "Tidak ada konflik yang dilaporkan.",
+      "stale": "Anggota berubah sejak paket dibuat. Segarkan untuk membuat ulang.",
+      "missing": "Profil hilang"
+    },
+    "notices": {
+      "created": "Paket profil dibuat.",
+      "updated": "Paket profil diperbarui.",
+      "refreshed": "Paket profil disegarkan.",
+      "refreshPartial": "Paket disegarkan, tetapi {{count}} pembaruan anggota gagal.",
+      "refreshBusy": "Penyegaran paket sedang berjalan. Harap tunggu.",
+      "deleted": "Paket profil dihapus."
+    },
+    "conflict": {
+      "primaryFieldMalformed": "Bidang {{field}} pada {{source}} tidak valid dan diganti saat penggabungan.",
+      "groupMembersMalformed": "Daftar anggota grup {{name}} ({{source}}) tidak valid dan diganti saat penggabungan.",
+      "groupIncompatible": "Grup {{name}} dari {{source}} sudah ada di profil utama dengan pengaturan yang tidak kompatibel; grup yang ada dipertahankan.",
+      "topLevelKeyKept": "Kunci {{name}} dari {{source}} sudah ada di profil utama; nilai utama dipertahankan.",
+      "topLevelKeyIgnored": "Kunci {{name}} dari {{source}} tidak digabungkan; hanya profil utama yang boleh mendefinisikannya.",
+      "groupReferenceMissing": "Grup {{source}} merujuk proxy/penyedia/grup yang tidak ada {{name}}; rujukan tersebut dihapus.",
+      "unknown": "Terjadi konflik penggabungan yang tidak dikenal untuk {{name}} di {{source}} ({{field}})."
+    }
+  },
+  "components": {
+    "badge": "Paket",
+    "members": "Anggota: {{count}}",
+    "primary": "Dasar: {{name}}",
+    "conflicts": "Konflik: {{count}}",
+    "stale": "Usang",
+    "refreshed": "Diperbarui {{time}}",
+    "refreshedUnknown": "Belum diperbarui"
+  }
+}

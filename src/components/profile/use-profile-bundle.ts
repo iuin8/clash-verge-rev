@@ -200,8 +200,8 @@ export function useProfileBundle({
       onSelectionCleared()
       showNotice.success(
         confirm.mode === 'overwrite'
-          ? 'profiles.page.bundle.notices.updated'
-          : 'profiles.page.bundle.notices.created',
+          ? 'bundle.page.notices.updated'
+          : 'bundle.page.notices.created',
       )
       onLogsChanged()
     } catch (err: any) {
@@ -234,14 +234,14 @@ export function useProfileBundle({
         ],
       })
       if (!result.ok) {
-        showNotice.info('profiles.page.bundle.notices.refreshBusy')
+        showNotice.info('bundle.page.notices.refreshBusy')
         return
       }
       const failed = result.value.failed.length
       if (failed === 0) {
-        showNotice.success('profiles.page.bundle.notices.refreshed')
+        showNotice.success('bundle.page.notices.refreshed')
       } else {
-        showNotice.warning('profiles.page.bundle.notices.refreshPartial', {
+        showNotice.warning('bundle.page.notices.refreshPartial', {
           count: failed,
         })
       }
@@ -268,7 +268,7 @@ export function useProfileBundle({
       })
       setDeleteOpen(false)
       setDetailsOpen(false)
-      showNotice.success('profiles.page.bundle.notices.deleted')
+      showNotice.success('bundle.page.notices.deleted')
       onLogsChanged()
     } catch (err: any) {
       showNotice.error(err)

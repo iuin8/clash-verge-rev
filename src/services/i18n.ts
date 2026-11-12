@@ -88,6 +88,7 @@ const STARTUP_LANGUAGE_SECTIONS = [
   'shared',
   'settings',
   'profiles',
+  'bundle',
   'proxies',
   'tests',
   'rules',

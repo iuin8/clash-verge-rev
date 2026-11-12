@@ -835,7 +835,7 @@ const ProfilePage = () => {
                 startIcon={<LayersRounded />}
                 title={
                   bundle.selectedMembers.length < 2
-                    ? t('profiles.page.bundle.batch.hint')
+                    ? t('bundle.page.batch.hint')
                     : undefined
                 }
                 onClick={bundle.requestBundleAction}
@@ -847,8 +847,8 @@ const ProfilePage = () => {
                 sx={{ whiteSpace: 'nowrap' }}
               >
                 {bundle.bundleExists
-                  ? t('profiles.page.bundle.batch.update')
-                  : t('profiles.page.bundle.batch.create')}
+                  ? t('bundle.page.batch.update')
+                  : t('bundle.page.batch.create')}
               </Button>
               {!bundle.editMode && (
                 <IconButton
@@ -1098,7 +1098,7 @@ const ProfilePage = () => {
         />
       )}
       <BaseDialog
-        title={t('profiles.page.bundle.confirm.delete.title')}
+        title={t('bundle.page.confirm.delete.title')}
         open={bundle.deleteOpen}
         okBtn={t('shared.actions.confirm')}
         cancelBtn={t('shared.actions.cancel')}
@@ -1108,7 +1108,7 @@ const ProfilePage = () => {
         onOk={bundle.confirmDelete}
       >
         <Typography variant="body2">
-          {t('profiles.page.bundle.confirm.delete.message')}
+          {t('bundle.page.confirm.delete.message')}
         </Typography>
       </BaseDialog>
     </BasePage>

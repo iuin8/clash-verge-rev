@@ -60,7 +60,7 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
   const { t } = useTranslation()
   const storedName = itemData.name
   const displayName = isDefaultBundleName(storedName)
-    ? t('profiles.page.bundle.defaultName')
+    ? t('bundle.page.defaultName')
     : storedName
   const refreshed = bundleRefreshTime(view?.generated_at)
 
@@ -77,22 +77,22 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
       disabled: batchMode === true,
     },
     {
-      label: 'profiles.page.bundle.actions.editMembers',
+      label: 'bundle.page.actions.editMembers',
       handler: onEditMembers,
       disabled: activating || !view,
     },
     {
-      label: 'profiles.page.bundle.actions.conflicts',
+      label: 'bundle.page.actions.conflicts',
       handler: onDetails,
       disabled: !view,
     },
     {
-      label: 'profiles.page.bundle.actions.refresh',
+      label: 'bundle.page.actions.refresh',
       handler: onRefresh,
       disabled: activating || busy || !view,
     },
     {
-      label: 'profiles.page.bundle.actions.delete',
+      label: 'bundle.page.actions.delete',
       handler: onDelete,
       disabled: activating,
       danger: true,
@@ -105,12 +105,12 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
         size="small"
         color="primary"
         variant="outlined"
-        label={t('profiles.components.bundle.badge')}
+        label={t('bundle.components.badge')}
         sx={{ ml: 0.5, height: 20, flexShrink: 0 }}
       />
       <IconButton
-        aria-label={t('profiles.page.bundle.actions.refresh')}
-        title={t('profiles.page.bundle.actions.refresh')}
+        aria-label={t('bundle.page.actions.refresh')}
+        title={t('bundle.page.actions.refresh')}
         size="small"
         color="inherit"
         disabled={activating || busy || !view}
@@ -129,7 +129,7 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
     <>
       <Box sx={boxStyle}>
         <Typography noWrap sx={{ fontSize: 14 }}>
-          {t('profiles.components.bundle.members', {
+          {t('bundle.components.members', {
             count: view?.members.length ?? 0,
           })}
         </Typography>
@@ -138,14 +138,14 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
           sx={{ fontSize: 14, ml: 'auto', maxWidth: '60%' }}
           title={view?.members[0]?.name}
         >
-          {t('profiles.components.bundle.primary', {
+          {t('bundle.components.primary', {
             name: view?.members[0]?.name ?? '-',
           })}
         </Typography>
       </Box>
       <Box sx={{ ...boxStyle, fontSize: 12, gap: 1 }}>
         <span style={{ whiteSpace: 'nowrap' }}>
-          {t('profiles.components.bundle.conflicts', {
+          {t('bundle.components.conflicts', {
             count: conflicts.length,
           })}
         </span>
@@ -169,9 +169,9 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
                 whiteSpace: 'nowrap',
                 flexShrink: 0,
               }}
-              title={t('profiles.components.bundle.stale')}
+              title={t('bundle.components.stale')}
             >
-              {t('profiles.components.bundle.stale')}
+              {t('bundle.components.stale')}
             </Box>
           )}
           <Box
@@ -185,10 +185,10 @@ const BundleProfileItemBase = (props: BundleProfileItemProps) => {
             title={refreshed.absolute ?? undefined}
           >
             {refreshed.relative
-              ? t('profiles.components.bundle.refreshed', {
+              ? t('bundle.components.refreshed', {
                   time: refreshed.relative,
                 })
-              : t('profiles.components.bundle.refreshedUnknown')}
+              : t('bundle.components.refreshedUnknown')}
           </Box>
         </Box>
       </Box>

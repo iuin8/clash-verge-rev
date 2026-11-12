@@ -58,67 +58,7 @@
         "forceRefreshStaleData": "プロファイルデータが利用できません。クリックして強制的に更新します"
       }
     },
-    "title": "プロファイル",
-    "bundle": {
-      "defaultName": "プロファイルバンドル",
-      "batch": {
-        "create": "プロファイルバンドル",
-        "update": "バンドルを更新",
-        "hint": "2 つ以上のプロファイルを選択してください。"
-      },
-      "actions": {
-        "editMembers": "メンバーを編集",
-        "conflicts": "競合",
-        "refresh": "バンドルを更新",
-        "delete": "バンドルを削除"
-      },
-      "confirm": {
-        "create": {
-          "title": "プロファイルバンドルを作成しますか？",
-          "message": "選択したプロファイルを以下の順序で 1 つの生成プロファイルに結合します。"
-        },
-        "overwrite": {
-          "title": "プロファイルバンドルを更新しますか？",
-          "message": "バンドルのメンバーと順序を次に置き換えます:"
-        },
-        "delete": {
-          "title": "プロファイルバンドルを削除しますか？",
-          "message": "生成されたバンドルプロファイルを削除します。メンバーのサブスクリプションは保持されます。"
-        }
-      },
-      "diff": {
-        "added": "追加",
-        "removed": "削除",
-        "moved": "移動",
-        "unchanged": "変更なし"
-      },
-      "details": {
-        "title": "プロファイルバンドル",
-        "members": "メンバーの順序",
-        "primary": "ベース",
-        "conflicts": "競合",
-        "noConflicts": "競合は報告されていません。",
-        "stale": "生成後にメンバーが変更されました。更新して再生成してください。",
-        "missing": "プロファイルが見つかりません"
-      },
-      "notices": {
-        "created": "プロファイルバンドルを作成しました。",
-        "updated": "プロファイルバンドルを更新しました。",
-        "refreshed": "プロファイルバンドルを更新しました。",
-        "refreshPartial": "バンドルは更新されましたが、{{count}} 件のメンバー更新に失敗しました。",
-        "refreshBusy": "バンドルの更新は既に実行中です。しばらくお待ちください。",
-        "deleted": "プロファイルバンドルを削除しました。"
-      },
-      "conflict": {
-        "primaryFieldMalformed": "{{source}} の {{field}} フィールドが無効なため、マージ時に置き換えました。",
-        "groupMembersMalformed": "グループ {{name}}（{{source}}）のメンバーリストが無効なため、マージ時に置き換えました。",
-        "groupIncompatible": "{{source}} のグループ {{name}} は、互換性のない設定でプライマリプロファイルに既に存在するため、既存のグループを保持しました。",
-        "topLevelKeyKept": "{{source}} のキー {{name}} はプライマリプロファイルに既に存在するため、プライマリの値を保持しました。",
-        "topLevelKeyIgnored": "{{source}} のキー {{name}} はマージされません。このキーはプライマリプロファイルでのみ定義できます。",
-        "groupReferenceMissing": "グループ {{source}} が存在しないプロキシ/プロバイダー/グループ {{name}} を参照しているため、参照を削除しました。",
-        "unknown": "{{source}} の {{name}} で不明なマージ競合が発生しました（{{field}}）。"
-      }
-    }
+    "title": "プロファイル"
   },
   "components": {
     "card": {
@@ -166,15 +106,6 @@
         "unknown": "不明",
         "autoUpdateDisabled": "自動更新が無効になっています。"
       }
-    },
-    "bundle": {
-      "badge": "バンドル",
-      "members": "メンバー: {{count}}",
-      "primary": "ベース: {{name}}",
-      "conflicts": "競合: {{count}}",
-      "stale": "要更新",
-      "refreshed": "{{time}}に更新",
-      "refreshedUnknown": "まだ更新されていません"
     }
   },
   "modals": {

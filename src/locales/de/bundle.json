@@ -1,0 +1,71 @@
+{
+  "page": {
+    "defaultName": "Profilbündel",
+    "batch": {
+      "create": "Profilbündel",
+      "update": "Bündel aktualisieren",
+      "hint": "Wählen Sie mindestens zwei Profile aus."
+    },
+    "actions": {
+      "editMembers": "Mitglieder bearbeiten",
+      "conflicts": "Konflikte",
+      "refresh": "Bündel aktualisieren",
+      "delete": "Bündel löschen"
+    },
+    "confirm": {
+      "create": {
+        "title": "Profilbündel erstellen?",
+        "message": "Die ausgewählten Profile werden in der folgenden Reihenfolge zu einem generierten Profil zusammengeführt."
+      },
+      "overwrite": {
+        "title": "Profilbündel aktualisieren?",
+        "message": "Mitglieder und Reihenfolge des Bündels werden ersetzt durch:"
+      },
+      "delete": {
+        "title": "Profilbündel löschen?",
+        "message": "Das generierte Bündelprofil wird gelöscht. Die Mitglieds-Abonnements bleiben erhalten."
+      }
+    },
+    "diff": {
+      "added": "Hinzugefügt",
+      "removed": "Entfernt",
+      "moved": "Verschoben",
+      "unchanged": "Unverändert"
+    },
+    "details": {
+      "title": "Profilbündel",
+      "members": "Reihenfolge der Mitglieder",
+      "primary": "Basis",
+      "conflicts": "Konflikte",
+      "noConflicts": "Es wurden keine Konflikte gemeldet.",
+      "stale": "Die Mitglieder haben sich seit der Generierung geändert. Aktualisieren Sie das Bündel.",
+      "missing": "Profil fehlt"
+    },
+    "notices": {
+      "created": "Profilbündel erstellt.",
+      "updated": "Profilbündel aktualisiert.",
+      "refreshed": "Profilbündel aktualisiert.",
+      "refreshPartial": "Bündel aktualisiert, aber {{count}} Mitglieds-Aktualisierung(en) fehlgeschlagen.",
+      "refreshBusy": "Eine Bündel-Aktualisierung läuft bereits. Bitte warten.",
+      "deleted": "Profilbündel gelöscht."
+    },
+    "conflict": {
+      "primaryFieldMalformed": "Das Feld {{field}} in {{source}} ist ungültig und wurde beim Zusammenführen ersetzt.",
+      "groupMembersMalformed": "Die Mitgliederliste der Gruppe {{name}} ({{source}}) ist ungültig und wurde beim Zusammenführen ersetzt.",
+      "groupIncompatible": "Die Gruppe {{name}} aus {{source}} existiert bereits im primären Profil mit inkompatiblen Einstellungen; die vorhandene Gruppe wurde beibehalten.",
+      "topLevelKeyKept": "Der Schlüssel {{name}} aus {{source}} existiert bereits im primären Profil; der primäre Wert wurde beibehalten.",
+      "topLevelKeyIgnored": "Der Schlüssel {{name}} aus {{source}} wird nicht zusammengeführt; nur das primäre Profil darf ihn definieren.",
+      "groupReferenceMissing": "Die Gruppe {{source}} verweist auf einen fehlenden Proxy/Provider/eine fehlende Gruppe {{name}}; der Verweis wurde entfernt.",
+      "unknown": "Für {{name}} in {{source}} ist ein unbekannter Zusammenführungskonflikt aufgetreten ({{field}})."
+    }
+  },
+  "components": {
+    "badge": "Bündel",
+    "members": "Mitglieder: {{count}}",
+    "primary": "Basis: {{name}}",
+    "conflicts": "Konflikte: {{count}}",
+    "stale": "Veraltet",
+    "refreshed": "Aktualisiert {{time}}",
+    "refreshedUnknown": "Noch nicht aktualisiert"
+  }
+}

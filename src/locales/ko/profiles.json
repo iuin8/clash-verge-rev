@@ -58,67 +58,7 @@
         "forceRefreshStaleData": "프로필 데이터를 사용할 수 없습니다. 클릭하여 강제로 새로 고칩니다"
       }
     },
-    "title": "프로필",
-    "bundle": {
-      "defaultName": "프로필 번들",
-      "batch": {
-        "create": "프로필 번들",
-        "update": "번들 업데이트",
-        "hint": "프로필을 두 개 이상 선택하세요."
-      },
-      "actions": {
-        "editMembers": "멤버 편집",
-        "conflicts": "충돌",
-        "refresh": "번들 새로고침",
-        "delete": "번들 삭제"
-      },
-      "confirm": {
-        "create": {
-          "title": "프로필 번들을 만들까요?",
-          "message": "선택한 프로필을 아래 순서대로 하나의 생성 프로필로 결합합니다."
-        },
-        "overwrite": {
-          "title": "프로필 번들을 업데이트할까요?",
-          "message": "번들 멤버와 순서를 다음으로 교체합니다:"
-        },
-        "delete": {
-          "title": "프로필 번들을 삭제할까요?",
-          "message": "생성된 번들 프로필이 삭제됩니다. 멤버 구독은 유지됩니다."
-        }
-      },
-      "diff": {
-        "added": "추가",
-        "removed": "제거",
-        "moved": "이동",
-        "unchanged": "변경 없음"
-      },
-      "details": {
-        "title": "프로필 번들",
-        "members": "멤버 순서",
-        "primary": "기본",
-        "conflicts": "충돌",
-        "noConflicts": "보고된 충돌이 없습니다.",
-        "stale": "생성 후 멤버가 변경되었습니다. 새로고침하여 다시 생성하세요.",
-        "missing": "프로필 누락"
-      },
-      "notices": {
-        "created": "프로필 번들이 생성되었습니다.",
-        "updated": "프로필 번들이 업데이트되었습니다.",
-        "refreshed": "프로필 번들이 새로고침되었습니다.",
-        "refreshPartial": "번들은 새로고침되었지만 {{count}}개 멤버 업데이트가 실패했습니다.",
-        "refreshBusy": "번들 새로고침이 이미 진행 중입니다. 잠시 기다려 주세요.",
-        "deleted": "프로필 번들이 삭제되었습니다."
-      },
-      "conflict": {
-        "primaryFieldMalformed": "{{source}}의 {{field}} 필드가 유효하지 않아 병합 중 교체되었습니다.",
-        "groupMembersMalformed": "그룹 {{name}}({{source}})의 멤버 목록이 유효하지 않아 병합 중 교체되었습니다.",
-        "groupIncompatible": "{{source}}의 그룹 {{name}}이(가) 호환되지 않는 설정으로 기본 프로필에 이미 있어 기존 그룹을 유지했습니다.",
-        "topLevelKeyKept": "{{source}}의 키 {{name}}이(가) 기본 프로필에 이미 있어 기본 값을 유지했습니다.",
-        "topLevelKeyIgnored": "{{source}}의 키 {{name}}은(는) 병합되지 않습니다. 이 키는 기본 프로필에서만 정의할 수 있습니다.",
-        "groupReferenceMissing": "그룹 {{source}}이(가) 존재하지 않는 프록시/공급자/그룹 {{name}}을(를) 참조하여 해당 참조를 삭제했습니다.",
-        "unknown": "{{source}}의 {{name}}에서 알 수 없는 병합 충돌이 발생했습니다({{field}})."
-      }
-    }
+    "title": "프로필"
   },
   "components": {
     "card": {
@@ -166,15 +106,6 @@
         "unknown": "알 수 없음",
         "autoUpdateDisabled": "자동 업데이트 비활성화됨"
       }
-    },
-    "bundle": {
-      "badge": "번들",
-      "members": "멤버: {{count}}",
-      "primary": "기본: {{name}}",
-      "conflicts": "충돌: {{count}}",
-      "stale": "업데이트 필요",
-      "refreshed": "{{time}}에 새로고침됨",
-      "refreshedUnknown": "아직 새로고침되지 않음"
     }
   },
   "modals": {

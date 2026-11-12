@@ -1,0 +1,71 @@
+{
+  "page": {
+    "defaultName": "Profile Bundle",
+    "batch": {
+      "create": "Profile Bundle",
+      "update": "Update bundle",
+      "hint": "Select at least two profiles."
+    },
+    "actions": {
+      "editMembers": "Edit members",
+      "conflicts": "Conflicts",
+      "refresh": "Refresh bundle",
+      "delete": "Delete bundle"
+    },
+    "confirm": {
+      "create": {
+        "title": "Create profile bundle?",
+        "message": "The selected profiles will be combined in the order below into one generated profile."
+      },
+      "overwrite": {
+        "title": "Update profile bundle?",
+        "message": "The bundle members and order will be replaced with:"
+      },
+      "delete": {
+        "title": "Delete profile bundle?",
+        "message": "The generated bundle profile will be deleted. Its member subscriptions are kept."
+      }
+    },
+    "diff": {
+      "added": "Added",
+      "removed": "Removed",
+      "moved": "Moved",
+      "unchanged": "Unchanged"
+    },
+    "details": {
+      "title": "Profile bundle",
+      "members": "Ordered members",
+      "primary": "Base",
+      "conflicts": "Conflicts",
+      "noConflicts": "No conflicts were reported.",
+      "stale": "Members changed since the bundle was generated. Refresh it to regenerate.",
+      "missing": "Missing profile"
+    },
+    "notices": {
+      "created": "Profile bundle created.",
+      "updated": "Profile bundle updated.",
+      "refreshed": "Profile bundle refreshed.",
+      "refreshPartial": "Bundle refreshed, but {{count}} member update(s) failed.",
+      "refreshBusy": "A bundle refresh is already running. Please wait.",
+      "deleted": "Profile bundle deleted."
+    },
+    "conflict": {
+      "primaryFieldMalformed": "Invalid {{field}} field in {{source}}; it was replaced during merge.",
+      "groupMembersMalformed": "Invalid member list in group {{name}} ({{source}}); it was replaced during merge.",
+      "groupIncompatible": "Group {{name}} from {{source}} already exists in the primary profile with incompatible settings; the existing group was kept.",
+      "topLevelKeyKept": "Key {{name}} from {{source}} already exists in the primary profile; the primary value was kept.",
+      "topLevelKeyIgnored": "Key {{name}} from {{source}} is not merged; only the primary profile may define it.",
+      "groupReferenceMissing": "Group {{source}} references a missing proxy/provider/group {{name}}; the reference was dropped.",
+      "unknown": "An unexpected merge conflict occurred for {{name}} in {{source}} ({{field}})."
+    }
+  },
+  "components": {
+    "badge": "Bundle",
+    "members": "Members: {{count}}",
+    "primary": "Base: {{name}}",
+    "conflicts": "Conflicts: {{count}}",
+    "stale": "Stale",
+    "refreshed": "Refreshed {{time}}",
+    "refreshedUnknown": "Not refreshed yet"
+  }
+}

@@ -206,7 +206,7 @@ fn every_conflict_code_has_a_message_in_every_locale() {
     let mut locales: Vec<String> = std::fs::read_dir(&locale_root)
         .expect("locale root is readable")
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().join("profiles.json").is_file())
+        .filter(|entry| entry.path().join("bundle.json").is_file())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     locales.sort();
@@ -216,13 +216,13 @@ fn every_conflict_code_has_a_message_in_every_locale() {
     let expected: std::collections::BTreeSet<&str> = codes.iter().map(|(_, key)| *key).chain(["unknown"]).collect();
 
     for locale in &locales {
-        let path = locale_root.join(locale).join("profiles.json");
-        let raw = std::fs::read_to_string(&path).expect("locale profiles.json is readable");
-        let json: serde_json::Value = serde_json::from_str(&raw).expect("locale profiles.json is valid JSON");
+        let path = locale_root.join(locale).join("bundle.json");
+        let raw = std::fs::read_to_string(&path).expect("locale bundle.json is readable");
+        let json: serde_json::Value = serde_json::from_str(&raw).expect("locale bundle.json is valid JSON");
         let messages = json
-            .pointer("/page/bundle/conflict")
+            .pointer("/page/conflict")
             .and_then(serde_json::Value::as_object)
-            .expect("locale profiles.json has page.bundle.conflict");
+            .expect("locale bundle.json has page.conflict");
         for (code, key) in &codes {
             let wire = serde_json::to_value(code).expect("conflict code serializes");
             assert_eq!(wire.as_str(), Some(*key), "{locale}: serde name drifted");

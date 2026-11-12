@@ -42,9 +42,9 @@ function conflictMessage(
     name: conflict.name,
     source: conflict.source,
   }
-  return t(`profiles.page.bundle.conflict.${conflict.code}`, {
+  return t(`bundle.page.conflict.${conflict.code}`, {
     ...params,
-    defaultValue: t('profiles.page.bundle.conflict.unknown', params),
+    defaultValue: t('bundle.page.conflict.unknown', params),
   })
 }
 
@@ -74,13 +74,13 @@ export function BundleDetailsDialog({
   if (!view) return null
 
   const displayName = isDefaultBundleName(view.name)
-    ? t('profiles.page.bundle.defaultName')
+    ? t('bundle.page.defaultName')
     : view.name
   const refreshed = bundleRefreshTime(view.generated_at)
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('profiles.page.bundle.details.title')}</DialogTitle>
+      <DialogTitle>{t('bundle.page.details.title')}</DialogTitle>
       <DialogContent>
         <Box
           sx={{
@@ -96,14 +96,14 @@ export function BundleDetailsDialog({
           </Typography>
           <Chip
             size="small"
-            label={`${t('profiles.page.bundle.details.members')}: ${view.members.length}`}
+            label={`${t('bundle.page.details.members')}: ${view.members.length}`}
           />
           {view.stale && (
             <Chip
               size="small"
               color="warning"
               icon={<WarningAmberRounded />}
-              label={t('profiles.components.bundle.stale')}
+              label={t('bundle.components.stale')}
             />
           )}
         </Box>
@@ -114,19 +114,19 @@ export function BundleDetailsDialog({
           sx={{ display: 'block', mb: 1 }}
         >
           {refreshed.relative
-            ? t('profiles.components.bundle.refreshed', {
+            ? t('bundle.components.refreshed', {
                 time: refreshed.relative,
               })
-            : t('profiles.components.bundle.refreshedUnknown')}
+            : t('bundle.components.refreshedUnknown')}
         </Typography>
         {view.stale && (
           <Typography variant="body2" color="warning.main" sx={{ mb: 1 }}>
-            {t('profiles.page.bundle.details.stale')}
+            {t('bundle.page.details.stale')}
           </Typography>
         )}
 
         <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>
-          {t('profiles.page.bundle.details.members')}
+          {t('bundle.page.details.members')}
         </Typography>
         <List dense disablePadding>
           {view.members.map((member, index) => (
@@ -146,14 +146,14 @@ export function BundleDetailsDialog({
                   size="small"
                   color="primary"
                   variant="outlined"
-                  label={t('profiles.page.bundle.details.primary')}
+                  label={t('bundle.page.details.primary')}
                 />
               )}
               {member.kind === 'missing' && (
                 <Chip
                   size="small"
                   color="error"
-                  label={t('profiles.page.bundle.details.missing')}
+                  label={t('bundle.page.details.missing')}
                 />
               )}
             </ListItem>
@@ -162,11 +162,11 @@ export function BundleDetailsDialog({
 
         <Divider sx={{ my: 1 }} />
         <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          {t('profiles.page.bundle.details.conflicts')}
+          {t('bundle.page.details.conflicts')}
         </Typography>
         {conflicts.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            {t('profiles.page.bundle.details.noConflicts')}
+            {t('bundle.page.details.noConflicts')}
           </Typography>
         ) : (
           <Box sx={{ maxHeight: 180, overflow: 'auto' }}>
@@ -188,15 +188,15 @@ export function BundleDetailsDialog({
           onClick={onEditMembers}
           disabled={busy}
         >
-          {t('profiles.page.bundle.actions.editMembers')}
+          {t('bundle.page.actions.editMembers')}
         </Button>
         <Button
           startIcon={<RefreshRounded />}
-          aria-label={t('profiles.page.bundle.actions.refresh')}
+          aria-label={t('bundle.page.actions.refresh')}
           onClick={onRefresh}
           disabled={busy}
         >
-          {t('profiles.page.bundle.actions.refresh')}
+          {t('bundle.page.actions.refresh')}
         </Button>
         <Button
           color="error"
@@ -204,7 +204,7 @@ export function BundleDetailsDialog({
           onClick={onDelete}
           disabled={busy}
         >
-          {t('profiles.page.bundle.actions.delete')}
+          {t('bundle.page.actions.delete')}
         </Button>
         <Button variant="contained" onClick={onClose} disabled={busy}>
           {t('shared.actions.close')}
@@ -251,10 +251,10 @@ function diffMembers(
 }
 
 const DIFF_LABEL_KEYS = {
-  added: 'profiles.page.bundle.diff.added',
-  moved: 'profiles.page.bundle.diff.moved',
-  removed: 'profiles.page.bundle.diff.removed',
-  unchanged: 'profiles.page.bundle.diff.unchanged',
+  added: 'bundle.page.diff.added',
+  moved: 'bundle.page.diff.moved',
+  removed: 'bundle.page.diff.removed',
+  unchanged: 'bundle.page.diff.unchanged',
 } as const
 
 const DIFF_COLORS = {
@@ -279,12 +279,10 @@ export function BundleConfirmDialog({
     const rows = diffMembers(members, currentMembers)
     return (
       <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {t('profiles.page.bundle.confirm.overwrite.title')}
-        </DialogTitle>
+        <DialogTitle>{t('bundle.page.confirm.overwrite.title')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            {t('profiles.page.bundle.confirm.overwrite.message')}
+            {t('bundle.page.confirm.overwrite.message')}
           </Typography>
           <List dense disablePadding>
             {rows.map(({ member, status }, index) => (
@@ -316,7 +314,7 @@ export function BundleConfirmDialog({
             {t('shared.actions.cancel')}
           </Button>
           <Button variant="contained" onClick={onConfirm} loading={busy}>
-            {t('profiles.page.bundle.batch.update')}
+            {t('bundle.page.batch.update')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -325,12 +323,10 @@ export function BundleConfirmDialog({
 
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        {t('profiles.page.bundle.confirm.create.title')}
-      </DialogTitle>
+      <DialogTitle>{t('bundle.page.confirm.create.title')}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          {t('profiles.page.bundle.confirm.create.message')}
+          {t('bundle.page.confirm.create.message')}
         </Typography>
         <List dense disablePadding>
           {members.map((member, index) => (
@@ -350,7 +346,7 @@ export function BundleConfirmDialog({
                   size="small"
                   color="primary"
                   variant="outlined"
-                  label={t('profiles.page.bundle.details.primary')}
+                  label={t('bundle.page.details.primary')}
                 />
               )}
             </ListItem>
@@ -362,7 +358,7 @@ export function BundleConfirmDialog({
           {t('shared.actions.cancel')}
         </Button>
         <Button variant="contained" onClick={onConfirm} loading={busy}>
-          {t('profiles.page.bundle.batch.create')}
+          {t('bundle.page.batch.create')}
         </Button>
       </DialogActions>
     </Dialog>

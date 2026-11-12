@@ -3,6 +3,77 @@
 
 export interface TranslationResources {
   translation: {
+    bundle: {
+      components: {
+        badge: string
+        conflicts: string
+        members: string
+        primary: string
+        refreshed: string
+        refreshedUnknown: string
+        stale: string
+      }
+      page: {
+        actions: {
+          conflicts: string
+          delete: string
+          editMembers: string
+          refresh: string
+        }
+        batch: {
+          create: string
+          hint: string
+          update: string
+        }
+        confirm: {
+          create: {
+            message: string
+            title: string
+          }
+          delete: {
+            message: string
+            title: string
+          }
+          overwrite: {
+            message: string
+            title: string
+          }
+        }
+        conflict: {
+          groupIncompatible: string
+          groupMembersMalformed: string
+          groupReferenceMissing: string
+          primaryFieldMalformed: string
+          topLevelKeyIgnored: string
+          topLevelKeyKept: string
+          unknown: string
+        }
+        defaultName: string
+        details: {
+          conflicts: string
+          members: string
+          missing: string
+          noConflicts: string
+          primary: string
+          stale: string
+          title: string
+        }
+        diff: {
+          added: string
+          moved: string
+          removed: string
+          unchanged: string
+        }
+        notices: {
+          created: string
+          deleted: string
+          refreshBusy: string
+          refreshed: string
+          refreshPartial: string
+          updated: string
+        }
+      }
+    }
     connections: {
       components: {
         actions: {
@@ -265,15 +336,6 @@ export interface TranslationResources {
     }
     profiles: {
       components: {
-        bundle: {
-          badge: string
-          conflicts: string
-          members: string
-          primary: string
-          refreshed: string
-          refreshedUnknown: string
-          stale: string
-        }
         card: {
           labels: {
             clickToImport: string
@@ -450,66 +512,6 @@ export interface TranslationResources {
             selected: string
           }
           title: string
-        }
-        bundle: {
-          actions: {
-            conflicts: string
-            delete: string
-            editMembers: string
-            refresh: string
-          }
-          batch: {
-            create: string
-            hint: string
-            update: string
-          }
-          confirm: {
-            create: {
-              message: string
-              title: string
-            }
-            delete: {
-              message: string
-              title: string
-            }
-            overwrite: {
-              message: string
-              title: string
-            }
-          }
-          conflict: {
-            groupIncompatible: string
-            groupMembersMalformed: string
-            groupReferenceMissing: string
-            primaryFieldMalformed: string
-            topLevelKeyIgnored: string
-            topLevelKeyKept: string
-            unknown: string
-          }
-          defaultName: string
-          details: {
-            conflicts: string
-            members: string
-            missing: string
-            noConflicts: string
-            primary: string
-            stale: string
-            title: string
-          }
-          diff: {
-            added: string
-            moved: string
-            removed: string
-            unchanged: string
-          }
-          notices: {
-            created: string
-            deleted: string
-            refreshBusy: string
-            refreshed: string
-            refreshPartial: string
-            updated: string
-          }
         }
         feedback: {
           errors: {
