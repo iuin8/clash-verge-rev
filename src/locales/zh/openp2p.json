@@ -94,7 +94,7 @@
     "title": "导入 OpenP2P 配置",
     "file": "选择 YAML 文件",
     "paste": "配置 YAML",
-    "placeholder": "粘贴 profile 或 x-openp2p YAML…",
+    "placeholder": "粘贴 x-openp2p 配置块；完整 profile 请在「配置」页导入。",
     "preview": "预览",
     "previewing": "校验中…",
     "apply": "应用",

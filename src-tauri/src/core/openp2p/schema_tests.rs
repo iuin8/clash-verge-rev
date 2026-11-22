@@ -16,6 +16,14 @@ fn a_profile_top_level_seed_is_extracted() {
     );
     let parsed = parse_seed(&yaml);
     assert!(!has_errors(&parsed.issues), "{:?}", parsed.issues);
+    assert!(
+        parsed
+            .issues
+            .iter()
+            .any(|issue| issue.code == "profile_import_required"),
+        "full profiles should point at the Profiles page: {:?}",
+        parsed.issues
+    );
     assert_eq!(parsed.config.accounts.len(), 1);
     assert_eq!(parsed.config.accounts[0].apps[0].src_port, 21001);
 }

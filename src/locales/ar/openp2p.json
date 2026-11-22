@@ -94,7 +94,7 @@
     "title": "Import OpenP2P configuration",
     "file": "Choose YAML file",
     "paste": "Configuration YAML",
-    "placeholder": "Paste a profile or x-openp2p YAML…",
+    "placeholder": "Paste an x-openp2p block; import full profiles under Profiles.",
     "preview": "Preview",
     "previewing": "Validating…",
     "apply": "Apply",

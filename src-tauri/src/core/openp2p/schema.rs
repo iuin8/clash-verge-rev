@@ -321,6 +321,20 @@ pub fn parse_seed(yaml: &str) -> ParsedSeed {
     };
 
     let mut issues = reject_secret_fields(&seed, "x-openp2p");
+    if from_profile
+        && document.keys().any(|key| {
+            matches!(
+                key.as_str(),
+                Some("proxies" | "proxy-groups" | "proxy-providers" | "rules" | "dns")
+            )
+        })
+    {
+        issues.push(OpenP2PIssue::warning(
+            "profile_import_required",
+            "",
+            "this document also contains mihomo configuration; import the full profile under Profiles to use it, this page only stores the x-openp2p block",
+        ));
+    }
     let mut config = match serde_yaml_ng::from_value::<OpenP2PConfig>(seed) {
         Ok(config) => config,
         Err(error) => {
