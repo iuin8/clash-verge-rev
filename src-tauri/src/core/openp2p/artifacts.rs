@@ -809,6 +809,24 @@ async fn cleanup_locked(profiles: &IProfiles, profile_uid: &str) -> Result<SyncO
     Ok(SyncOutcome::Cleared)
 }
 
+/// Removes one account and the artifacts that cannot survive without it.
+/// Returns false when the account was not configured.
+pub(super) fn remove_account(config: &mut OpenP2PConfig, account_id: &str) -> bool {
+    let before = config.accounts.len();
+    config.accounts.retain(|account| account.id != account_id);
+    config.proxies.retain(|proxy| proxy.account != account_id);
+    if config.accounts.len() == before {
+        return false;
+    }
+    // The OP2P group is backed by account proxies; networks have no meaning
+    // without any account and would otherwise fail schema validation.
+    if config.accounts.is_empty() {
+        config.proxies.clear();
+        config.networks.clear();
+    }
+    true
+}
+
 pub async fn delete_account(account_id: &str) -> std::result::Result<ApplyReport, ApplyError> {
     let _profile_write = PROFILE_WRITE_LOCK.lock().await;
     let loaded = load_current().await.map_err(ApplyError::Io)?;
@@ -817,16 +835,8 @@ pub async fn delete_account(account_id: &str) -> std::result::Result<ApplyReport
             "openp2p is not configured on the current profile".into(),
         ));
     };
-    let before = loaded.config.accounts.len();
-    loaded.config.accounts.retain(|account| account.id != account_id);
-    loaded.config.proxies.retain(|proxy| proxy.account != account_id);
-    if loaded.config.accounts.len() == before {
+    if !remove_account(&mut loaded.config, account_id) {
         return Err(ApplyError::Profile("openp2p account not found".into()));
-    }
-    // Networks only make sense with the group backed by at least one account.
-    if loaded.config.accounts.is_empty() {
-        loaded.config.proxies.clear();
-        loaded.config.networks.clear();
     }
     apply_locked(loaded.config).await
 }

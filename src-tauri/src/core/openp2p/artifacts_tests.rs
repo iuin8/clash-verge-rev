@@ -12,6 +12,17 @@ fn fixture() -> ArtifactSet {
 }
 
 #[test]
+fn deleting_the_last_account_clears_networks_and_proxies() {
+    let mut config = sample_config();
+    assert!(remove_account(&mut config, "home"));
+    assert!(config.accounts.is_empty());
+    assert!(config.proxies.is_empty());
+    assert!(config.networks.is_empty());
+    assert!(!schema::has_errors(&schema::normalize_and_validate(&mut config)));
+    assert!(!remove_account(&mut config, "home"));
+}
+
+#[test]
 fn a_profile_seed_is_read_once_and_missing_blocks_are_ignored() {
     let path = std::env::temp_dir().join(format!(
         "cvr-openp2p-seed-{}-{}.yaml",
