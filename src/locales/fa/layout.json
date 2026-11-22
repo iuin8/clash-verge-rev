@@ -9,7 +9,8 @@
         "rules": "قوانین",
         "logs": "لاگ‌ها",
         "unlock": "Test",
-        "settings": "تنظیمات"
+        "settings": "تنظیمات",
+        "openp2p": "OpenP2P"
       },
       "menu": {
         "reorderMode": "Menu reorder mode",

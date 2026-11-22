@@ -15,6 +15,11 @@ import type {
   ProfileSelection,
   ProfilePatch,
   ProfileCreate,
+  OpenP2PAccount_Serialize as OpenP2PAccount,
+  OpenP2PApplyOutcome_Serialize as OpenP2PApplyOutcome,
+  OpenP2PArtifacts_Serialize as OpenP2PArtifacts,
+  OpenP2PPreview,
+  OpenP2PView_Serialize as OpenP2PView,
 } from './bindings'
 
 export type {
@@ -521,4 +526,68 @@ export async function checkMediaUnlock(onComplete: Channel<UnlockItem>) {
 
 export async function checkMediaUnlockItem(name: string) {
   return commands.checkMediaUnlockItem(name)
+}
+
+// FORK: OpenP2P account manager
+export async function getOpenP2pState(): Promise<OpenP2PView> {
+  return commands.getOpenp2pState()
+}
+
+export async function previewOpenP2pConfig(
+  yaml: string,
+): Promise<OpenP2PPreview> {
+  return commands.previewOpenp2pConfig(yaml)
+}
+
+export async function applyOpenP2pConfig(
+  yaml: string,
+): Promise<OpenP2PApplyOutcome> {
+  return commands.applyOpenp2pConfig(yaml)
+}
+
+export async function startOpenP2pAccount(
+  accountId: string,
+): Promise<OpenP2PAccount> {
+  return commands.startOpenp2pAccount(accountId)
+}
+
+export async function stopOpenP2pAccount(
+  accountId: string,
+): Promise<OpenP2PAccount> {
+  return commands.stopOpenp2pAccount(accountId)
+}
+
+export async function restartOpenP2pAccount(
+  accountId: string,
+): Promise<OpenP2PAccount> {
+  return commands.restartOpenp2pAccount(accountId)
+}
+
+export async function saveOpenP2pToken(
+  accountId: string,
+  token: string,
+): Promise<OpenP2PAccount> {
+  return commands.saveOpenp2pToken(accountId, token)
+}
+
+export async function saveOpenP2pKey(
+  accountId: string,
+  privateKeyRef: string,
+  privateKey: string,
+): Promise<OpenP2PAccount> {
+  return commands.saveOpenp2pKey(accountId, privateKeyRef, privateKey)
+}
+
+export async function deleteOpenP2pAccount(
+  accountId: string,
+): Promise<OpenP2PView> {
+  return commands.deleteOpenp2pAccount(accountId)
+}
+
+export async function openOpenP2pLogDir(accountId: string) {
+  return commands.openOpenp2pLogDir(accountId)
+}
+
+export async function syncOpenP2pArtifacts(): Promise<OpenP2PArtifacts> {
+  return commands.syncOpenp2pArtifacts()
 }

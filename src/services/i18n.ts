@@ -94,6 +94,7 @@ const STARTUP_LANGUAGE_SECTIONS = [
   'rules',
   'connections',
   'logs',
+  'openp2p',
 ] as const
 
 const localeModules = import.meta.glob<LocaleModule>('@/locales/*/*.json')

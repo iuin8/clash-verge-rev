@@ -19,7 +19,7 @@ type QueryOptions<T> = {
   staleTime?: number
   retry?: number | false
   retryDelay?: number | ((attempt: number) => number)
-  refetchInterval?: number | false
+  refetchInterval?: number | false | ((data: T | undefined) => number)
   refetchIntervalInBackground?: boolean
   revalidateOnMount?: boolean
   refetchOnWindowFocus?: boolean

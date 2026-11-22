@@ -9,7 +9,8 @@
         "rules": "Кагыйдәләр",
         "logs": "Логлар",
         "unlock": "Test",
-        "settings": "Көйләүләр"
+        "settings": "Көйләүләр",
+        "openp2p": "OpenP2P"
       },
       "menu": {
         "reorderMode": "Menu reorder mode",

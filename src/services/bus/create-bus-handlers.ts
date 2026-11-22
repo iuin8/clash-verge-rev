@@ -91,6 +91,8 @@ export const createEventBus = (deps: BusHandlerDeps) => {
       if (payload.mode !== 'NotRunning') forgetShownStartupError()
     },
     'verge://pending-failures-changed': () => deps.readPendingFailures(),
+    'verge://openp2p-state-changed': () =>
+      deps.revalidateKeys(['getOpenP2pState']),
     [TEST_ALL_EVENT]: () => deps.dispatch({ type: 'testAll/requested' }),
   }
 

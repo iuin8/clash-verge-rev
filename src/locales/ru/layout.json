@@ -9,7 +9,8 @@
         "rules": "Правила",
         "logs": "Логи",
         "unlock": "Тест",
-        "settings": "Настройки"
+        "settings": "Настройки",
+        "openp2p": "OpenP2P"
       },
       "menu": {
         "reorderMode": "Режим изменения порядка меню",

@@ -279,6 +279,7 @@ export interface TranslationResources {
             connections: string
             home: string
             logs: string
+            openp2p: string
             profiles: string
             proxies: string
             rules: string
@@ -331,6 +332,219 @@ export interface TranslationResources {
         showDescending: string
       }
       page: {
+        title: string
+      }
+    }
+    openp2p: {
+      account: {
+        actions: {
+          delete: string
+          key: string
+          logs: string
+          restart: string
+          start: string
+          stop: string
+          token: string
+        }
+        checks: {
+          apps: string
+          listen: string
+          loginFailed: string
+          loginOk: string
+          loginPending: string
+          loginUnknown: string
+          noApps: string
+          notListening: string
+          tcpPending: string
+          tcpReachable: string
+          tcpUnreachable: string
+        }
+        deleteConfirm: {
+          confirm: string
+          message: string
+          title: string
+        }
+        disabled: string
+        gateway: string
+        interface: string
+        keyMissing: string
+        keyNoNode: string
+        keySaved: string
+        node: string
+        phase: {
+          authFailed: string
+          backoff: string
+          configFailed: string
+          degraded: string
+          failed: string
+          loginPending: string
+          online: string
+          starting: string
+          stopped: string
+          stopping: string
+          tokenMissing: string
+        }
+        publicPort: string
+        restarts: string
+        tokenMissing: string
+        tokenSaved: string
+      }
+      artifacts: {
+        applied: string
+        applyCurrent: string
+        applySuccess: string
+        description: string
+        dns: string
+        empty: string
+        error: string
+        groups: string
+        mismatchDescription: string
+        mismatchTitle: string
+        none: string
+        noProfile: string
+        notApplied: string
+        openProfiles: string
+        proxies: string
+        rules: string
+        sourceError: string
+        title: string
+      }
+      errors: {
+        accounts: string
+        accounts_missing: string
+        bundle_unsupported: string
+        config_too_large: string
+        dns_without_domains: string
+        duplicate_account: string
+        duplicate_app: string
+        duplicate_port: string
+        duplicate_proxy: string
+        duplicate_token_ref: string
+        gateway_invalid: string
+        health_not_in_domains: string
+        host_key_invalid: string
+        host_key_missing: string
+        invalid_app_name: string
+        invalid_cidr: string
+        invalid_dns: string
+        invalid_domain: string
+        invalid_dst_host: string
+        invalid_health: string
+        invalid_id: string
+        invalid_interface: string
+        invalid_label: string
+        invalid_node: string
+        invalid_peer_node: string
+        invalid_port: string
+        invalid_protocol: string
+        invalid_proxy_name: string
+        invalid_ssh_user: string
+        invalid_whitelist: string
+        key_in_config: string
+        key_ref_invalid: string
+        networks: string
+        OPENP2P_ACCOUNT_FAILED: string
+        OPENP2P_ACCOUNT_NOT_FOUND: string
+        OPENP2P_APPLY_FAILED: string
+        OPENP2P_APPLY_REJECTED: string
+        OPENP2P_ARTIFACTS_FAILED: string
+        OPENP2P_CONFIG_INVALID: string
+        OPENP2P_KEY_REF_MISMATCH: string
+        OPENP2P_KEY_WRITE_FAILED: string
+        OPENP2P_LOG_DIR_FAILED: string
+        OPENP2P_PROFILE_UNSUPPORTED: string
+        OPENP2P_TOKEN_INVALID: string
+        OPENP2P_TOKEN_WRITE_FAILED: string
+        profile_missing: string
+        proxies: string
+        proxy_account_disabled: string
+        proxy_account_missing: string
+        proxy_app_ambiguous: string
+        proxy_app_missing: string
+        schema_invalid: string
+        token_in_config: string
+        token_ref_invalid: string
+        too_many_accounts: string
+        too_many_networks: string
+        too_many_proxies: string
+        unknown_field: string
+        unsupported_version: string
+        version: string
+        x_openp2p_missing: string
+        yaml_syntax: string
+      }
+      import: {
+        actions: {
+          add: string
+          remove: string
+          unchanged: string
+          update: string
+        }
+        applied: string
+        apply: string
+        applyFailed: string
+        applying: string
+        canApply: string
+        cannotApply: string
+        confirmApply: string
+        confirmRemoveMessage: string
+        confirmRemoveTitle: string
+        diff: string
+        emptyInput: string
+        file: string
+        fileReadFailed: string
+        fileTooLarge: string
+        generated: string
+        issues: string
+        noIssues: string
+        paste: string
+        placeholder: string
+        preview: string
+        previewFailed: string
+        previewing: string
+        removeWarning: string
+        title: string
+        warnings: {
+          key_missing: string
+          token_missing: string
+        }
+      }
+      key: {
+        chooseFile: string
+        fileTooLarge: string
+        hint: string
+        invalidFile: string
+        noFile: string
+        noSshNode: string
+        readFailed: string
+        ref: string
+        save: string
+        saved: string
+        selected: string
+        title: string
+      }
+      page: {
+        actions: {
+          import: string
+          refresh: string
+        }
+        configError: string
+        empty: {
+          description: string
+          title: string
+        }
+        error: {
+          title: string
+        }
+        title: string
+      }
+      token: {
+        hint: string
+        invalid: string
+        label: string
+        placeholder: string
+        save: string
+        saved: string
         title: string
       }
     }
