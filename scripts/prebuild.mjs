@@ -743,19 +743,27 @@ const resolveOpenP2P = async () => {
     throw new Error('no pinned openp2p sidecar for ' + target)
   }
 
-  if (!fs.existsSync(sidecarPath)) {
-    const url =
-      'https://github.com/iuin8/openp2p/releases/download/' +
-      OPENP2P_SIDECAR_RELEASE +
-      '/' +
-      asset
+  const url =
+    'https://github.com/iuin8/openp2p/releases/download/' +
+    OPENP2P_SIDECAR_RELEASE +
+    '/' +
+    asset
+  const digestOf = async () =>
+    createHash('sha256')
+      .update(await fsp.readFile(sidecarPath))
+      .digest('hex')
+
+  if (!fs.existsSync(sidecarPath) || FORCE) {
     log_info('Downloading pinned openp2p sidecar:', url)
     await downloadFile(url, sidecarPath)
   }
 
-  const digest = createHash('sha256')
-    .update(await fsp.readFile(sidecarPath))
-    .digest('hex')
+  let digest = await digestOf()
+  if (digest !== expected && process.env.OPENP2P_SIDECAR_ALLOW_LOCAL !== '1') {
+    log_info('Cached openp2p sidecar is stale; refreshing from the pinned release')
+    await downloadFile(url, sidecarPath)
+    digest = await digestOf()
+  }
   if (digest !== expected) {
     if (process.env.OPENP2P_SIDECAR_ALLOW_LOCAL !== '1') {
       throw new Error(
