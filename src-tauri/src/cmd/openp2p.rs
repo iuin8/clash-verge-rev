@@ -56,20 +56,12 @@ pub async fn get_openp2p_state() -> CmdResult<OpenP2PView> {
 pub async fn preview_openp2p_config(yaml: std::string::String) -> CmdResult<OpenP2PPreview> {
     let mut parsed = schema::parse_seed(&yaml);
     let profiles = crate::config::Config::profiles().await.latest_arc();
-    match profiles.current.as_deref() {
-        None => parsed.issues.push(crate::core::openp2p::schema::OpenP2PIssue::error(
+    if profiles.current.is_none() {
+        parsed.issues.push(crate::core::openp2p::schema::OpenP2PIssue::error(
             "profile_missing",
             "",
             "select a profile before applying an openp2p configuration",
-        )),
-        Some(uid) if uid == crate::config::bundle::BUNDLE_UID => {
-            parsed.issues.push(crate::core::openp2p::schema::OpenP2PIssue::error(
-                "bundle_unsupported",
-                "",
-                "profile bundles do not own per-profile chain items",
-            ));
-        }
-        Some(_) => {}
+        ));
     }
     if !crate::core::openp2p::manager::PLATFORM_SUPPORTED {
         parsed.issues.push(crate::core::openp2p::schema::OpenP2PIssue::error(

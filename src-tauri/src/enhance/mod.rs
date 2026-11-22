@@ -4,6 +4,7 @@ mod chain;
 pub mod field;
 mod merge;
 pub mod multi_merge;
+mod openp2p;
 mod script;
 pub mod seq;
 mod tun;
@@ -914,6 +915,7 @@ pub async fn enhance(
         &authoritative,
     )
     .await;
+    let config = openp2p::apply(config, profile_uid);
 
     notify_discarded_keys(authoritative.overridden(&authoritative, &authoritative.current(&config)));
     let config = authoritative.enforce(config);

@@ -24,6 +24,10 @@ pub fn artifacts_manifest_path() -> Result<PathBuf> {
     Ok(openp2p_root()?.join("artifacts.yaml"))
 }
 
+pub fn overlay_path() -> Result<PathBuf> {
+    Ok(openp2p_root()?.join("overlay.yaml"))
+}
+
 pub fn account_paths(account_id: &str) -> Result<AccountPaths> {
     if !crate::core::openp2p::schema::valid_slug(account_id, 32) {
         bail!("invalid openp2p account id");

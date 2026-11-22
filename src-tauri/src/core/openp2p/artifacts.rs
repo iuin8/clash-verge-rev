@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use serde_yaml_ng::Value;
+use serde_yaml_ng::{Mapping, Sequence, Value};
 
 use crate::config::{Config, IProfiles, PrfItem, PrfOption, profiles::PROFILE_WRITE_LOCK};
 use crate::core::openp2p::account::{self, artifacts_manifest_path, token_present};
@@ -438,6 +438,10 @@ fn existing_artifacts(plan: &ChainPlan) -> Option<ProfileArtifacts> {
 }
 
 async fn apply_locked(config: OpenP2PConfig) -> std::result::Result<ApplyReport, ApplyError> {
+    let profiles = std::sync::Arc::clone(&Config::profiles().await.latest_arc());
+    if profiles.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID) {
+        return apply_bundle_overlay(config).await;
+    }
     let plan = ChainPlan::prepare()
         .await
         .map_err(|error| ApplyError::Profile(format!("{error:#}")))?;
@@ -488,11 +492,85 @@ async fn apply_locked(config: OpenP2PConfig) -> std::result::Result<ApplyReport,
     })
 }
 
+async fn apply_bundle_overlay(config: OpenP2PConfig) -> std::result::Result<ApplyReport, ApplyError> {
+    let profile_uid = crate::config::bundle::BUNDLE_UID;
+    let artifacts = build_artifacts(&config, true);
+    let mut overlay = Mapping::new();
+    overlay.insert(Value::from("profile"), Value::from(profile_uid));
+    overlay.insert(
+        Value::from("x-openp2p"),
+        serde_yaml_ng::to_value(&config).map_err(|error| ApplyError::Io(anyhow::Error::new(error)))?,
+    );
+    overlay.insert(Value::from("proxies"), Value::Sequence(artifacts.proxies.clone()));
+    let groups = match artifacts.group.clone() {
+        Some(group) => Value::Sequence(vec![group]),
+        None => Value::Sequence(Sequence::new()),
+    };
+    overlay.insert(Value::from("proxy-groups"), groups);
+    overlay.insert(Value::from("rules"), Value::Sequence(artifacts.rules.clone()));
+    let mut policy = Mapping::new();
+    for (domain, servers) in &artifacts.dns {
+        policy.insert(Value::from(domain.as_str()), servers.clone());
+    }
+    let mut dns = Mapping::new();
+    dns.insert(Value::from("nameserver-policy"), Value::Mapping(policy));
+    overlay.insert(Value::from("dns"), Value::Mapping(dns));
+    let yaml = serde_yaml_ng::to_string(&Value::Mapping(overlay))
+        .map_err(|error| ApplyError::Io(anyhow::Error::new(error)))?;
+
+    let path = account::overlay_path().map_err(ApplyError::Io)?;
+    let previous = std::fs::read(&path).ok();
+    account::atomic_write(&path, yaml.as_bytes(), 0o600).map_err(ApplyError::Io)?;
+
+    let outcome = match CoreManager::global().update_config_forced().await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            restore_overlay(&path, previous.as_deref());
+            let _ = CoreManager::global().update_config_forced().await;
+            return Err(ApplyError::Io(error));
+        }
+    };
+    if !outcome.is_valid() {
+        restore_overlay(&path, previous.as_deref());
+        let _ = CoreManager::global().update_config_forced().await;
+        return Err(ApplyError::Rejected(outcome));
+    }
+    Ok(ApplyReport {
+        artifacts: OpenP2PArtifacts {
+            profile_uid: Some(profile_uid.to_owned()),
+            proxies: artifacts.proxy_names.clone(),
+            groups: artifacts
+                .group
+                .as_ref()
+                .map(|_| GROUP_NAME.to_owned())
+                .into_iter()
+                .collect(),
+            enhanced: true,
+            error: None,
+        },
+        validation: outcome,
+    })
+}
+
+fn restore_overlay(path: &std::path::Path, previous: Option<&[u8]>) {
+    match previous {
+        Some(bytes) => {
+            let _ = account::atomic_write(path, bytes, 0o600);
+        }
+        None => {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Removes materialized nodes before the core starts when the credential files are gone
 /// (for example after restoring a CVR backup, which intentionally excludes tokens and keys).
 pub async fn strip_stale_artifacts() -> Result<bool> {
     let _profile_write = PROFILE_WRITE_LOCK.lock().await;
     let profiles = std::sync::Arc::clone(&Config::profiles().await.latest_arc());
+    if profiles.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID) {
+        return Ok(false);
+    }
     let Some(loaded) = load_from_profiles(&profiles)? else {
         return Ok(false);
     };
@@ -604,7 +682,23 @@ fn load_from_profiles(profiles: &IProfiles) -> Result<Option<LoadedConfig>> {
         return Ok(None);
     };
     if profile_uid.as_str() == crate::config::bundle::BUNDLE_UID {
-        bail!("the active profile is a bundle; bundles skip per-profile chain items");
+        let path = account::overlay_path()?;
+        let Ok(mapping) = read_mapping_sync(&path) else {
+            return Ok(None);
+        };
+        if mapping.get(Value::from("profile")).and_then(Value::as_str) != Some(profile_uid.as_str()) {
+            return Ok(None);
+        }
+        let Some(value) = mapping.get(Value::from("x-openp2p")) else {
+            return Ok(None);
+        };
+        let yaml = serde_yaml_ng::to_string(value)?;
+        let parsed = schema::parse_seed(&yaml);
+        return Ok(Some(LoadedConfig {
+            profile_uid: profile_uid.to_string(),
+            config: parsed.config,
+            issues: parsed.issues,
+        }));
     }
     let profile = profiles.get_item(&profile_uid)?;
     let Some(merge_uid) = profile.option.as_ref().and_then(|option| option.merge.clone()) else {
@@ -729,6 +823,11 @@ pub async fn delete_account(account_id: &str) -> std::result::Result<ApplyReport
     if loaded.config.accounts.len() == before {
         return Err(ApplyError::Profile("openp2p account not found".into()));
     }
+    // Networks only make sense with the group backed by at least one account.
+    if loaded.config.accounts.is_empty() {
+        loaded.config.proxies.clear();
+        loaded.config.networks.clear();
+    }
     apply_locked(loaded.config).await
 }
 
@@ -736,11 +835,42 @@ pub fn view(profile_uid: Option<&str>) -> OpenP2PArtifacts {
     let Some(profile_uid) = profile_uid else {
         return OpenP2PArtifacts::default();
     };
+    if profile_uid == crate::config::bundle::BUNDLE_UID {
+        return overlay_view(profile_uid);
+    }
     load_manifest()
         .profiles
         .get(profile_uid)
         .map(ProfileArtifacts::view)
         .unwrap_or_default()
+}
+
+fn overlay_view(profile_uid: &str) -> OpenP2PArtifacts {
+    let Ok(mapping) = account::overlay_path().and_then(|path| read_mapping_sync(&path)) else {
+        return OpenP2PArtifacts::default();
+    };
+    if mapping.get(Value::from("profile")).and_then(Value::as_str) != Some(profile_uid) {
+        return OpenP2PArtifacts::default();
+    }
+    let names = |key: &str| -> Vec<std::string::String> {
+        mapping
+            .get(Value::from(key))
+            .and_then(Value::as_sequence)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.get("name").and_then(Value::as_str).map(ToOwned::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    OpenP2PArtifacts {
+        profile_uid: Some(profile_uid.to_owned()),
+        proxies: names("proxies"),
+        groups: names("proxy-groups"),
+        enhanced: true,
+        error: None,
+    }
 }
 
 pub async fn current_profile_uid() -> Option<std::string::String> {
