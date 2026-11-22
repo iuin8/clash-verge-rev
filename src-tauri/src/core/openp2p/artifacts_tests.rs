@@ -12,6 +12,25 @@ fn fixture() -> ArtifactSet {
 }
 
 #[test]
+fn a_profile_seed_is_read_once_and_missing_blocks_are_ignored() {
+    let path = std::env::temp_dir().join(format!(
+        "cvr-openp2p-seed-{}-{}.yaml",
+        std::process::id(),
+        chrono::Local::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    std::fs::write(&path, "proxies: []\nx-openp2p:\n  version: 1\n").expect("write seed");
+    let seed = read_profile_seed(&path).expect("seed");
+    assert!(seed.contains("version: 1"));
+
+    std::fs::write(&path, "proxies: []\n").expect("write no seed");
+    assert!(read_profile_seed(&path).is_none());
+
+    std::fs::write(&path, "x-openp2p: [unterminated").expect("write invalid yaml");
+    assert!(read_profile_seed(&path).is_none());
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn ssh_nodes_group_rules_and_dns_are_materialized() {
     let set = fixture();
     assert_eq!(set.proxy_names, vec!["op2p-home".to_string()]);

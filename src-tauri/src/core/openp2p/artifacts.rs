@@ -573,21 +573,21 @@ pub async fn seed_from_current_profile() -> Result<Option<ApplyReport>> {
         return Ok(None);
     };
     let path = dirs::app_profiles_dir()?.join(file.as_str());
-    let Ok(raw) = std::fs::read_to_string(&path) else {
+    let Some(yaml) = read_profile_seed(&path) else {
         return Ok(None);
     };
-    let Ok(value) = serde_yaml_ng::from_str::<Value>(&raw) else {
-        return Ok(None);
-    };
-    let Some(document) = value.as_mapping() else {
-        return Ok(None);
-    };
-    let Some(seed) = document.get(Value::from("x-openp2p")) else {
-        return Ok(None);
-    };
-    let yaml = serde_yaml_ng::to_string(seed)?;
     let report = apply_seed(&yaml).await.map_err(anyhow::Error::new)?;
     Ok(Some(report))
+}
+
+/// Reads the one-time `x-openp2p` block from a profile file. A missing file,
+/// invalid YAML or absent block all mean "no seed", not an import failure.
+fn read_profile_seed(path: &std::path::Path) -> Option<std::string::String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let value = serde_yaml_ng::from_str::<Value>(&raw).ok()?;
+    let document = value.as_mapping()?;
+    let seed = document.get(Value::from("x-openp2p"))?;
+    serde_yaml_ng::to_string(seed).ok()
 }
 
 fn load_from_profiles(profiles: &IProfiles) -> Result<Option<LoadedConfig>> {
