@@ -138,6 +138,49 @@ export const commands = {
   exitApp: () => __TAURI_INVOKE<void>('exit_app'),
   getNetworkInterfacesInfo: () =>
     __TAURI_INVOKE<NetworkInterfaceView[]>('get_network_interfaces_info'),
+  getOpenp2pState: () =>
+    __TAURI_INVOKE<OpenP2PView_Serialize>('get_openp2p_state'),
+  previewOpenp2pConfig: (yaml: string) =>
+    __TAURI_INVOKE<OpenP2PPreview>('preview_openp2p_config', { yaml }),
+  applyOpenp2pConfig: (yaml: string) =>
+    __TAURI_INVOKE<OpenP2PApplyOutcome_Serialize>('apply_openp2p_config', {
+      yaml,
+    }),
+  startOpenp2pAccount: (accountId: string) =>
+    __TAURI_INVOKE<OpenP2PAccount_Serialize>('start_openp2p_account', {
+      accountId,
+    }),
+  stopOpenp2pAccount: (accountId: string) =>
+    __TAURI_INVOKE<OpenP2PAccount_Serialize>('stop_openp2p_account', {
+      accountId,
+    }),
+  restartOpenp2pAccount: (accountId: string) =>
+    __TAURI_INVOKE<OpenP2PAccount_Serialize>('restart_openp2p_account', {
+      accountId,
+    }),
+  saveOpenp2pToken: (accountId: string, token: string) =>
+    __TAURI_INVOKE<OpenP2PAccount_Serialize>('save_openp2p_token', {
+      accountId,
+      token,
+    }),
+  saveOpenp2pKey: (
+    accountId: string,
+    privateKeyRef: string,
+    privateKey: string,
+  ) =>
+    __TAURI_INVOKE<OpenP2PAccount_Serialize>('save_openp2p_key', {
+      accountId,
+      privateKeyRef,
+      privateKey,
+    }),
+  deleteOpenp2pAccount: (accountId: string) =>
+    __TAURI_INVOKE<OpenP2PView_Serialize>('delete_openp2p_account', {
+      accountId,
+    }),
+  openOpenp2pLogDir: (accountId: string) =>
+    __TAURI_INVOKE<null>('open_openp2p_log_dir', { accountId }),
+  syncOpenp2pArtifacts: () =>
+    __TAURI_INVOKE<OpenP2PArtifacts_Serialize>('sync_openp2p_artifacts'),
   getProfiles: () => __TAURI_INVOKE<IProfiles_Serialize>('get_profiles'),
   /**  FORK: describe the reusable bundle item and its ordered members. */
   getBundleView: () =>
@@ -629,6 +672,8 @@ export type IpAddress = {
   ip: string
 }
 
+export type IssueSeverity = 'error' | 'warning'
+
 export type JsonValue =
   | null
   | boolean
@@ -699,6 +744,199 @@ export type NoticeStatus =
   | 'config_core::change_error'
   | 'mixed_port::fallback'
   | 'mixed_port::fallback_error'
+
+export type OpenP2PAccount =
+  | OpenP2PAccount_Serialize
+  | OpenP2PAccount_Deserialize
+
+export type OpenP2PAccountPreview = {
+  id: string
+  label: string
+  action: OpenP2PPreviewAction
+  warnings: string[]
+}
+
+export type OpenP2PAccount_Deserialize = {
+  id: string
+  label: string
+  enabled: boolean
+  gateway: OpenP2PGateway
+  node: string
+  publicIpPort: number
+  interface: string
+  phase: OpenP2PPhase
+  tokenPresent: boolean
+  keyPresent: boolean
+  keyRefs: string[]
+  pid: number | null
+  checks: OpenP2PChecks_Deserialize
+  lastError: string | null
+  logDir: string
+  restartCount: number
+}
+
+export type OpenP2PAccount_Serialize = {
+  id: string
+  label: string
+  enabled: boolean
+  gateway: OpenP2PGateway
+  node: string
+  publicIpPort: number
+  interface: string
+  phase: OpenP2PPhase
+  tokenPresent: boolean
+  keyPresent: boolean
+  keyRefs: string[]
+  pid?: number | null
+  checks: OpenP2PChecks_Serialize
+  lastError?: string | null
+  logDir: string
+  restartCount: number
+}
+
+export type OpenP2PAppCheck =
+  | OpenP2PAppCheck_Serialize
+  | OpenP2PAppCheck_Deserialize
+
+export type OpenP2PAppCheck_Deserialize = {
+  name: string
+  protocol: string
+  srcPort: number
+  /**  The openp2p log reported LISTEN ON PORT for this app. */
+  listen: boolean
+  /**  Loopback TCP connect result. UDP apps are not probed. */
+  tcpReachable: boolean | null
+  banner: string | null
+}
+
+export type OpenP2PAppCheck_Serialize = {
+  name: string
+  protocol: string
+  srcPort: number
+  /**  The openp2p log reported LISTEN ON PORT for this app. */
+  listen: boolean
+  /**  Loopback TCP connect result. UDP apps are not probed. */
+  tcpReachable?: boolean | null
+  banner?: string | null
+}
+
+export type OpenP2PApplyOutcome =
+  | OpenP2PApplyOutcome_Serialize
+  | OpenP2PApplyOutcome_Deserialize
+
+export type OpenP2PApplyOutcome_Deserialize = {
+  applied: boolean
+  state: OpenP2PView_Deserialize
+  validation: ValidationOutcome | null
+}
+
+export type OpenP2PApplyOutcome_Serialize = {
+  applied: boolean
+  state: OpenP2PView_Serialize
+  validation?: ValidationOutcome | null
+}
+
+export type OpenP2PArtifacts =
+  | OpenP2PArtifacts_Serialize
+  | OpenP2PArtifacts_Deserialize
+
+export type OpenP2PArtifacts_Deserialize = {
+  profileUid: string | null
+  proxies: string[]
+  groups: string[]
+  enhanced: boolean
+  error: string | null
+}
+
+export type OpenP2PArtifacts_Serialize = {
+  profileUid?: string | null
+  proxies: string[]
+  groups: string[]
+  enhanced: boolean
+  error?: string | null
+}
+
+export type OpenP2PCheck = OpenP2PCheck_Serialize | OpenP2PCheck_Deserialize
+
+export type OpenP2PCheckState = 'unknown' | 'pending' | 'ok' | 'failed'
+
+export type OpenP2PCheck_Deserialize = {
+  state: OpenP2PCheckState
+  detail: string | null
+}
+
+export type OpenP2PCheck_Serialize = {
+  state: OpenP2PCheckState
+  detail?: string | null
+}
+
+export type OpenP2PChecks = OpenP2PChecks_Serialize | OpenP2PChecks_Deserialize
+
+export type OpenP2PChecks_Deserialize = {
+  login: OpenP2PCheck_Deserialize
+  apps: OpenP2PAppCheck_Deserialize[]
+}
+
+export type OpenP2PChecks_Serialize = {
+  login: OpenP2PCheck_Serialize
+  apps: OpenP2PAppCheck_Serialize[]
+}
+
+export type OpenP2PGateway = {
+  host: string
+  port: number
+}
+
+export type OpenP2PIssue = {
+  code: string
+  severity: IssueSeverity
+  /**  Dotted path inside x-openp2p (never a value). */
+  path: string
+  message: string
+}
+
+export type OpenP2PPhase =
+  | 'stopped'
+  | 'starting'
+  | 'loginPending'
+  | 'online'
+  | 'degraded'
+  | 'backoff'
+  | 'authFailed'
+  | 'configFailed'
+  | 'tokenMissing'
+  | 'stopping'
+  | 'failed'
+
+export type OpenP2PPreview = {
+  canApply: boolean
+  issues: OpenP2PIssue[]
+  accounts: OpenP2PAccountPreview[]
+  proxies: string[]
+  groups: string[]
+  rules: string[]
+  dnsPolicy: string[]
+}
+
+export type OpenP2PPreviewAction = 'add' | 'update' | 'unchanged' | 'remove'
+
+export type OpenP2PView = OpenP2PView_Serialize | OpenP2PView_Deserialize
+
+export type OpenP2PView_Deserialize = {
+  configRevision: number
+  currentProfileUid: string | null
+  accounts: OpenP2PAccount_Deserialize[]
+  artifacts: OpenP2PArtifacts_Deserialize
+  configError: string | null
+}
+
+export type OpenP2PView_Serialize = {
+  configRevision: number
+  currentProfileUid?: string | null
+  accounts: OpenP2PAccount_Serialize[]
+  artifacts: OpenP2PArtifacts_Serialize
+  configError?: string | null
+}
 
 export type PendingAction =
   | 'install'
@@ -1107,7 +1345,11 @@ export type ValidationOutcome =
 
 export type ValidationSkipReason = 'exiting' | 'debounced'
 
-export type VergeEventPayloads = {
+export type VergeEventPayloads =
+  | VergeEventPayloads_Serialize
+  | VergeEventPayloads_Deserialize
+
+export type VergeEventPayloads_Deserialize = {
   'verge://refresh-clash-config': null
   'verge://refresh-verge-config': null
   'verge://refresh-profiles': null
@@ -1119,6 +1361,22 @@ export type VergeEventPayloads = {
   'profile-update-completed': ProfileUpdatePayload
   'verge://run-state-changed': RunStateView
   'verge://pending-failures-changed': null
+  'verge://openp2p-state-changed': OpenP2PView_Deserialize
+}
+
+export type VergeEventPayloads_Serialize = {
+  'verge://refresh-clash-config': null
+  'verge://refresh-verge-config': null
+  'verge://refresh-profiles': null
+  'verge://refresh-proxy-config': null
+  'verge://notice-message': [NoticeStatus, string]
+  'profile-changed': string
+  'verge://timer-updated': string
+  'profile-update-started': ProfileUpdatePayload
+  'profile-update-completed': ProfileUpdatePayload
+  'verge://run-state-changed': RunStateView
+  'verge://pending-failures-changed': null
+  'verge://openp2p-state-changed': OpenP2PView_Serialize
 }
 
 export type WebDavFile = {

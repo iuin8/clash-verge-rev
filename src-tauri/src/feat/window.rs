@@ -28,6 +28,7 @@ const DNS_RESTORE_TIMEOUT: Duration = Duration::ZERO;
 // Backstop for when the cleanup's own deadlines cannot fire.
 const SESSION_ENDING_HARD_DEADLINE: Duration = SESSION_ENDING_STOP_TIMEOUT
     .saturating_add(DNS_RESTORE_TIMEOUT)
+    .saturating_add(crate::core::openp2p::manager::STOP_ALL_TIMEOUT)
     .saturating_add(Duration::from_secs(1));
 
 #[derive(Debug, Clone, Default)]
@@ -101,8 +102,9 @@ where
 }
 
 async fn restore_dns_after_core_stop() -> bool {
+    let openp2p_stopped = crate::core::openp2p::manager::stop_all_bounded().await;
     #[cfg(target_os = "macos")]
-    match timeout(DNS_RESTORE_TIMEOUT, crate::utils::resolve::dns::restore_public_dns()).await {
+    let dns_restored = match timeout(DNS_RESTORE_TIMEOUT, crate::utils::resolve::dns::restore_public_dns()).await {
         Ok(Ok(())) => {
             logging!(debug, Type::Window, "DNS设置已恢复");
             true
@@ -115,9 +117,10 @@ async fn restore_dns_after_core_stop() -> bool {
             logging!(warn, Type::Window, "恢复DNS设置超时");
             false
         }
-    }
+    };
     #[cfg(not(target_os = "macos"))]
-    true
+    let dns_restored = true;
+    openp2p_stopped && dns_restored
 }
 
 pub async fn open_or_close_dashboard() {

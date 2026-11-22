@@ -49,7 +49,12 @@ tauri = { workspace = true, features = [
 ] }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = [
+  "fs",
+  "io-util",
+  "net",
+  "process",
+] }
 log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

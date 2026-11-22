@@ -61,6 +61,10 @@ impl Handle {
         });
     }
 
+    pub fn notify_openp2p_state(view: &crate::core::openp2p::state::OpenP2PView) {
+        Self::send_event(FrontendEvent::OpenP2PStateChanged { view: view.clone() });
+    }
+
     pub fn notify_timer_updated(profile_index: &String) {
         Self::send_event(FrontendEvent::TimerUpdated { profile_index });
     }

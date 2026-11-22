@@ -35,6 +35,9 @@ pub enum FrontendEvent<'a> {
         state: crate::core::runstate::RunStateView,
     },
     PendingFailuresChanged,
+    OpenP2PStateChanged {
+        view: crate::core::openp2p::state::OpenP2PView,
+    },
     #[cfg(target_os = "linux")]
     ThemeChanged {
         theme: tauri::Theme,
@@ -412,6 +415,14 @@ fn sample_frontend_events(uid: &String) -> Vec<(FrontendEvent<'_>, &'static str,
             json!(null),
         ),
         (
+            FrontendEvent::OpenP2PStateChanged {
+                view: crate::core::openp2p::state::OpenP2PView::default(),
+            },
+            "verge://openp2p-state-changed",
+            serde_json::to_value(crate::core::openp2p::state::OpenP2PView::default())
+                .unwrap_or(serde_json::Value::Null),
+        ),
+        (
             FrontendEvent::ProfileChanged {
                 current_profile_id: uid,
             },
@@ -463,6 +474,7 @@ frontend_events! {
     profile_completed: ProfileUpdatePayload = "profile-update-completed", FrontendEvent::ProfileUpdateCompleted { uid } => ProfileUpdatePayload { uid: uid.to_string() };
     run_state: crate::core::runstate::RunStateView = "verge://run-state-changed", FrontendEvent::RunStateChanged { state } => state;
     pending_failures: () = "verge://pending-failures-changed", FrontendEvent::PendingFailuresChanged => ();
+    openp2p_state: crate::core::openp2p::state::OpenP2PView = "verge://openp2p-state-changed", FrontendEvent::OpenP2PStateChanged { view } => view;
 }
 
 #[derive(serde::Serialize, specta::Type)]

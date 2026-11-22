@@ -723,6 +723,70 @@ const resolveUnSetDnsScript = () =>
     localPath: path.join(cwd, 'scripts/unset_dns.sh'),
   })
 
+// The openp2p sidecar is fork-built and gitignored. Pin the exact release and
+// digest so a clean checkout builds the same binary as the reviewed one.
+const OPENP2P_SIDECAR_RELEASE = 'cvr-sidecar-20261122'
+const OPENP2P_SIDECAR_SHA256 = {
+  arm64: '495b93cdd9a0336e66bf5ff0d5b3efb84cc2af3c9b2ab4dea1e36683c7fb37c9',
+  x64: '8fd712e81b8243b48e8f6ac84bbae94b95aef28f94da5697b11db86b0ea212f9',
+}
+const OPENP2P_SIDECAR_ASSET = {
+  arm64: 'openp2p-darwin-arm64',
+  x64: 'openp2p-darwin-amd64',
+}
+
+const resolveOpenP2P = async () => {
+  const sidecarPath = path.join(SIDECAR_DIR, 'openp2p-' + SIDECAR_HOST)
+  const expected = OPENP2P_SIDECAR_SHA256[arch]
+  const asset = OPENP2P_SIDECAR_ASSET[arch]
+  if (!expected || !asset) {
+    throw new Error('no pinned openp2p sidecar for ' + target)
+  }
+
+  if (!fs.existsSync(sidecarPath)) {
+    const url =
+      'https://github.com/iuin8/openp2p/releases/download/' +
+      OPENP2P_SIDECAR_RELEASE +
+      '/' +
+      asset
+    log_info('Downloading pinned openp2p sidecar:', url)
+    await downloadFile(url, sidecarPath)
+  }
+
+  const digest = createHash('sha256')
+    .update(await fsp.readFile(sidecarPath))
+    .digest('hex')
+  if (digest !== expected) {
+    if (process.env.OPENP2P_SIDECAR_ALLOW_LOCAL !== '1') {
+      throw new Error(
+        sidecarPath +
+          ' sha256 ' +
+          digest +
+          ' does not match pinned ' +
+          expected +
+          '; set OPENP2P_SIDECAR_ALLOW_LOCAL=1 only for a reviewed local rebuild',
+      )
+    }
+    log_info('Using non-pinned local openp2p sidecar (sha256 ' + digest + ')')
+  }
+
+  await fsp.chmod(sidecarPath, 0o755)
+  const handle = await fsp.open(sidecarPath, 'r')
+  try {
+    const magic = Buffer.alloc(4)
+    await handle.read(magic, 0, 4, 0)
+    const value = magic.readUInt32BE(0)
+    // MH_MAGIC_64 / MH_CIGAM_64 and FAT_MAGIC / FAT_CIGAM.
+    if (![0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca].includes(value)) {
+      throw new Error(
+        sidecarPath + ' is not a Mach-O binary; refusing to bundle it',
+      )
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
 const tasks = [
   {
     name: 'verge-mihomo-alpha',
@@ -740,6 +804,7 @@ const tasks = [
   { name: 'core_hashes', func: resolveCoreHashes, retry: 1, winOnly: true },
   { name: 'plugin', func: resolvePlugin, retry: 5, winOnly: true },
   { name: 'service', func: resolveServiceBundle, retry: 5 },
+  { name: 'openp2p', func: resolveOpenP2P, retry: 1, macosOnly: true },
   { name: 'mmdb', func: resolveMmdb, retry: 5 },
   { name: 'asn_mmdb', func: resolveASNMmdb, retry: 5 },
   { name: 'geosite', func: resolveGeosite, retry: 5 },

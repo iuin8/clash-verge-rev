@@ -4,6 +4,11 @@
   "productName": "Clash Verge",
   "bundle": {
     "targets": ["app", "dmg"],
+    "externalBin": [
+      "sidecar/verge-mihomo",
+      "sidecar/verge-mihomo-alpha",
+      "sidecar/openp2p"
+    ],
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "11.0",

@@ -399,6 +399,7 @@ pub fn run() -> std::process::ExitCode {
                     );
                 }
             }
+            crate::core::openp2p::manager::stop_all_now_blocking();
             logging!(info, Type::System, "Application exited");
             crate::core::logger::Logger::global().flush_logs();
         }

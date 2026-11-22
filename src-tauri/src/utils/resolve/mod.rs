@@ -73,10 +73,19 @@ async fn resolve_setup() {
         init_verge_config().await;
     }
     Config::verify_config_initialization().await;
+    logging_error!(
+        Type::Setup,
+        crate::core::openp2p::artifacts::strip_stale_artifacts().await
+    );
 
     // Live before the core starts, so a service appearing mid-start is not missed.
     #[cfg(target_os = "macos")]
     crate::core::network_watch::start();
+
+    // Runs beside the core: interface binding and pinned DNS do not wait for TUN readiness.
+    AsyncHandler::spawn(|| async {
+        crate::core::openp2p::manager::OpenP2PManager::init().await;
+    });
 
     let core_init = AsyncHandler::spawn(|| async {
         init_core_manager().await;
