@@ -185,6 +185,7 @@ fn group_health_url(config: &OpenP2PConfig) -> std::string::String {
             let host = health.host.trim();
             return match health.port.unwrap_or(80) {
                 80 => format!("http://{host}/"),
+                443 => format!("https://{host}/"),
                 port => format!("http://{host}:{port}/"),
             };
         }

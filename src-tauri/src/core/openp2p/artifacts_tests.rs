@@ -12,6 +12,20 @@ fn fixture() -> ArtifactSet {
 }
 
 #[test]
+fn a_443_health_check_uses_https() {
+    let mut config = sample_config();
+    if let Some(health) = config.networks[0].health.as_mut() {
+        health.port = Some(443);
+    }
+    let set = build_artifacts_with(&config, true, |_| true, |_| true);
+    let group = set.group.as_ref().and_then(Value::as_mapping).expect("group");
+    assert_eq!(
+        group.get("url").and_then(Value::as_str),
+        Some("https://health.corp.example/")
+    );
+}
+
+#[test]
 fn deleting_the_last_account_clears_networks_and_proxies() {
     let mut config = sample_config();
     assert!(remove_account(&mut config, "home"));
