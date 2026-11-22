@@ -13,9 +13,11 @@ pub const DEGRADED_RESTART_AFTER: Duration = Duration::from_secs(60);
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_ERROR_LEN: usize = 240;
 
+#[allow(clippy::expect_used)]
 static TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(token|private[_-]?key|passphrase)\b\s*[=:]\s*\S+").expect("token redaction regex")
 });
+#[allow(clippy::expect_used)]
 static ANSI_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[[0-9;]*m").expect("ANSI escape regex"));
 
 pub fn sanitize(raw: &str) -> std::string::String {

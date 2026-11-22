@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 #![recursion_limit = "512"]
 
 mod cmd;

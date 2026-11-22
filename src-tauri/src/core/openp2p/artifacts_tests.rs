@@ -161,7 +161,7 @@ fn simple_mapping_string_lookup() {
         let mut value: Value = serde_yaml_ng::from_str(raw).expect("value");
         value.apply_merge().expect("merge");
         let mapping = value.as_mapping().expect("mapping");
-        assert!(get_key(&mapping, "x-openp2p").is_some(), "{raw}");
+        assert!(get_key(mapping, "x-openp2p").is_some(), "{raw}");
     }
 }
 
@@ -194,8 +194,8 @@ fn merge_writes_restore_previous_dns_policy_on_cleanup() {
         .and_then(|dns| get_key(dns.as_mapping().expect("dns mapping"), "nameserver-policy"))
         .and_then(Value::as_mapping)
         .expect("policy");
-    assert!(get_key(&policy, "existing.example").is_some());
-    assert!(get_key(&policy, "+.corp.example").is_some());
+    assert!(get_key(policy, "existing.example").is_some());
+    assert!(get_key(policy, "+.corp.example").is_some());
     assert_eq!(
         get_key(&mapping, "dns")
             .and_then(|dns| get_key(dns.as_mapping()?, "nameserver"))
@@ -225,8 +225,8 @@ fn merge_writes_restore_previous_dns_policy_on_cleanup() {
         .and_then(|dns| dns.get("nameserver-policy"))
         .and_then(Value::as_mapping)
         .expect("policy");
-    assert!(get_key(&policy, "existing.example").is_some());
-    assert!(get_key(&policy, "+.corp.example").is_none());
+    assert!(get_key(policy, "existing.example").is_some());
+    assert!(get_key(policy, "+.corp.example").is_none());
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -199,7 +199,7 @@ impl ChainPlan {
             .ok_or_else(|| anyhow::anyhow!("the current profile is missing from profiles.yaml"))?;
         let mut profile = items[profile_index].clone();
         let profiles_dir = dirs::app_profiles_dir()?;
-        let mut slots = [
+        let slots = [
             ChainKind::Merge,
             ChainKind::Proxies,
             ChainKind::Groups,
@@ -245,10 +245,19 @@ impl ChainPlan {
             })
         })
         .collect::<Result<Vec<ChainSlot>>>()?;
-        let rules = slots.pop().expect("four chain slots");
-        let groups = slots.pop().expect("four chain slots");
-        let proxies = slots.pop().expect("four chain slots");
-        let merge = slots.pop().expect("four chain slots");
+        let mut slots = slots.into_iter();
+        let merge = slots
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing merge chain slot"))?;
+        let proxies = slots
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing proxies chain slot"))?;
+        let groups = slots
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing groups chain slot"))?;
+        let rules = slots
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("missing rules chain slot"))?;
         items[profile_index] = profile;
         let mut candidate = committed.clone();
         candidate.items = Some(items);
