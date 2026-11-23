@@ -301,13 +301,63 @@ impl OpenP2PManager {
             return;
         }
         let _ = tokio::task::spawn_blocking(reconcile_orphans).await;
-        if let Err(error) = artifacts::seed_from_current_profile().await {
-            logging!(warn, Type::Setup, "failed to import openp2p profile seed: {error:#}");
-        }
         Self::ensure_profile_store().await;
+        tokio::spawn(async {
+            for attempt in 0..8u64 {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                if Handle::global().is_exiting() {
+                    return;
+                }
+                if Self::ensure_bundle_membership().await {
+                    return;
+                }
+                logging!(
+                    warn,
+                    Type::Setup,
+                    "openp2p bundle membership retry {} failed",
+                    attempt + 1
+                );
+            }
+        });
         if let Err(error) = manager.reload_from_current().await {
             logging!(error, Type::Setup, "failed to initialize openp2p: {error:#}");
             manager.set_config_error(Some(format!("{error:#}")));
+        }
+    }
+
+    async fn ensure_bundle_membership() -> bool {
+        let profiles = crate::config::Config::profiles().await.latest_arc();
+        if profiles.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
+            return true;
+        }
+        let Ok(Some(meta)) = crate::config::bundle::load_meta().await else {
+            return true;
+        };
+        let Ok(store) = ProfileStore::app_default() else {
+            return true;
+        };
+        let Ok(managed) = store.managed_uids() else {
+            return true;
+        };
+        let missing = managed
+            .into_iter()
+            .filter(|uid| !meta.members.iter().any(|member| member.as_str() == uid))
+            .collect::<Vec<std::string::String>>();
+        if missing.is_empty() {
+            return true;
+        }
+        let mut members = meta.members.iter().map(ToString::to_string).collect::<Vec<_>>();
+        members.extend(missing);
+        match crate::cmd::bundle::set_bundle_members(members).await {
+            Ok(()) => true,
+            Err(error) => {
+                logging!(
+                    warn,
+                    Type::Setup,
+                    "failed to add openp2p profiles to the current bundle: {error:?}"
+                );
+                false
+            }
         }
     }
 
@@ -607,12 +657,6 @@ impl OpenP2PManager {
         });
     }
 
-    pub async fn sync_artifacts(&self) -> Result<artifacts::SyncOutcome> {
-        let outcome = artifacts::sync_current().await?;
-        self.reload_from_current().await?;
-        Ok(outcome)
-    }
-
     pub async fn delete_account(&self, account_id: &str) -> Result<OpenP2PView> {
         let Some(account) = self.account_spec(account_id) else {
             bail!("openp2p account not found");
@@ -623,17 +667,22 @@ impl OpenP2PManager {
         if reconcile_account(paths.clone()).await == Reconcile::Indeterminate {
             bail!("cannot delete the account: an unverified child record remains");
         }
-        artifacts::delete_account(account_id)
-            .await
-            .map_err(anyhow::Error::new)?;
-        if let Err(error) = crate::core::openp2p::profile_store::sync_store_from_legacy().await {
-            logging!(
-                warn,
-                Type::Network,
-                "failed to refresh openp2p profile store after delete: {error:#}"
-            );
+        let store = ProfileStore::app_default()?;
+        let mut config = store
+            .load_config()?
+            .ok_or_else(|| anyhow::anyhow!("openp2p config store is missing"))?;
+        config.accounts.retain(|entry| entry.id != account_id);
+        config.proxies.retain(|proxy| proxy.account != account_id);
+        if config.accounts.is_empty() {
+            config.networks.clear();
+        } else {
+            config
+                .networks
+                .retain(|network| network.account.as_deref() != Some(account_id));
         }
-        self.reload_from_current().await?;
+        store.save_config(&config)?;
+        store.project_current().await?;
+        self.set_config(None, config, None).await;
 
         // Credentials and the rendered config.json must not outlive the account.
         if let Ok(token_path) = account::token_path(&account.token_ref)

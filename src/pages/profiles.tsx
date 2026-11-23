@@ -20,6 +20,7 @@ import {
 import {
   Box,
   Button,
+  Chip,
   Divider,
   Grid,
   IconButton,
@@ -1006,6 +1007,20 @@ const ProfilePage = () => {
                     visibleSwitchingProfile === item.uid
                   }
                   itemData={item}
+                  titleAdornment={
+                    item.desc?.startsWith('openp2p-managed:') ? (
+                      <Chip
+                        size="small"
+                        label="OpenP2P"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ ml: 0.5, height: 20, flexShrink: 0 }}
+                      />
+                    ) : undefined
+                  }
+                  titleAdornmentReserve={
+                    item.desc?.startsWith('openp2p-managed:') ? 78 : 0
+                  }
                   timerUpdateRevision={timerRevisions.get(item.uid!) ?? 0}
                   completedUpdateRevision={
                     completedUpdateRevisions.get(item.uid!) ?? 0

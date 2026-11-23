@@ -185,6 +185,13 @@ impl ProfileStore {
     /// Projects the current source into the live Config draft and persists
     /// profiles.yaml. The caller must hold/coordinate the profile write
     /// lifecycle; this helper is used by startup migration and account commands.
+    pub async fn project_current(&self) -> Result<ProjectReport> {
+        let config = self
+            .load_config()?
+            .ok_or_else(|| anyhow::anyhow!("openp2p config store is missing"))?;
+        self.project_live(&config).await
+    }
+
     pub async fn project_live(&self, config: &OpenP2PConfig) -> Result<ProjectReport> {
         let store = self.clone();
         let config = config.clone();

@@ -259,26 +259,6 @@ async fn handle_success(current_value: Option<&String>) -> CmdResult<ValidationO
         logging!(warn, Type::Cmd, "异步保存配置文件失败: {e:#}");
     }
 
-    // Generated openp2p artifacts live in the activated profile's own chain items.
-    crate::process::AsyncHandler::spawn(|| async {
-        let manager = crate::core::openp2p::manager::OpenP2PManager::global();
-        if let Err(error) = crate::core::openp2p::artifacts::seed_from_current_profile().await {
-            logging!(
-                warn,
-                Type::Cmd,
-                "failed to import openp2p profile seed after a profile switch: {error:#}"
-            );
-        }
-        if let Err(error) = manager.sync_artifacts().await {
-            logging!(
-                warn,
-                Type::Cmd,
-                "failed to re-apply openp2p artifacts after a profile switch: {error:#}"
-            );
-            let _ = manager.reload_from_current().await;
-        }
-    });
-
     if let Some(current) = current_value
         && WindowManager::get_main_window().is_some()
     {

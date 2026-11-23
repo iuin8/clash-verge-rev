@@ -1,3 +1,4 @@
+#![allow(dead_code)] // legacy overlay writer/read helpers; injection callers removed in the profile-model migration
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
