@@ -442,6 +442,41 @@ async fn refresh_store_profiles() -> CmdResult<()> {
     Ok(())
 }
 
+pub(crate) async fn detach_profile_from_bundle(uid: &str) -> anyhow::Result<()> {
+    let Some(meta) = crate::config::bundle::load_meta().await? else {
+        return Ok(());
+    };
+    if !meta.members.iter().any(|member| member == uid) {
+        return Ok(());
+    }
+    let members = meta
+        .members
+        .iter()
+        .filter(|member| member.as_str() != uid)
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if members.len() < crate::config::bundle::MIN_MEMBERS {
+        anyhow::bail!(
+            "cannot remove {uid}: the Profile Bundle would have fewer than {} members",
+            crate::config::bundle::MIN_MEMBERS
+        );
+    }
+    let profiles = crate::config::Config::profiles().await.latest_arc();
+    if profiles.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID) {
+        crate::cmd::bundle::set_bundle_members(members)
+            .await
+            .map_err(|error| anyhow::anyhow!("cannot detach {uid} from the active bundle: {error:?}"))?;
+    } else {
+        let smart_members = members
+            .iter()
+            .map(|member| member.as_str().into())
+            .collect::<Vec<smartstring::alias::String>>();
+        let meta = crate::config::bundle::stale_meta_after_prune(&meta, &smart_members);
+        crate::config::bundle::save_meta(&meta).await?;
+    }
+    Ok(())
+}
+
 fn find_account(view: &OpenP2PView, account_id: &str) -> CmdResult<OpenP2PAccount> {
     view.accounts
         .iter()

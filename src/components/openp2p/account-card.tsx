@@ -163,7 +163,10 @@ export const OpenP2PAccountCard = ({
               )}
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              {t('openp2p.account.managedBy', { source: sourceLabel })} ·{' '}
+              {source
+                ? t('openp2p.account.managedBy', { source: sourceLabel })
+                : t('openp2p.account.managedLocally')}{' '}
+              ·{' '}
               {account.gateway.host
                 ? `${account.gateway.host}:${account.gateway.port}`
                 : '—'}{' '}

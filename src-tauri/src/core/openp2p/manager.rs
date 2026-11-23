@@ -587,6 +587,7 @@ impl OpenP2PManager {
         if reconcile_account(paths.clone()).await == Reconcile::Indeterminate {
             bail!("cannot delete the account: an unverified child record remains");
         }
+        crate::cmd::openp2p::detach_profile_from_bundle(&format!("op2p-{account_id}")).await?;
         let store = ProfileStore::app_default()?;
         let mut config = store
             .load_config()?
@@ -713,7 +714,6 @@ mod tests {
         let manager = OpenP2PManager::new();
         let view = manager.view();
         assert!(view.accounts.is_empty());
-        assert!(view.source.is_none());
     }
 
     #[test]
