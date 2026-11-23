@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use crate::core::openp2p::account::{self, token_present};
-use crate::core::openp2p::artifacts;
+use crate::core::openp2p::profile_render;
 use crate::core::openp2p::schema::{self, OpenP2PConfig};
 use crate::utils::dirs;
 
@@ -130,7 +130,8 @@ impl ProfileStore {
             let uid = format!("op2p-{}", account.id);
             let file = format!("{uid}.yaml");
             let path = self.profile_path(&uid);
-            let Some(yaml) = artifacts::render_account_profile_with(config, &account.id, &token_ok, &key_ok)? else {
+            let Some(yaml) = profile_render::render_account_profile_with(config, &account.id, &token_ok, &key_ok)?
+            else {
                 continue;
             };
             let expected_sha = sha256(yaml.as_bytes());
@@ -271,20 +272,46 @@ impl ProfileStore {
     }
 }
 
-/// Bridge used while the old overlay is still authoritative: import the
-/// current legacy config into the app-level store and project profiles/items.
-/// This keeps account commands consistent during migration.
-pub async fn sync_store_from_legacy() -> Result<bool> {
-    let store = ProfileStore::app_default()?;
-    let Some(loaded) = artifacts::load_current().await? else {
-        return Ok(false);
-    };
-    if schema::has_errors(&loaded.issues) {
-        bail!("openp2p legacy config has validation issues");
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ImportMetadata {
+    pub kind: std::string::String,
+    #[serde(default)]
+    pub name: Option<std::string::String>,
+    #[serde(default)]
+    pub version: Option<u32>,
+    #[serde(default)]
+    pub applied_at: u64,
+    #[serde(default)]
+    pub contains_mihomo: bool,
+    #[serde(default)]
+    pub self_contained: bool,
+}
+
+impl ProfileStore {
+    pub fn import_metadata_path(&self) -> PathBuf {
+        self.openp2p_dir().join("import.yaml")
     }
-    store.save_config(&loaded.config)?;
-    store.project_live(&loaded.config).await?;
-    Ok(true)
+
+    pub fn load_import_metadata(&self) -> Result<Option<ImportMetadata>> {
+        let path = self.import_metadata_path();
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).with_context(|| format!("read {}", path.display())),
+        };
+        Ok(Some(
+            serde_yaml_ng::from_str(&raw).with_context(|| format!("parse {}", path.display()))?,
+        ))
+    }
+
+    pub fn save_import_metadata(&self, metadata: &ImportMetadata) -> Result<()> {
+        let mut metadata = metadata.clone();
+        if metadata.applied_at == 0 {
+            metadata.applied_at = now_secs();
+        }
+        let yaml = serde_yaml_ng::to_string(&metadata)?;
+        write_private(&self.import_metadata_path(), yaml.as_bytes())
+    }
 }
 
 fn now_secs() -> u64 {
@@ -355,6 +382,37 @@ mod tests {
         let second = store.project(&config, &mut profiles).expect("project again");
         assert_eq!(second.files.written, Vec::<String>::new());
         assert!(!second.items_changed);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn import_metadata_round_trips_without_secrets() {
+        let root = root();
+        let store = ProfileStore::at(root.clone());
+        let metadata = super::ImportMetadata {
+            kind: "local".into(),
+            name: None,
+            version: Some(3),
+            applied_at: 7,
+            contains_mihomo: true,
+            self_contained: false,
+        };
+        store.save_import_metadata(&metadata).expect("save");
+        let loaded = store.load_import_metadata().expect("load").expect("metadata");
+        assert_eq!(loaded.kind, "local");
+        assert_eq!(loaded.version, Some(3));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(
+                std::fs::metadata(store.import_metadata_path())
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 

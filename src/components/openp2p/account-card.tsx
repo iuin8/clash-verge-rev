@@ -1,5 +1,5 @@
 import {
-  DeleteOutlineRounded,
+  DnsOutlined,
   FolderOpenOutlined,
   KeyOutlined,
   PlayArrowRounded,
@@ -18,11 +18,10 @@ import {
 } from '@mui/material'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 
-import { BaseDialog } from '@/components/base'
-import type { OpenP2PAccount_Serialize as OpenP2PAccount } from '@/services/bindings'
+import type { OpenP2pAccount, OpenP2pSource } from '@/services/cmds'
 import {
-  deleteOpenP2pAccount,
   openOpenP2pLogDir,
   restartOpenP2pAccount,
   startOpenP2pAccount,
@@ -32,12 +31,15 @@ import { mutate } from '@/services/mutate'
 import { revalidateQuery } from '@/services/query-client'
 import type { TranslationKey } from '@/types/generated/i18n-keys'
 
+import { OpenP2PDetail } from './detail'
+import { translateOpenP2pErrorText } from './errors'
 import { OpenP2PKeyDialog } from './key-dialog'
 import {
   OpenP2PKeyBadge,
   OpenP2PListenBadge,
   OpenP2PLoginBadge,
   OpenP2PPhaseBadge,
+  OpenP2PProfileBadge,
   OpenP2PTcpBadge,
   OpenP2PTokenBadge,
 } from './status-badges'
@@ -54,49 +56,27 @@ const RUNNING_PHASES = new Set([
 
 const WARNING_PHASES = new Set(['degraded', 'backoff', 'tokenMissing'])
 
-const Detail = ({
-  label,
-  value,
-}: {
-  label: TranslationKey
-  value: string | number
-}) => {
-  const { t } = useTranslation()
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography variant="caption" color="text.secondary">
-        {t(label)}
-      </Typography>
-      <Typography
-        variant="body2"
-        sx={{
-          fontFamily: 'monospace',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-        title={String(value)}
-      >
-        {value === '' ? '—' : value}
-      </Typography>
-    </Box>
-  )
-}
-
 export const OpenP2PAccountCard = ({
   account,
+  source,
 }: {
-  account: OpenP2PAccount
+  account: OpenP2pAccount
+  source: OpenP2pSource | null
 }) => {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [tokenOpen, setTokenOpen] = useState(false)
   const [keyOpen, setKeyOpen] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const running = RUNNING_PHASES.has(account.phase)
   const hasKeyNode = account.keyRefs.length > 0
+  const profileStatus = account.profileStatus ?? 'unknown'
+  const sourceLabel = source
+    ? (source.name ??
+      t(`openp2p.page.source.kind.${source.kind}` as TranslationKey))
+    : t('openp2p.account.managedLocally')
 
   const runAction = async (
     name: string,
@@ -123,21 +103,32 @@ export const OpenP2PAccountCard = ({
     }
   }
 
-  const handleDelete = async () => {
-    const deleted = await runAction('delete', () =>
-      deleteOpenP2pAccount(account.id),
-    )
-    if (deleted) setDeleteOpen(false)
-  }
-
+  const canRun =
+    account.enabled &&
+    account.tokenPresent &&
+    profileStatus !== 'needsKey' &&
+    profileStatus !== 'error'
   const actionTitle = !account.enabled
     ? t('openp2p.account.disabled')
     : !account.tokenPresent
       ? t('openp2p.account.tokenMissing')
-      : undefined
+      : profileStatus === 'needsKey'
+        ? t('openp2p.account.credentials.keyRequired')
+        : profileStatus === 'error'
+          ? t('openp2p.account.credentials.profileError')
+          : undefined
+
+  const lastError = account.lastError
+    ? translateOpenP2pErrorText(account.lastError, t)
+    : null
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+    <Paper
+      component="section"
+      aria-label={`${account.label} (${account.id})`}
+      variant="outlined"
+      sx={{ p: 2, borderRadius: 2 }}
+    >
       <Stack spacing={1.5}>
         <Stack
           direction="row"
@@ -172,6 +163,7 @@ export const OpenP2PAccountCard = ({
               )}
             </Stack>
             <Typography variant="caption" color="text.secondary">
+              {t('openp2p.account.managedBy', { source: sourceLabel })} ·{' '}
               {account.gateway.host
                 ? `${account.gateway.host}:${account.gateway.port}`
                 : '—'}{' '}
@@ -197,12 +189,12 @@ export const OpenP2PAccountCard = ({
             display: 'grid',
             gridTemplateColumns: {
               xs: 'repeat(2, minmax(0, 1fr))',
-              md: 'repeat(4, minmax(0, 1fr))',
+              md: 'repeat(5, minmax(0, 1fr))',
             },
             gap: 1,
           }}
         >
-          <Detail
+          <OpenP2PDetail
             label="openp2p.account.gateway"
             value={
               account.gateway.host
@@ -210,12 +202,20 @@ export const OpenP2PAccountCard = ({
                 : ''
             }
           />
-          <Detail label="openp2p.account.node" value={account.node} />
-          <Detail
+          <OpenP2PDetail label="openp2p.account.node" value={account.node} />
+          <OpenP2PDetail
             label="openp2p.account.publicPort"
             value={account.publicIpPort}
           />
-          <Detail label="openp2p.account.interface" value={account.interface} />
+          <OpenP2PDetail
+            label="openp2p.account.interface"
+            value={account.interface}
+          />
+          <OpenP2PDetail
+            label="openp2p.account.routes"
+            value={account.routeCount ?? ''}
+            mono={false}
+          />
         </Box>
 
         <Stack
@@ -227,6 +227,7 @@ export const OpenP2PAccountCard = ({
             state={account.checks.login.state}
             detail={account.checks.login.detail}
           />
+          <OpenP2PProfileBadge status={profileStatus} />
           <OpenP2PTokenBadge present={account.tokenPresent} />
           <OpenP2PKeyBadge present={account.keyPresent} hasNode={hasKeyNode} />
           {account.restartCount > 0 && (
@@ -240,7 +241,47 @@ export const OpenP2PAccountCard = ({
           )}
         </Stack>
 
-        {account.lastError && (
+        {profileStatus === 'needsToken' && (
+          <Alert
+            severity="warning"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => setTokenOpen(true)}
+              >
+                {t('openp2p.account.actions.token')}
+              </Button>
+            }
+          >
+            {t('openp2p.account.credentials.tokenRequired')}
+          </Alert>
+        )}
+
+        {profileStatus === 'needsKey' && (
+          <Alert
+            severity="warning"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => setKeyOpen(true)}
+              >
+                {t('openp2p.account.actions.key')}
+              </Button>
+            }
+          >
+            {t('openp2p.account.credentials.keyRequired')}
+          </Alert>
+        )}
+
+        {profileStatus === 'error' && (
+          <Alert severity="error">
+            {t('openp2p.account.credentials.profileError')}
+          </Alert>
+        )}
+
+        {lastError && (
           <Alert
             severity={WARNING_PHASES.has(account.phase) ? 'warning' : 'error'}
           >
@@ -248,7 +289,7 @@ export const OpenP2PAccountCard = ({
               variant="body2"
               sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
             >
-              {account.lastError}
+              {lastError}
             </Typography>
           </Alert>
         )}
@@ -324,9 +365,7 @@ export const OpenP2PAccountCard = ({
             size="small"
             variant="contained"
             startIcon={<PlayArrowRounded />}
-            disabled={
-              busy || running || !account.enabled || !account.tokenPresent
-            }
+            disabled={busy || running || !canRun}
             title={actionTitle}
             onClick={() =>
               void runAction('start', () => startOpenP2pAccount(account.id))
@@ -349,9 +388,7 @@ export const OpenP2PAccountCard = ({
             size="small"
             variant="outlined"
             startIcon={<RefreshRounded />}
-            disabled={
-              busy || !running || !account.enabled || !account.tokenPresent
-            }
+            disabled={busy || !running || !canRun}
             title={actionTitle}
             onClick={() =>
               void runAction('restart', () => restartOpenP2pAccount(account.id))
@@ -362,13 +399,11 @@ export const OpenP2PAccountCard = ({
           <Button
             size="small"
             variant="outlined"
-            startIcon={<FolderOpenOutlined />}
+            startIcon={<DnsOutlined />}
             disabled={busy}
-            onClick={() =>
-              void runAction('logs', () => openOpenP2pLogDir(account.id), false)
-            }
+            onClick={() => navigate('/profile')}
           >
-            {t('openp2p.account.actions.logs')}
+            {t('openp2p.account.openInProfiles')}
           </Button>
           <Button
             size="small"
@@ -392,12 +427,13 @@ export const OpenP2PAccountCard = ({
           <Button
             size="small"
             variant="outlined"
-            color="error"
-            startIcon={<DeleteOutlineRounded />}
+            startIcon={<FolderOpenOutlined />}
             disabled={busy}
-            onClick={() => setDeleteOpen(true)}
+            onClick={() =>
+              void runAction('logs', () => openOpenP2pLogDir(account.id), false)
+            }
           >
-            {t('openp2p.account.actions.delete')}
+            {t('openp2p.account.actions.logs')}
           </Button>
         </Stack>
       </Stack>
@@ -411,24 +447,6 @@ export const OpenP2PAccountCard = ({
       {keyOpen && (
         <OpenP2PKeyDialog account={account} onClose={() => setKeyOpen(false)} />
       )}
-
-      <BaseDialog
-        open={deleteOpen}
-        title={t('openp2p.account.deleteConfirm.title')}
-        okBtn={t('openp2p.account.deleteConfirm.confirm')}
-        cancelBtn={t('shared.actions.cancel')}
-        loading={busy}
-        disableCancel={busy}
-        onOk={handleDelete}
-        onCancel={() => setDeleteOpen(false)}
-        onClose={busy ? undefined : () => setDeleteOpen(false)}
-      >
-        <Typography variant="body2">
-          {t('openp2p.account.deleteConfirm.message', {
-            label: account.label,
-          })}
-        </Typography>
-      </BaseDialog>
     </Paper>
   )
 }

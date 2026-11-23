@@ -338,7 +338,6 @@ export interface TranslationResources {
     openp2p: {
       account: {
         actions: {
-          delete: string
           key: string
           logs: string
           restart: string
@@ -359,10 +358,10 @@ export interface TranslationResources {
           tcpReachable: string
           tcpUnreachable: string
         }
-        deleteConfirm: {
-          confirm: string
-          message: string
-          title: string
+        credentials: {
+          keyRequired: string
+          profileError: string
+          tokenRequired: string
         }
         disabled: string
         gateway: string
@@ -370,7 +369,10 @@ export interface TranslationResources {
         keyMissing: string
         keyNoNode: string
         keySaved: string
+        managedBy: string
+        managedLocally: string
         node: string
+        openInProfiles: string
         phase: {
           authFailed: string
           backoff: string
@@ -384,42 +386,31 @@ export interface TranslationResources {
           stopping: string
           tokenMissing: string
         }
+        profileStatus: {
+          error: string
+          needsKey: string
+          needsToken: string
+          ready: string
+          unknown: string
+        }
         publicPort: string
         restarts: string
+        routes: string
         tokenMissing: string
         tokenSaved: string
-      }
-      artifacts: {
-        applied: string
-        applyCurrent: string
-        applySuccess: string
-        description: string
-        dns: string
-        empty: string
-        error: string
-        groups: string
-        mismatchDescription: string
-        mismatchTitle: string
-        none: string
-        noProfile: string
-        notApplied: string
-        openProfiles: string
-        proxies: string
-        rules: string
-        sourceError: string
-        title: string
       }
       errors: {
         accounts: string
         accounts_missing: string
-        bundle_unsupported: string
         config_too_large: string
+        device_generation_failed: string
         dns_without_domains: string
         duplicate_account: string
         duplicate_app: string
         duplicate_port: string
         duplicate_proxy: string
         duplicate_token_ref: string
+        fetch_failed: string
         gateway_invalid: string
         health_not_in_domains: string
         host_key_invalid: string
@@ -438,42 +429,56 @@ export interface TranslationResources {
         invalid_port: string
         invalid_protocol: string
         invalid_proxy_name: string
+        invalid_ref: string
+        invalid_secret: string
         invalid_ssh_user: string
         invalid_whitelist: string
-        key_in_config: string
         key_ref_invalid: string
         networks: string
         OPENP2P_ACCOUNT_FAILED: string
         OPENP2P_ACCOUNT_NOT_FOUND: string
-        OPENP2P_APPLY_FAILED: string
-        OPENP2P_APPLY_REJECTED: string
-        OPENP2P_ARTIFACTS_FAILED: string
         OPENP2P_CONFIG_INVALID: string
+        OPENP2P_IMPORT_APPLY_FAILED: string
+        OPENP2P_IMPORT_FAILED: string
+        OPENP2P_IMPORT_FETCH_FAILED: string
+        OPENP2P_IMPORT_SOURCE_INVALID: string
+        OPENP2P_IMPORT_TOO_LARGE: string
+        OPENP2P_IMPORT_URL_INVALID: string
         OPENP2P_KEY_REF_MISMATCH: string
         OPENP2P_KEY_WRITE_FAILED: string
         OPENP2P_LOG_DIR_FAILED: string
-        OPENP2P_PROFILE_UNSUPPORTED: string
+        openp2p_missing: string
+        OPENP2P_PROFILE_SYNC_FAILED: string
         OPENP2P_TOKEN_INVALID: string
         OPENP2P_TOKEN_WRITE_FAILED: string
-        profile_missing: string
+        platform_unsupported: string
+        profile_import_required: string
         proxies: string
         proxy_account_disabled: string
         proxy_account_missing: string
         proxy_app_ambiguous: string
         proxy_app_missing: string
         schema_invalid: string
-        token_in_config: string
+        secret_conflict: string
+        source_ambiguous: string
+        source_missing: string
+        source_not_utf8: string
+        source_too_large: string
         token_ref_invalid: string
         too_many_accounts: string
         too_many_networks: string
         too_many_proxies: string
         unknown_field: string
         unsupported_version: string
+        unused_secret: string
+        url_insecure: string
+        url_invalid: string
         version: string
         x_openp2p_missing: string
         yaml_syntax: string
       }
       import: {
+        accounts: string
         actions: {
           add: string
           remove: string
@@ -489,22 +494,51 @@ export interface TranslationResources {
         confirmApply: string
         confirmRemoveMessage: string
         confirmRemoveTitle: string
-        diff: string
+        containsMihomo: string
+        credential: {
+          inline: string
+          key: string
+          missing: string
+          present: string
+          token: string
+        }
+        deviceHint: string
         emptyInput: string
         file: string
         fileReadFailed: string
+        fileSelected: string
         fileTooLarge: string
-        generated: string
+        invalidUrl: string
         issues: string
+        mihomoHint: string
+        mihomoOnly: string
+        mode: {
+          label: string
+          url: string
+          yaml: string
+        }
+        noAccounts: string
+        node: string
         noIssues: string
+        noNodes: string
         paste: string
         placeholder: string
+        policyOnly: string
         preview: string
         previewFailed: string
         previewing: string
         removeWarning: string
+        routes: string
+        selfContained: string
+        source: string
         title: string
+        url: string
+        urlHint: string
+        urlPlaceholder: string
+        urlRequired: string
+        version: string
         warnings: {
+          account_disabled: string
           key_missing: string
           token_missing: string
         }
@@ -535,6 +569,28 @@ export interface TranslationResources {
         }
         error: {
           title: string
+        }
+        source: {
+          accountCount: string
+          appliedAt: string
+          containsMihomo: string
+          kind: {
+            local: string
+            none: string
+            url: string
+          }
+          mihomoOnly: string
+          none: string
+          noneHint: string
+          policyOnly: string
+          selfContained: string
+          statusValue: {
+            applied: string
+            error: string
+            stale: string
+          }
+          title: string
+          version: string
         }
         title: string
       }

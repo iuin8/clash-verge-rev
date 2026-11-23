@@ -1,10 +1,11 @@
 pub mod account;
-pub mod artifacts;
 pub mod config;
 pub mod health;
 pub mod manager;
+pub mod portable;
 pub mod process;
 pub mod profile_items;
+pub mod profile_render;
 pub mod profile_store;
 pub mod schema;
 pub mod state;

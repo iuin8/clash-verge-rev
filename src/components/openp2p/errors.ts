@@ -29,6 +29,10 @@ export const translateOpenP2pWarning = (code: string, t: Translate) =>
     t,
   )
 
+/** Localizes backend error codes when the payload carries a bare code. */
+export const translateOpenP2pErrorText = (value: string, t: Translate) =>
+  translateCataloguedCode(`openp2p.errors.${value}` as TranslationKey, value, t)
+
 interface FailureLike {
   code?: unknown
   detail?: unknown

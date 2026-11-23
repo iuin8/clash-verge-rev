@@ -94,18 +94,39 @@ pub struct OpenP2PAccount {
     pub last_error: Option<std::string::String>,
     pub log_dir: std::string::String,
     pub restart_count: u32,
+    #[serde(default)]
+    pub route_count: u32,
+    #[serde(default)]
+    pub profile_uid: Option<std::string::String>,
+    #[serde(default)]
+    pub profile_status: OpenP2PProfileStatus,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct OpenP2PArtifacts {
+pub enum OpenP2PProfileStatus {
+    Ready,
+    NeedsToken,
+    NeedsKey,
+    Error,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenP2PSource {
+    pub kind: std::string::String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile_uid: Option<std::string::String>,
-    pub proxies: Vec<std::string::String>,
-    pub groups: Vec<std::string::String>,
-    pub enhanced: bool,
+    pub name: Option<std::string::String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<std::string::String>,
+    pub version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applied_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<std::string::String>,
+    pub contains_mihomo: bool,
+    pub self_contained: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -113,9 +134,8 @@ pub struct OpenP2PArtifacts {
 pub struct OpenP2PView {
     pub config_revision: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_profile_uid: Option<std::string::String>,
+    pub source: Option<OpenP2PSource>,
     pub accounts: Vec<OpenP2PAccount>,
-    pub artifacts: OpenP2PArtifacts,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_error: Option<std::string::String>,
 }
@@ -127,27 +147,6 @@ pub enum OpenP2PPreviewAction {
     Update,
     Unchanged,
     Remove,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenP2PAccountPreview {
-    pub id: std::string::String,
-    pub label: std::string::String,
-    pub action: OpenP2PPreviewAction,
-    pub warnings: Vec<std::string::String>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenP2PPreview {
-    pub can_apply: bool,
-    pub issues: Vec<crate::core::openp2p::schema::OpenP2PIssue>,
-    pub accounts: Vec<OpenP2PAccountPreview>,
-    pub proxies: Vec<std::string::String>,
-    pub groups: Vec<std::string::String>,
-    pub rules: Vec<std::string::String>,
-    pub dns_policy: Vec<std::string::String>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]

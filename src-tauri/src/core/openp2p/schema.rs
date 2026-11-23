@@ -3,9 +3,6 @@ use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Value;
 
-pub const GROUP_NAME: &str = "OP2P";
-pub const RULE_TARGET: &str = GROUP_NAME;
-
 #[allow(dead_code)] // wired by profile render/sync in the next slice
 pub fn account_group_name(account_id: &str) -> std::string::String {
     format!("OP2P-{account_id}")

@@ -3,10 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_yaml_ng::{Mapping, Value};
 
 use super::ArtifactSet;
-use super::schema::{
-    self, AppProtocol, GROUP_NAME, OpenP2PConfig, OpenP2PIssue, ProxySpec, RULE_TARGET, dns_policy_key,
-};
-use crate::core::openp2p::account::{key_path, relative_key_path, token_present};
+use crate::core::openp2p::account::relative_key_path;
+use crate::core::openp2p::schema::{self, AppProtocol, OpenP2PConfig, OpenP2PIssue, ProxySpec, dns_policy_key};
 
 fn resolve_app<'a>(config: &'a OpenP2PConfig, proxy: &'a ProxySpec) -> Option<&'a schema::AppSpec> {
     let account = config.account(&proxy.account)?;
@@ -20,26 +18,6 @@ fn resolve_app<'a>(config: &'a OpenP2PConfig, proxy: &'a ProxySpec) -> Option<&'
         None if tcp_apps.len() == 1 => tcp_apps.into_iter().next(),
         None => None,
     }
-}
-
-pub(super) fn build_artifacts(config: &OpenP2PConfig, require_secrets: bool) -> ArtifactSet {
-    build_artifacts_with_named(config, GROUP_NAME, require_secrets, token_present, |reference| {
-        key_path(reference).ok().is_some_and(|path| path.is_file())
-    })
-}
-
-#[cfg(test)]
-pub(super) fn build_artifacts_with<T, K>(
-    config: &OpenP2PConfig,
-    require_secrets: bool,
-    token_ok: T,
-    key_ok: K,
-) -> ArtifactSet
-where
-    T: Fn(&str) -> bool,
-    K: Fn(&str) -> bool,
-{
-    build_artifacts_with_named(config, GROUP_NAME, require_secrets, token_ok, key_ok)
 }
 
 /// Builds the nodes/rules/DNS for one account. Routes are included only when
@@ -176,10 +154,6 @@ where
     set
 }
 
-pub(super) fn network_rules(config: &OpenP2PConfig) -> Vec<std::string::String> {
-    network_rules_for(&config.networks, RULE_TARGET)
-}
-
 pub(super) fn network_rules_for(networks: &[schema::NetworkSpec], target: &str) -> Vec<std::string::String> {
     let mut udp_rules = Vec::new();
     let mut tunnel_rules = Vec::new();
@@ -207,10 +181,6 @@ pub(super) fn network_rules_for(networks: &[schema::NetworkSpec], target: &str) 
         }
     }
     udp_rules.into_iter().chain(tunnel_rules).collect()
-}
-
-pub(super) fn network_dns(config: &OpenP2PConfig) -> BTreeMap<std::string::String, Value> {
-    network_dns_for(&config.networks, RULE_TARGET)
 }
 
 pub(super) fn network_dns_for(networks: &[schema::NetworkSpec], target: &str) -> BTreeMap<std::string::String, Value> {

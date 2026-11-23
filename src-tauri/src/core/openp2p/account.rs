@@ -20,14 +20,6 @@ pub fn keys_root() -> Result<PathBuf> {
     Ok(openp2p_root()?.join("keys"))
 }
 
-pub fn artifacts_manifest_path() -> Result<PathBuf> {
-    Ok(openp2p_root()?.join("artifacts.yaml"))
-}
-
-pub fn overlay_path() -> Result<PathBuf> {
-    Ok(openp2p_root()?.join("overlay.yaml"))
-}
-
 pub fn account_paths(account_id: &str) -> Result<AccountPaths> {
     if !crate::core::openp2p::schema::valid_slug(account_id, 32) {
         bail!("invalid openp2p account id");
@@ -183,30 +175,6 @@ pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
         .parent()
         .ok_or_else(|| anyhow::anyhow!("refusing to write a path without a parent"))?;
     create_private_dir(parent)?;
-    replace_file(path, bytes, mode)
-}
-
-/// Atomic replace for profile files: never changes the permission of the profiles directory.
-pub fn atomic_write_file(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("refusing to write a path without a parent"))?;
-    std::fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
-    const DEFAULT_PROFILE_MODE: u32 = 0o644;
-    let mode = std::fs::metadata(path)
-        .map(|metadata| {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt as _;
-                metadata.permissions().mode() & 0o777
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = metadata;
-                DEFAULT_PROFILE_MODE
-            }
-        })
-        .unwrap_or(DEFAULT_PROFILE_MODE);
     replace_file(path, bytes, mode)
 }
 

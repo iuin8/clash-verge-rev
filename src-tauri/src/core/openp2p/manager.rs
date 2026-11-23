@@ -9,12 +9,11 @@ use tokio::sync::watch;
 
 use crate::core::handle::Handle;
 use crate::core::openp2p::account::{self, AccountPaths};
-use crate::core::openp2p::artifacts;
 use crate::core::openp2p::config as o2p_config;
 
 use crate::core::openp2p::process::{self, Reconcile};
 use crate::core::openp2p::profile_store::ProfileStore;
-use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig, has_errors};
+use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
 use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PView};
 use crate::singleton;
 use clash_verge_logging::{Type, logging};
@@ -170,6 +169,9 @@ impl AccountSlot {
             last_error: snapshot.last_error.clone(),
             log_dir: snapshot.log_dir.clone(),
             restart_count: snapshot.restart_count,
+            route_count: 0,
+            profile_uid: None,
+            profile_status: crate::core::openp2p::state::OpenP2PProfileStatus::Unknown,
         }
     }
 }
@@ -178,7 +180,6 @@ struct ManagerData {
     revision: u64,
     config: Arc<OpenP2PConfig>,
     config_error: Option<std::string::String>,
-    profile_uid: Option<std::string::String>,
     accounts: BTreeMap<std::string::String, Arc<AccountSlot>>,
 }
 
@@ -188,7 +189,6 @@ impl Default for ManagerData {
             revision: 0,
             config: Arc::new(OpenP2PConfig::default()),
             config_error: None,
-            profile_uid: None,
             accounts: BTreeMap::new(),
         }
     }
@@ -225,17 +225,53 @@ impl OpenP2PManager {
 
     pub fn view(&self) -> OpenP2PView {
         let data = self.data.read();
+        let source = ProfileStore::app_default().ok().and_then(|store| {
+            store
+                .load_import_metadata()
+                .ok()
+                .flatten()
+                .map(|metadata| crate::core::openp2p::state::OpenP2PSource {
+                    kind: metadata.kind,
+                    name: metadata.name,
+                    version: metadata.version,
+                    applied_at: Some(metadata.applied_at),
+                    status: Some("applied".to_owned()),
+                    contains_mihomo: metadata.contains_mihomo,
+                    self_contained: metadata.self_contained,
+                })
+        });
         let accounts: Vec<OpenP2PAccount> = data
             .config
             .accounts
             .iter()
             .filter_map(|account| data.accounts.get(&account.id).map(|slot| slot.to_view(&data.config)))
+            .map(|mut account| {
+                let id = account.id.clone();
+                account.route_count = data
+                    .config
+                    .networks
+                    .iter()
+                    .filter(|network| {
+                        network.account.as_deref() == Some(id.as_str())
+                            || (network.account.is_none() && data.config.accounts.len() == 1)
+                    })
+                    .map(|network| (network.domains.len() + network.cidrs.len()) as u32)
+                    .sum();
+                account.profile_uid = Some(format!("op2p-{id}"));
+                account.profile_status = if !account.token_present {
+                    crate::core::openp2p::state::OpenP2PProfileStatus::NeedsToken
+                } else if !account.key_present {
+                    crate::core::openp2p::state::OpenP2PProfileStatus::NeedsKey
+                } else {
+                    crate::core::openp2p::state::OpenP2PProfileStatus::Ready
+                };
+                account
+            })
             .collect();
         OpenP2PView {
             config_revision: data.revision,
-            current_profile_uid: data.profile_uid.clone(),
+            source,
             accounts,
-            artifacts: artifacts::view(data.profile_uid.as_deref()),
             config_error: data.config_error.clone(),
         }
     }
@@ -253,39 +289,9 @@ impl OpenP2PManager {
                         "failed to refresh generated openp2p profiles: {error:#}"
                     );
                 }
-                return;
             }
             Ok(None) => {}
-            Err(error) => {
-                logging!(warn, Type::Setup, "failed to read openp2p profile store: {error:#}");
-                return;
-            }
-        }
-        match artifacts::load_current().await {
-            Ok(Some(loaded)) if !has_errors(&loaded.issues) => {
-                if let Err(error) = store.save_config(&loaded.config) {
-                    logging!(warn, Type::Setup, "failed to seed openp2p profile store: {error:#}");
-                    return;
-                }
-                match store.project_live(&loaded.config).await {
-                    Ok(report) => logging!(
-                        info,
-                        Type::Setup,
-                        "seeded openp2p profile store: {} profile file(s), {} managed item change(s)",
-                        report.files.written.len(),
-                        u8::from(report.items_changed)
-                    ),
-                    Err(error) => logging!(warn, Type::Setup, "failed to project openp2p profiles: {error:#}"),
-                }
-            }
-            Ok(Some(loaded)) => logging!(
-                warn,
-                Type::Setup,
-                "legacy openp2p config has validation issues; not seeding store: {:?}",
-                loaded.issues
-            ),
-            Ok(None) => {}
-            Err(error) => logging!(warn, Type::Setup, "failed to read legacy openp2p config: {error:#}"),
+            Err(error) => logging!(warn, Type::Setup, "failed to read openp2p profile store: {error:#}"),
         }
     }
 
@@ -302,62 +308,9 @@ impl OpenP2PManager {
         }
         let _ = tokio::task::spawn_blocking(reconcile_orphans).await;
         Self::ensure_profile_store().await;
-        tokio::spawn(async {
-            for attempt in 0..8u64 {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                if Handle::global().is_exiting() {
-                    return;
-                }
-                if Self::ensure_bundle_membership().await {
-                    return;
-                }
-                logging!(
-                    warn,
-                    Type::Setup,
-                    "openp2p bundle membership retry {} failed",
-                    attempt + 1
-                );
-            }
-        });
         if let Err(error) = manager.reload_from_current().await {
             logging!(error, Type::Setup, "failed to initialize openp2p: {error:#}");
             manager.set_config_error(Some(format!("{error:#}")));
-        }
-    }
-
-    async fn ensure_bundle_membership() -> bool {
-        let profiles = crate::config::Config::profiles().await.latest_arc();
-        if profiles.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
-            return true;
-        }
-        let Ok(Some(meta)) = crate::config::bundle::load_meta().await else {
-            return true;
-        };
-        let Ok(store) = ProfileStore::app_default() else {
-            return true;
-        };
-        let Ok(managed) = store.managed_uids() else {
-            return true;
-        };
-        let missing = managed
-            .into_iter()
-            .filter(|uid| !meta.members.iter().any(|member| member.as_str() == uid))
-            .collect::<Vec<std::string::String>>();
-        if missing.is_empty() {
-            return true;
-        }
-        let mut members = meta.members.iter().map(ToString::to_string).collect::<Vec<_>>();
-        members.extend(missing);
-        match crate::cmd::bundle::set_bundle_members(members).await {
-            Ok(()) => true,
-            Err(error) => {
-                logging!(
-                    warn,
-                    Type::Setup,
-                    "failed to add openp2p profiles to the current bundle: {error:?}"
-                );
-                false
-            }
         }
     }
 
@@ -365,37 +318,10 @@ impl OpenP2PManager {
         if crate::core::handle::Handle::global().is_exiting() {
             return Ok(());
         }
-        if let Ok(store) = ProfileStore::app_default()
-            && let Ok(Some(config)) = store.load_config()
-        {
-            self.set_config(None, config, None).await;
-            return Ok(());
-        }
-        match artifacts::load_current().await {
-            Ok(Some(loaded)) => {
-                if has_errors(&loaded.issues) {
-                    let codes: Vec<&str> = loaded.issues.iter().map(|issue| issue.code.as_str()).collect();
-                    self.set_config(
-                        Some(loaded.profile_uid),
-                        OpenP2PConfig::default(),
-                        Some(format!("x-openp2p validation failed: {}", codes.join(", "))),
-                    )
-                    .await;
-                } else {
-                    self.set_config(Some(loaded.profile_uid), loaded.config, None).await;
-                }
-            }
-            Ok(None) => {
-                let profile = artifacts::current_profile_uid().await;
-                self.set_config(profile, OpenP2PConfig::default(), None).await;
-            }
-            Err(error) => {
-                let profile = artifacts::current_profile_uid().await;
-                self.set_config(profile, OpenP2PConfig::default(), Some(format!("{error:#}")))
-                    .await;
-                return Err(error);
-            }
-        }
+        let config = ProfileStore::app_default()
+            .and_then(|store| store.load_config())
+            .map(|config| config.unwrap_or_default())?;
+        self.set_config(config, None).await;
         Ok(())
     }
 
@@ -404,12 +330,7 @@ impl OpenP2PManager {
         Self::notify_changed();
     }
 
-    pub async fn set_config(
-        &self,
-        profile_uid: Option<std::string::String>,
-        config: OpenP2PConfig,
-        config_error: Option<std::string::String>,
-    ) {
+    pub async fn set_config(&self, config: OpenP2PConfig, config_error: Option<std::string::String>) {
         let config = Arc::new(config);
         let previous: BTreeMap<std::string::String, Arc<AccountSlot>> = self.data.read().accounts.clone();
         let mut accounts = BTreeMap::new();
@@ -428,7 +349,6 @@ impl OpenP2PManager {
             data.revision = REVISION.load(Ordering::Acquire);
             data.config = std::sync::Arc::clone(&config);
             data.config_error = config_error;
-            data.profile_uid = profile_uid;
             data.accounts = accounts.clone();
         }
         Self::notify_changed();
@@ -682,7 +602,7 @@ impl OpenP2PManager {
         }
         store.save_config(&config)?;
         store.project_current().await?;
-        self.set_config(None, config, None).await;
+        self.set_config(config, None).await;
 
         // Credentials and the rendered config.json must not outlive the account.
         if let Ok(token_path) = account::token_path(&account.token_ref)
@@ -793,7 +713,7 @@ mod tests {
         let manager = OpenP2PManager::new();
         let view = manager.view();
         assert!(view.accounts.is_empty());
-        assert!(!view.artifacts.enhanced);
+        assert!(view.source.is_none());
     }
 
     #[test]

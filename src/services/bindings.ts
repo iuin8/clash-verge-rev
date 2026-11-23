@@ -140,11 +140,15 @@ export const commands = {
     __TAURI_INVOKE<NetworkInterfaceView[]>('get_network_interfaces_info'),
   getOpenp2pState: () =>
     __TAURI_INVOKE<OpenP2PView_Serialize>('get_openp2p_state'),
-  previewOpenp2pConfig: (yaml: string) =>
-    __TAURI_INVOKE<OpenP2PPreview>('preview_openp2p_config', { yaml }),
-  applyOpenp2pConfig: (yaml: string) =>
-    __TAURI_INVOKE<OpenP2PApplyOutcome_Serialize>('apply_openp2p_config', {
+  previewOpenp2pImport: (yaml: string | null, url: string | null) =>
+    __TAURI_INVOKE<OpenP2PImportPreview_Serialize>('preview_openp2p_import', {
       yaml,
+      url,
+    }),
+  applyOpenp2pImport: (yaml: string | null, url: string | null) =>
+    __TAURI_INVOKE<OpenP2PApplyOutcome_Serialize>('apply_openp2p_import', {
+      yaml,
+      url,
     }),
   startOpenp2pAccount: (accountId: string) =>
     __TAURI_INVOKE<OpenP2PAccount_Serialize>('start_openp2p_account', {
@@ -179,8 +183,6 @@ export const commands = {
     }),
   openOpenp2pLogDir: (accountId: string) =>
     __TAURI_INVOKE<null>('open_openp2p_log_dir', { accountId }),
-  syncOpenp2pArtifacts: () =>
-    __TAURI_INVOKE<OpenP2PArtifacts_Serialize>('sync_openp2p_artifacts'),
   getProfiles: () => __TAURI_INVOKE<IProfiles_Serialize>('get_profiles'),
   /**  FORK: describe the reusable bundle item and its ordered members. */
   getBundleView: () =>
@@ -749,13 +751,6 @@ export type OpenP2PAccount =
   | OpenP2PAccount_Serialize
   | OpenP2PAccount_Deserialize
 
-export type OpenP2PAccountPreview = {
-  id: string
-  label: string
-  action: OpenP2PPreviewAction
-  warnings: string[]
-}
-
 export type OpenP2PAccount_Deserialize = {
   id: string
   label: string
@@ -773,6 +768,9 @@ export type OpenP2PAccount_Deserialize = {
   lastError: string | null
   logDir: string
   restartCount: number
+  routeCount?: number
+  profileUid?: string | null
+  profileStatus?: OpenP2PProfileStatus
 }
 
 export type OpenP2PAccount_Serialize = {
@@ -792,6 +790,9 @@ export type OpenP2PAccount_Serialize = {
   lastError?: string | null
   logDir: string
   restartCount: number
+  routeCount: number
+  profileUid: string | null
+  profileStatus: OpenP2PProfileStatus
 }
 
 export type OpenP2PAppCheck =
@@ -836,26 +837,6 @@ export type OpenP2PApplyOutcome_Serialize = {
   validation?: ValidationOutcome | null
 }
 
-export type OpenP2PArtifacts =
-  | OpenP2PArtifacts_Serialize
-  | OpenP2PArtifacts_Deserialize
-
-export type OpenP2PArtifacts_Deserialize = {
-  profileUid: string | null
-  proxies: string[]
-  groups: string[]
-  enhanced: boolean
-  error: string | null
-}
-
-export type OpenP2PArtifacts_Serialize = {
-  profileUid?: string | null
-  proxies: string[]
-  groups: string[]
-  enhanced: boolean
-  error?: string | null
-}
-
 export type OpenP2PCheck = OpenP2PCheck_Serialize | OpenP2PCheck_Deserialize
 
 export type OpenP2PCheckState = 'unknown' | 'pending' | 'ok' | 'failed'
@@ -887,6 +868,59 @@ export type OpenP2PGateway = {
   port: number
 }
 
+export type OpenP2PImportAccount = {
+  id: string
+  label: string
+  action: OpenP2PPreviewAction
+  token: OpenP2PSecretState
+  key: OpenP2PSecretState
+  nodes: string[]
+  routeCount: number
+  warnings: string[]
+}
+
+export type OpenP2PImportPreview =
+  | OpenP2PImportPreview_Serialize
+  | OpenP2PImportPreview_Deserialize
+
+export type OpenP2PImportPreview_Deserialize = {
+  canApply: boolean
+  issues: OpenP2PIssue[]
+  source: OpenP2PImportSource_Deserialize
+  accounts: OpenP2PImportAccount[]
+}
+
+export type OpenP2PImportPreview_Serialize = {
+  canApply: boolean
+  issues: OpenP2PIssue[]
+  source: OpenP2PImportSource_Serialize
+  accounts: OpenP2PImportAccount[]
+}
+
+export type OpenP2PImportSource =
+  | OpenP2PImportSource_Serialize
+  | OpenP2PImportSource_Deserialize
+
+export type OpenP2PImportSourceKind = 'local' | 'url'
+
+export type OpenP2PImportSource_Deserialize = {
+  kind: OpenP2PImportSourceKind
+  name: string | null
+  version: number | null
+  containsMihomo: boolean
+  /**  Every credential this document needs is carried by the document itself. */
+  selfContained: boolean
+}
+
+export type OpenP2PImportSource_Serialize = {
+  kind: OpenP2PImportSourceKind
+  name?: string | null
+  version?: number | null
+  containsMihomo: boolean
+  /**  Every credential this document needs is carried by the document itself. */
+  selfContained: boolean
+}
+
 export type OpenP2PIssue = {
   code: string
   severity: IssueSeverity
@@ -908,33 +942,57 @@ export type OpenP2PPhase =
   | 'stopping'
   | 'failed'
 
-export type OpenP2PPreview = {
-  canApply: boolean
-  issues: OpenP2PIssue[]
-  accounts: OpenP2PAccountPreview[]
-  proxies: string[]
-  groups: string[]
-  rules: string[]
-  dnsPolicy: string[]
+export type OpenP2PPreviewAction = 'add' | 'update' | 'unchanged' | 'remove'
+
+export type OpenP2PProfileStatus =
+  | 'ready'
+  | 'needsToken'
+  | 'needsKey'
+  | 'error'
+  | 'unknown'
+
+export type OpenP2PSecretState =
+  /**  Carried by this import and written on apply. */
+  | 'inline'
+  /**  Not in this import, but a credential file already exists. */
+  | 'present'
+  | 'missing'
+
+export type OpenP2PSource = OpenP2PSource_Serialize | OpenP2PSource_Deserialize
+
+export type OpenP2PSource_Deserialize = {
+  kind: string
+  name: string | null
+  version: number | null
+  appliedAt: number | null
+  status: string | null
+  containsMihomo: boolean
+  selfContained: boolean
 }
 
-export type OpenP2PPreviewAction = 'add' | 'update' | 'unchanged' | 'remove'
+export type OpenP2PSource_Serialize = {
+  kind: string
+  name?: string | null
+  version?: number | null
+  appliedAt?: number | null
+  status?: string | null
+  containsMihomo: boolean
+  selfContained: boolean
+}
 
 export type OpenP2PView = OpenP2PView_Serialize | OpenP2PView_Deserialize
 
 export type OpenP2PView_Deserialize = {
   configRevision: number
-  currentProfileUid: string | null
+  source: OpenP2PSource_Deserialize | null
   accounts: OpenP2PAccount_Deserialize[]
-  artifacts: OpenP2PArtifacts_Deserialize
   configError: string | null
 }
 
 export type OpenP2PView_Serialize = {
   configRevision: number
-  currentProfileUid?: string | null
+  source?: OpenP2PSource_Serialize | null
   accounts: OpenP2PAccount_Serialize[]
-  artifacts: OpenP2PArtifacts_Serialize
   configError?: string | null
 }
 

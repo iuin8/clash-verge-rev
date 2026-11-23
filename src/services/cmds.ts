@@ -16,10 +16,7 @@ import type {
   ProfilePatch,
   ProfileCreate,
   OpenP2PAccount_Serialize as OpenP2PAccount,
-  OpenP2PApplyOutcome_Serialize as OpenP2PApplyOutcome,
-  OpenP2PArtifacts_Serialize as OpenP2PArtifacts,
-  OpenP2PPreview,
-  OpenP2PView_Serialize as OpenP2PView,
+  OpenP2PView_Serialize as OpenP2PViewBase,
 } from './bindings'
 
 export type {
@@ -529,20 +526,268 @@ export async function checkMediaUnlockItem(name: string) {
 }
 
 // FORK: OpenP2P account manager
-export async function getOpenP2pState(): Promise<OpenP2PView> {
-  return commands.getOpenp2pState()
+type OpenP2pImportSourceKind = 'local' | 'url'
+
+export interface OpenP2pImportRequest {
+  yaml?: string
+  url?: string
 }
 
-export async function previewOpenP2pConfig(
-  yaml: string,
-): Promise<OpenP2PPreview> {
-  return commands.previewOpenp2pConfig(yaml)
+interface OpenP2pImportSource {
+  kind: OpenP2pImportSourceKind
+  name?: string
+  version?: string
+  containsMihomo: boolean
+  selfContained: boolean
 }
 
-export async function applyOpenP2pConfig(
-  yaml: string,
-): Promise<OpenP2PApplyOutcome> {
-  return commands.applyOpenp2pConfig(yaml)
+export type OpenP2pCredentialState = 'inline' | 'present' | 'missing'
+
+export type OpenP2pImportAction = 'add' | 'update' | 'unchanged' | 'remove'
+
+export interface OpenP2pImportAccount {
+  id: string
+  label: string
+  action: OpenP2pImportAction
+  token: OpenP2pCredentialState
+  key: OpenP2pCredentialState
+  nodes: string[]
+  routeCount: number
+  warnings: string[]
+}
+
+interface OpenP2pImportIssue {
+  code: string
+  path?: string
+  message: string
+  severity: 'error' | 'warning' | 'info'
+}
+
+export interface OpenP2pImportPreview {
+  canApply: boolean
+  issues: OpenP2pImportIssue[]
+  source: OpenP2pImportSource
+  accounts: OpenP2pImportAccount[]
+}
+
+type OpenP2pSourceKind = 'local' | 'url' | 'none'
+
+export type OpenP2pSourceStatus = 'applied' | 'stale' | 'error'
+
+export interface OpenP2pSource {
+  kind: OpenP2pSourceKind
+  name?: string
+  version?: string
+  appliedAt?: string
+  status?: OpenP2pSourceStatus
+  containsMihomo?: boolean
+  selfContained?: boolean
+}
+
+export type OpenP2pProfileStatus =
+  | 'ready'
+  | 'needsToken'
+  | 'needsKey'
+  | 'error'
+  | 'unknown'
+
+export type OpenP2pAccount = Omit<
+  OpenP2PAccount,
+  'routeCount' | 'profileStatus' | 'profileUid'
+> & {
+  routeCount: number
+  profileStatus: OpenP2pProfileStatus
+  profileUid: string | null
+}
+
+export type OpenP2pState = Omit<
+  OpenP2PViewBase,
+  'accounts' | 'artifacts' | 'source'
+> & {
+  accounts: OpenP2pAccount[]
+  source: OpenP2pSource | null
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const stringOrUndefined = (value: unknown) =>
+  typeof value === 'string' && value.trim() ? value : undefined
+
+const textOrUndefined = (value: unknown) =>
+  typeof value === 'string' && value.trim()
+    ? value
+    : typeof value === 'number' && Number.isFinite(value)
+      ? String(value)
+      : undefined
+
+const finiteNumberOrUndefined = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const normalizeSourceStatus = (
+  value: unknown,
+): OpenP2pSourceStatus | undefined =>
+  value === 'applied' || value === 'stale' || value === 'error'
+    ? value
+    : undefined
+
+const normalizeSource = (value: unknown): OpenP2pSource | null => {
+  if (!isRecord(value)) return null
+  if (value.kind !== 'local' && value.kind !== 'url') return null
+  return {
+    kind: value.kind,
+    name: stringOrUndefined(value.name),
+    version: textOrUndefined(value.version),
+    appliedAt: textOrUndefined(value.appliedAt),
+    status: normalizeSourceStatus(value.status),
+    containsMihomo:
+      typeof value.containsMihomo === 'boolean'
+        ? value.containsMihomo
+        : undefined,
+    selfContained:
+      typeof value.selfContained === 'boolean'
+        ? value.selfContained
+        : undefined,
+  }
+}
+
+const normalizeProfileStatus = (
+  value: unknown,
+  account: OpenP2PAccount,
+): OpenP2pProfileStatus => {
+  if (
+    value === 'ready' ||
+    value === 'needsToken' ||
+    value === 'needsKey' ||
+    value === 'error' ||
+    value === 'unknown'
+  ) {
+    return value
+  }
+  if (!account.tokenPresent) return 'needsToken'
+  if (account.keyRefs.length > 0 && !account.keyPresent) return 'needsKey'
+  return 'ready'
+}
+
+const normalizeState = (raw: unknown): OpenP2pState => {
+  if (!isRecord(raw)) {
+    return {
+      accounts: [],
+      configError: null,
+      configRevision: 0,
+      source: null,
+    } as OpenP2pState
+  }
+  const accounts = Array.isArray(raw.accounts) ? raw.accounts : []
+  return {
+    ...(raw as Omit<OpenP2pState, 'accounts' | 'source'>),
+    source: normalizeSource(raw.source),
+    accounts: accounts.filter(isRecord).map((account) => {
+      const typed = account as unknown as OpenP2PAccount
+      return {
+        ...typed,
+        routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
+        profileUid:
+          typeof account.profileUid === 'string' ? account.profileUid : null,
+        profileStatus: normalizeProfileStatus(account.profileStatus, typed),
+      }
+    }),
+  }
+}
+
+const normalizeCredentialState = (value: unknown): OpenP2pCredentialState =>
+  value === 'inline' || value === 'present' || value === 'missing'
+    ? value
+    : 'missing'
+
+const normalizeImportAction = (value: unknown): OpenP2pImportAction =>
+  value === 'add' ||
+  value === 'update' ||
+  value === 'unchanged' ||
+  value === 'remove'
+    ? value
+    : 'unchanged'
+
+const normalizeImportIssueSeverity = (
+  value: unknown,
+): OpenP2pImportIssue['severity'] =>
+  value === 'warning' || value === 'info' ? value : 'error'
+
+const normalizeImportPreview = (raw: unknown): OpenP2pImportPreview => {
+  const record = isRecord(raw) ? raw : {}
+  const source = isRecord(record.source) ? record.source : {}
+  const accounts = Array.isArray(record.accounts) ? record.accounts : []
+  const issues = Array.isArray(record.issues) ? record.issues : []
+  return {
+    canApply: record.canApply === true,
+    source: {
+      kind: source.kind === 'url' ? 'url' : 'local',
+      name: stringOrUndefined(source.name),
+      version: textOrUndefined(source.version),
+      containsMihomo: source.containsMihomo === true,
+      selfContained: source.selfContained === true,
+    },
+    accounts: accounts.filter(isRecord).map((account) => {
+      const id = stringOrUndefined(account.id) ?? ''
+      const nodes = Array.isArray(account.nodes) ? account.nodes : []
+      const warnings = Array.isArray(account.warnings) ? account.warnings : []
+      return {
+        id,
+        label: stringOrUndefined(account.label) ?? id,
+        action: normalizeImportAction(account.action),
+        token: normalizeCredentialState(account.token),
+        key: normalizeCredentialState(account.key),
+        nodes: nodes.filter((node): node is string => typeof node === 'string'),
+        routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
+        warnings: warnings.filter(
+          (warning): warning is string => typeof warning === 'string',
+        ),
+      }
+    }),
+    issues: issues.filter(isRecord).map((issue) => ({
+      code: stringOrUndefined(issue.code) ?? 'unknown',
+      path: stringOrUndefined(issue.path),
+      message: stringOrUndefined(issue.message) ?? '',
+      severity: normalizeImportIssueSeverity(issue.severity),
+    })),
+  }
+}
+
+type OpenP2pImportCommand = (
+  yaml: string | null,
+  url: string | null,
+) => Promise<unknown>
+
+interface OpenP2pImportCommands {
+  previewOpenp2pImport: OpenP2pImportCommand
+  applyOpenp2pImport: OpenP2pImportCommand
+}
+
+// These commands join the Specta-generated bindings with the backend import
+// contract. The cast localizes the gap until that regeneration lands.
+const openP2pImportCommands = commands as unknown as OpenP2pImportCommands
+
+const importArgs = (request: OpenP2pImportRequest) =>
+  [request.yaml ?? null, request.url ?? null] as const
+
+export async function getOpenP2pState(): Promise<OpenP2pState> {
+  return normalizeState(await commands.getOpenp2pState())
+}
+
+export async function previewOpenP2pImport(
+  request: OpenP2pImportRequest,
+): Promise<OpenP2pImportPreview> {
+  const [yaml, url] = importArgs(request)
+  return normalizeImportPreview(
+    await openP2pImportCommands.previewOpenp2pImport(yaml, url),
+  )
+}
+
+export async function applyOpenP2pImport(
+  request: OpenP2pImportRequest,
+): Promise<unknown> {
+  const [yaml, url] = importArgs(request)
+  return openP2pImportCommands.applyOpenp2pImport(yaml, url)
 }
 
 export async function startOpenP2pAccount(
@@ -578,16 +823,6 @@ export async function saveOpenP2pKey(
   return commands.saveOpenp2pKey(accountId, privateKeyRef, privateKey)
 }
 
-export async function deleteOpenP2pAccount(
-  accountId: string,
-): Promise<OpenP2PView> {
-  return commands.deleteOpenp2pAccount(accountId)
-}
-
 export async function openOpenP2pLogDir(accountId: string) {
   return commands.openOpenp2pLogDir(accountId)
-}
-
-export async function syncOpenP2pArtifacts(): Promise<OpenP2PArtifacts> {
-  return commands.syncOpenp2pArtifacts()
 }

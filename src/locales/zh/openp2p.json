@@ -2,30 +2,68 @@
   "page": {
     "title": "OpenP2P",
     "actions": {
-      "import": "导入配置",
+      "import": "导入 YAML",
       "refresh": "刷新"
     },
     "empty": {
       "title": "暂无 OpenP2P 账号",
-      "description": "导入 OpenP2P 配置以管理账号并生成 mihomo 产物。"
+      "description": "导入一个包含 OpenP2P 账号与路由的 YAML；凭据、节点和端口可写在 YAML 中，也可稍后补充；托管配置会自动生成。"
     },
     "error": {
       "title": "无法加载 OpenP2P 状态"
     },
-    "configError": "OpenP2P 配置错误"
+    "configError": "OpenP2P 配置错误",
+    "source": {
+      "title": "配置来源",
+      "none": "无导入来源",
+      "noneHint": "导入一个 YAML 文件或 URL，用一个来源管理全部账号。",
+      "kind": {
+        "local": "本地文件",
+        "url": "URL",
+        "none": "无"
+      },
+      "version": "版本",
+      "appliedAt": "应用时间",
+      "accountCount": "账号：{{count}}",
+      "statusValue": {
+        "applied": "已应用",
+        "stale": "已过期",
+        "error": "错误"
+      },
+      "containsMihomo": "包含 mihomo 配置",
+      "mihomoOnly": "仅 OpenP2P",
+      "selfContained": "包含凭据",
+      "policyOnly": "仅策略"
+    }
   },
   "account": {
     "gateway": "网关",
     "node": "节点",
     "publicPort": "公网端口",
     "interface": "网卡",
+    "routes": "路由：{{count}}",
     "restarts": "重启次数：{{value}}",
+    "managedBy": "由 {{source}} 管理",
+    "managedLocally": "本地管理",
+    "openInProfiles": "在「配置」中打开",
     "disabled": "已禁用",
     "tokenSaved": "Token 已保存",
     "tokenMissing": "Token 未设置",
     "keySaved": "SSH 密钥已保存",
     "keyMissing": "SSH 密钥未设置",
     "keyNoNode": "无 SSH 节点",
+    "profileStatus": {
+      "ready": "就绪",
+      "needsToken": "缺少 Token",
+      "needsKey": "缺少 SSH 密钥",
+      "error": "配置错误",
+      "unknown": "未知"
+    },
+    "credentials": {
+      "tokenRequired": "激活此配置前请设置 Token。",
+      "keyRequired": "激活此配置前请设置 SSH 私钥。",
+      "profileError": "生成的配置尚未就绪。"
+    },
     "phase": {
       "stopped": "已停止",
       "starting": "启动中",
@@ -56,15 +94,9 @@
       "start": "启动",
       "stop": "停止",
       "restart": "重启",
-      "delete": "删除",
       "logs": "打开日志目录",
       "token": "设置 Token",
       "key": "设置 SSH 密钥"
-    },
-    "deleteConfirm": {
-      "title": "删除账号？",
-      "message": "确定删除账号 {{label}}？删除前会先停止该账号，并移除其保存的凭据和生成的 mihomo 产物。",
-      "confirm": "删除账号"
     }
   },
   "token": {
@@ -91,10 +123,19 @@
     "saved": "SSH 私钥已保存"
   },
   "import": {
-    "title": "导入 OpenP2P 配置",
+    "title": "导入 OpenP2P YAML",
+    "mode": {
+      "label": "导入来源",
+      "yaml": "粘贴 YAML",
+      "url": "URL"
+    },
     "file": "选择 YAML 文件",
+    "fileSelected": "已选择 {{name}}",
     "paste": "配置 YAML",
-    "placeholder": "粘贴 x-openp2p 配置块；完整 profile 请在「配置」页导入。",
+    "placeholder": "粘贴含 x-openp2p 的完整 mihomo 配置，或仅含 OpenP2P 的 YAML。",
+    "url": "配置 URL",
+    "urlPlaceholder": "https://example.com/openp2p.yaml",
+    "urlHint": "应用会拉取该 URL。Token 与私钥只保存在本地凭据库。",
     "preview": "预览",
     "previewing": "校验中…",
     "apply": "应用",
@@ -103,12 +144,31 @@
     "noIssues": "没有校验问题。",
     "canApply": "配置有效，可以应用。",
     "cannotApply": "请先修复校验错误。",
-    "diff": "账号变更",
-    "generated": "生成的 mihomo 产物",
+    "source": "来源",
+    "version": "版本 {{version}}",
+    "containsMihomo": "包含 mihomo 配置",
+    "mihomoOnly": "仅 OpenP2P",
+    "selfContained": "包含凭据",
+    "policyOnly": "仅策略",
+    "accounts": "账号计划",
+    "routes": "路由：{{count}}",
+    "node": "节点 {{name}}",
+    "noNodes": "不会生成节点。",
+    "noAccounts": "本次导入没有账号。",
+    "mihomoHint": "这里只管理 OpenP2P 部分；生成配置的激活与组合在「配置」页完成。",
+    "credential": {
+      "token": "Token",
+      "key": "SSH 密钥",
+      "inline": "内联",
+      "present": "已保存",
+      "missing": "缺失"
+    },
     "removeWarning": "标记为移除的账号会在应用后停止并删除。",
     "emptyInput": "请先选择文件或粘贴配置。",
     "fileReadFailed": "无法读取所选的 YAML 文件。",
     "fileTooLarge": "所选 YAML 文件超过 1 MiB。",
+    "urlRequired": "请先输入配置 URL。",
+    "invalidUrl": "请输入有效的 HTTPS URL。",
     "applied": "OpenP2P 配置已应用",
     "applyFailed": "无法应用 OpenP2P 配置。",
     "previewFailed": "无法校验 OpenP2P 配置。",
@@ -123,28 +183,10 @@
     },
     "warnings": {
       "token_missing": "该账号尚未保存 Token。",
-      "key_missing": "该账号尚未保存 SSH 私钥。"
-    }
-  },
-  "artifacts": {
-    "title": "mihomo 产物",
-    "description": "只读展示当前 profile 生成的 OpenP2P 代理、分组、规则与 DNS 策略。",
-    "applied": "已应用",
-    "notApplied": "未应用",
-    "mismatchTitle": "产物与当前 profile 不同步",
-    "mismatchDescription": "已应用的产物与当前 profile 不一致。应用到当前 profile 可恢复 OpenP2P 节点。",
-    "applyCurrent": "应用到当前配置",
-    "applySuccess": "产物已应用到当前配置",
-    "openProfiles": "打开 Profiles",
-    "proxies": "代理",
-    "groups": "分组",
-    "rules": "规则",
-    "dns": "DNS 策略",
-    "none": "无",
-    "noProfile": "没有活动的 profile",
-    "empty": "当前 profile 没有生成的产物。",
-    "sourceError": "无法读取当前 OpenP2P 配置。",
-    "error": "产物错误"
+      "key_missing": "该账号尚未保存 SSH 私钥。",
+      "account_disabled": "该账号在 YAML 中已禁用。"
+    },
+    "deviceHint": "YAML 未提供时，将自动生成本设备节点名与本地源端口。"
   },
   "errors": {
     "config_too_large": "配置超过 1 MiB。",
@@ -152,10 +194,6 @@
     "x_openp2p_missing": "文档中没有 x-openp2p 块。",
     "unknown_field": "配置中包含未知字段。",
     "schema_invalid": "配置不符合 OpenP2P schema。",
-    "token_in_config": "配置中不允许内联 Token，请删除 token 值并改用“设置 Token”。",
-    "key_in_config": "配置中不允许内联私钥，请改用“设置 SSH 私钥”。",
-    "profile_missing": "请先选择 profile 再应用 OpenP2P 配置。",
-    "bundle_unsupported": "Profile 组合不拥有 OpenP2P 所需的独立链项。",
     "unsupported_version": "不支持该 OpenP2P 配置版本。",
     "too_many_accounts": "账号数量过多。",
     "too_many_proxies": "代理数量过多。",
@@ -198,9 +236,11 @@
     "health_not_in_domains": "健康检查主机必须被某个域名或 CIDR 覆盖。",
     "dns_without_domains": "DNS 服务器需要至少一个域名或 CIDR。",
     "OPENP2P_CONFIG_INVALID": "OpenP2P 配置无效。",
-    "OPENP2P_APPLY_REJECTED": "OpenP2P 配置未通过校验，无法应用。",
-    "OPENP2P_PROFILE_UNSUPPORTED": "当前 profile 不支持 OpenP2P 产物。",
-    "OPENP2P_APPLY_FAILED": "无法应用 OpenP2P 配置。",
+    "OPENP2P_IMPORT_FAILED": "OpenP2P 导入失败。",
+    "OPENP2P_IMPORT_URL_INVALID": "OpenP2P 导入 URL 无效。",
+    "OPENP2P_IMPORT_FETCH_FAILED": "无法拉取 OpenP2P 导入 URL。",
+    "OPENP2P_IMPORT_TOO_LARGE": "导入的 OpenP2P YAML 过大。",
+    "OPENP2P_PROFILE_SYNC_FAILED": "无法生成托管 OpenP2P 配置。",
     "OPENP2P_ACCOUNT_FAILED": "OpenP2P 账号操作失败。",
     "OPENP2P_ACCOUNT_NOT_FOUND": "找不到 OpenP2P 账号。",
     "OPENP2P_TOKEN_INVALID": "OpenP2P Token 无效。",
@@ -208,6 +248,22 @@
     "OPENP2P_KEY_REF_MISMATCH": "私钥引用不属于该账号。",
     "OPENP2P_KEY_WRITE_FAILED": "无法保存 SSH 私钥。",
     "OPENP2P_LOG_DIR_FAILED": "无法打开 OpenP2P 日志目录。",
-    "OPENP2P_ARTIFACTS_FAILED": "无法生成 OpenP2P 产物。"
+    "openp2p_missing": "文档中没有 x-openp2p 块，也没有 accounts/proxies/networks。",
+    "platform_unsupported": "此版本的 OpenP2P sidecar 仅支持 macOS。",
+    "source_ambiguous": "请只提供内联 YAML 或 URL，不要同时提供。",
+    "source_missing": "未提供 YAML 或 URL。",
+    "source_too_large": "配置超过 1 MiB。",
+    "url_insecure": "导入 URL 必须使用 HTTPS。",
+    "url_invalid": "导入 URL 无效。",
+    "fetch_failed": "无法拉取导入 URL。",
+    "source_not_utf8": "下载的文档不是有效的 UTF-8。",
+    "device_generation_failed": "无法分配本地节点或端口。",
+    "invalid_ref": "凭据引用必须是字符串。",
+    "unused_secret": "该凭据没有被引用，因此不会写入。",
+    "secret_conflict": "同一引用提供了两个不同的凭据。",
+    "invalid_secret": "凭据值无效。",
+    "profile_import_required": "请将 mihomo 部分作为普通配置单独导入。",
+    "OPENP2P_IMPORT_SOURCE_INVALID": "OpenP2P 导入来源无效。",
+    "OPENP2P_IMPORT_APPLY_FAILED": "无法应用 OpenP2P 导入。"
   }
 }
