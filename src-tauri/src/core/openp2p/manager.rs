@@ -13,6 +13,7 @@ use crate::core::openp2p::artifacts;
 use crate::core::openp2p::config as o2p_config;
 
 use crate::core::openp2p::process::{self, Reconcile};
+use crate::core::openp2p::profile_store::ProfileStore;
 use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig, has_errors};
 use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PView};
 use crate::singleton;
@@ -239,6 +240,55 @@ impl OpenP2PManager {
         }
     }
 
+    async fn ensure_profile_store() {
+        let Ok(store) = ProfileStore::app_default() else {
+            return;
+        };
+        match store.load_config() {
+            Ok(Some(config)) => {
+                if let Err(error) = store.project_live(&config).await {
+                    logging!(
+                        warn,
+                        Type::Setup,
+                        "failed to refresh generated openp2p profiles: {error:#}"
+                    );
+                }
+                return;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                logging!(warn, Type::Setup, "failed to read openp2p profile store: {error:#}");
+                return;
+            }
+        }
+        match artifacts::load_current().await {
+            Ok(Some(loaded)) if !has_errors(&loaded.issues) => {
+                if let Err(error) = store.save_config(&loaded.config) {
+                    logging!(warn, Type::Setup, "failed to seed openp2p profile store: {error:#}");
+                    return;
+                }
+                match store.project_live(&loaded.config).await {
+                    Ok(report) => logging!(
+                        info,
+                        Type::Setup,
+                        "seeded openp2p profile store: {} profile file(s), {} managed item change(s)",
+                        report.files.written.len(),
+                        u8::from(report.items_changed)
+                    ),
+                    Err(error) => logging!(warn, Type::Setup, "failed to project openp2p profiles: {error:#}"),
+                }
+            }
+            Ok(Some(loaded)) => logging!(
+                warn,
+                Type::Setup,
+                "legacy openp2p config has validation issues; not seeding store: {:?}",
+                loaded.issues
+            ),
+            Ok(None) => {}
+            Err(error) => logging!(warn, Type::Setup, "failed to read legacy openp2p config: {error:#}"),
+        }
+    }
+
     pub async fn init() {
         if INITIALIZED.swap(true, Ordering::AcqRel) {
             return;
@@ -254,6 +304,7 @@ impl OpenP2PManager {
         if let Err(error) = artifacts::seed_from_current_profile().await {
             logging!(warn, Type::Setup, "failed to import openp2p profile seed: {error:#}");
         }
+        Self::ensure_profile_store().await;
         if let Err(error) = manager.reload_from_current().await {
             logging!(error, Type::Setup, "failed to initialize openp2p: {error:#}");
             manager.set_config_error(Some(format!("{error:#}")));
@@ -262,6 +313,12 @@ impl OpenP2PManager {
 
     pub async fn reload_from_current(&self) -> Result<()> {
         if crate::core::handle::Handle::global().is_exiting() {
+            return Ok(());
+        }
+        if let Ok(store) = ProfileStore::app_default()
+            && let Ok(Some(config)) = store.load_config()
+        {
+            self.set_config(None, config, None).await;
             return Ok(());
         }
         match artifacts::load_current().await {
@@ -569,6 +626,13 @@ impl OpenP2PManager {
         artifacts::delete_account(account_id)
             .await
             .map_err(anyhow::Error::new)?;
+        if let Err(error) = crate::core::openp2p::profile_store::sync_store_from_legacy().await {
+            logging!(
+                warn,
+                Type::Network,
+                "failed to refresh openp2p profile store after delete: {error:#}"
+            );
+        }
         self.reload_from_current().await?;
 
         // Credentials and the rendered config.json must not outlive the account.

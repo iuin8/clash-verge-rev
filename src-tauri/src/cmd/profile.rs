@@ -153,6 +153,7 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
 #[specta::specta]
 pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let index: String = index.into();
+    super::bundle_save::ensure_not_managed(&index)?;
     // FORK: Profile Bundle members/bundle take the fork-only transactional path.
     if let Some(result) = super::bundle_delete::try_delete(index.clone()).await {
         return result;
@@ -506,6 +507,7 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
 #[specta::specta]
 pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) -> CmdResult {
     let index: String = index.into();
+    super::bundle_save::ensure_not_managed(&index)?;
     let mut profile: PrfItem = profile.into();
     if crate::config::bundle::is_bundle_uid(&index) {
         // The generated bundle is owned by its members; only display fields may change.

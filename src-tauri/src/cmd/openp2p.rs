@@ -89,6 +89,9 @@ pub async fn preview_openp2p_config(yaml: std::string::String) -> CmdResult<Open
 pub async fn apply_openp2p_config(yaml: std::string::String) -> CmdResult<OpenP2PApplyOutcome> {
     require_platform()?;
     let report = artifacts::apply_seed(&yaml).await.map_err(apply_failure)?;
+    crate::core::openp2p::profile_store::sync_store_from_legacy()
+        .await
+        .map_err(account_failure)?;
     OpenP2PManager::global()
         .reload_from_current()
         .await
@@ -148,6 +151,9 @@ pub async fn save_openp2p_token(
     if let Err(error) = manager.refresh_account_secrets(&account_id).await {
         tracing::warn!("openp2p account restart after token save failed: {error:#}");
     }
+    if let Err(error) = crate::core::openp2p::profile_store::sync_store_from_legacy().await {
+        tracing::warn!("openp2p profile store refresh after token save failed: {error:#}");
+    }
     if let Err(error) = manager.sync_artifacts().await {
         tracing::warn!("openp2p artifact sync after token save failed: {error:#}");
     }
@@ -176,6 +182,9 @@ pub async fn save_openp2p_key(
     }
     o2p_config::write_private_key(&private_key_ref, &private_key)
         .map_err(|error| coded_error("OPENP2P_KEY_WRITE_FAILED", format!("{error:#}")))?;
+    if let Err(error) = crate::core::openp2p::profile_store::sync_store_from_legacy().await {
+        tracing::warn!("openp2p profile store refresh after key save failed: {error:#}");
+    }
     if let Err(error) = manager.sync_artifacts().await {
         tracing::warn!("openp2p artifact sync after key save failed: {error:#}");
     }

@@ -182,6 +182,22 @@ impl ProfileStore {
         Ok(report)
     }
 
+    /// Projects the current source into the live Config draft and persists
+    /// profiles.yaml. The caller must hold/coordinate the profile write
+    /// lifecycle; this helper is used by startup migration and account commands.
+    pub async fn project_live(&self, config: &OpenP2PConfig) -> Result<ProjectReport> {
+        let store = self.clone();
+        let config = config.clone();
+        crate::config::Config::profiles()
+            .await
+            .with_data_modify(|mut profiles| async move {
+                let report = store.project(&config, &mut profiles)?;
+                profiles.save_file().await?;
+                Ok((profiles, report))
+            })
+            .await
+    }
+
     fn load_manifest(&self) -> Result<Manifest> {
         let path = self.manifest_path();
         let raw = match std::fs::read_to_string(&path) {
@@ -205,6 +221,12 @@ pub struct ProjectReport {
 }
 
 impl ProfileStore {
+    pub fn is_managed_uid(&self, uid: &str) -> bool {
+        self.load_manifest()
+            .map(|manifest| manifest.profiles.contains_key(uid))
+            .unwrap_or(false)
+    }
+
     pub fn managed_uids(&self) -> Result<Vec<std::string::String>> {
         Ok(self.load_manifest()?.profiles.keys().cloned().collect())
     }
@@ -240,6 +262,22 @@ impl ProfileStore {
         let items_changed = crate::core::openp2p::profile_items::sync_managed_items(profiles, &managed, &previous)?;
         Ok(ProjectReport { files, items_changed })
     }
+}
+
+/// Bridge used while the old overlay is still authoritative: import the
+/// current legacy config into the app-level store and project profiles/items.
+/// This keeps account commands consistent during migration.
+pub async fn sync_store_from_legacy() -> Result<bool> {
+    let store = ProfileStore::app_default()?;
+    let Some(loaded) = artifacts::load_current().await? else {
+        return Ok(false);
+    };
+    if schema::has_errors(&loaded.issues) {
+        bail!("openp2p legacy config has validation issues");
+    }
+    store.save_config(&loaded.config)?;
+    store.project_live(&loaded.config).await?;
+    Ok(true)
 }
 
 fn now_secs() -> u64 {

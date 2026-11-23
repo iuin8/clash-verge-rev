@@ -33,7 +33,18 @@ pub(crate) struct SavedBundle {
 }
 
 /// Editing the generated bundle file is rejected: members own its content.
+pub(crate) fn ensure_not_managed(index: &str) -> CmdResult<()> {
+    if crate::core::openp2p::profile_store::ProfileStore::app_default().is_ok_and(|store| store.is_managed_uid(index)) {
+        return Err(coded_error(
+            "OPENP2P_PROFILE_MANAGED",
+            "this profile is generated from an OpenP2P account; edit the account on the OpenP2P page",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_writable(index: &String) -> CmdResult<()> {
+    ensure_not_managed(index)?;
     if crate::config::bundle::is_bundle_uid(index) {
         return Err(coded_error(
             "BUNDLE_GENERATED_READ_ONLY",
