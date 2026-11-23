@@ -55,6 +55,8 @@ pub struct ParsedImport {
     pub config: OpenP2PConfig,
     pub issues: Vec<OpenP2PIssue>,
     pub has_mihomo: bool,
+    /// The mihomo part of a mixed document, without x-openp2p or credentials.
+    pub mihomo: Option<std::string::String>,
     tokens: BTreeMap<std::string::String, SecretEntry>,
     keys: BTreeMap<std::string::String, SecretEntry>,
 }
@@ -113,17 +115,24 @@ pub fn parse_import(yaml: &str, existing: Option<&OpenP2PConfig>) -> ParsedImpor
     let has_block = document.contains_key("x-openp2p");
     let is_pure =
         document.contains_key("accounts") || document.contains_key("proxies") || document.contains_key("networks");
-    let (mut seed, secrets_block, has_mihomo) = if has_block {
+    let (mut seed, secrets_block, mihomo) = if has_block {
         let Some(seed) = document.get("x-openp2p").and_then(Value::as_mapping) else {
             return ParsedImport::failed("schema_invalid", "x-openp2p", "x-openp2p must be a mapping");
         };
-        let has_mihomo = document
-            .keys()
-            .filter_map(Value::as_str)
-            .any(|key| key != "x-openp2p" && key != "x-openp2p-secrets");
-        (seed.clone(), document.get("x-openp2p-secrets").cloned(), has_mihomo)
+        let mut rest = document.clone();
+        rest.remove("x-openp2p");
+        rest.remove("x-openp2p-secrets");
+        let mihomo = if rest.is_empty() {
+            None
+        } else {
+            match serde_yaml_ng::to_string(&Value::Mapping(rest)) {
+                Ok(text) => Some(text),
+                Err(error) => return ParsedImport::failed("yaml_syntax", "", error.to_string()),
+            }
+        };
+        (seed.clone(), document.get("x-openp2p-secrets").cloned(), mihomo)
     } else if is_pure {
-        (document.clone(), document.get("x-openp2p-secrets").cloned(), false)
+        (document.clone(), document.get("x-openp2p-secrets").cloned(), None)
     } else {
         return ParsedImport::failed(
             "openp2p_missing",
@@ -166,7 +175,8 @@ pub fn parse_import(yaml: &str, existing: Option<&OpenP2PConfig>) -> ParsedImpor
     ParsedImport {
         config,
         issues,
-        has_mihomo,
+        has_mihomo: mihomo.is_some(),
+        mihomo,
         tokens,
         keys,
     }
@@ -178,6 +188,7 @@ impl ParsedImport {
             config: OpenP2PConfig::default(),
             issues: vec![OpenP2PIssue::error(code, path, message)],
             has_mihomo: false,
+            mihomo: None,
             tokens: BTreeMap::new(),
             keys: BTreeMap::new(),
         }

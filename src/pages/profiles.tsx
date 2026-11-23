@@ -1008,7 +1008,8 @@ const ProfilePage = () => {
                   }
                   itemData={item}
                   titleAdornment={
-                    item.desc?.startsWith('openp2p-managed:') ? (
+                    item.desc?.startsWith('openp2p-managed:') ||
+                    item.desc?.startsWith('openp2p-source:') ? (
                       <Chip
                         size="small"
                         label="OpenP2P"
@@ -1019,7 +1020,10 @@ const ProfilePage = () => {
                     ) : undefined
                   }
                   titleAdornmentReserve={
-                    item.desc?.startsWith('openp2p-managed:') ? 78 : 0
+                    item.desc?.startsWith('openp2p-managed:') ||
+                    item.desc?.startsWith('openp2p-source:')
+                      ? 78
+                      : 0
                   }
                   timerUpdateRevision={timerRevisions.get(item.uid!) ?? 0}
                   completedUpdateRevision={

@@ -230,9 +230,11 @@ pub struct ProjectReport {
 
 impl ProfileStore {
     pub fn is_managed_uid(&self, uid: &str) -> bool {
-        self.load_manifest()
-            .map(|manifest| manifest.profiles.contains_key(uid))
-            .unwrap_or(false)
+        uid == "op2p-source"
+            || self
+                .load_manifest()
+                .map(|manifest| manifest.profiles.contains_key(uid))
+                .unwrap_or(false)
     }
 
     pub fn managed_uids(&self) -> Result<Vec<std::string::String>> {
@@ -327,7 +329,7 @@ fn sha256(bytes: &[u8]) -> std::string::String {
     hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("refusing to write a path without a parent"))?;

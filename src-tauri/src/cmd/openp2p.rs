@@ -477,6 +477,50 @@ pub(crate) async fn detach_profile_from_bundle(uid: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
+const SOURCE_PROFILE_UID: &str = "op2p-source";
+const SOURCE_PROFILE_FILE: &str = "op2p-source.yaml";
+
+async fn materialize_mihomo_profile(yaml: &str) -> CmdResult<()> {
+    let profiles = crate::config::Config::profiles().await;
+    let yaml = yaml.to_owned();
+    profiles
+        .with_data_modify(|mut candidate| async move {
+            let dir = crate::utils::dirs::app_profiles_dir()?;
+            tokio::fs::create_dir_all(&dir).await?;
+            let path = dir.join(SOURCE_PROFILE_FILE);
+            crate::core::openp2p::profile_store::write_private(&path, yaml.as_bytes())?;
+            let now = chrono::Local::now().timestamp() as usize;
+            let items = candidate.items.get_or_insert_with(Vec::new);
+            if let Some(item) = items
+                .iter_mut()
+                .find(|item| item.uid.as_deref() == Some(SOURCE_PROFILE_UID))
+            {
+                if item.itype.as_deref() != Some("local") || item.file.as_deref() != Some(SOURCE_PROFILE_FILE) {
+                    anyhow::bail!("profile {SOURCE_PROFILE_UID} conflicts with an existing item");
+                }
+                item.name = Some("OpenP2P Source".into());
+                item.desc = Some("openp2p-source".into());
+                item.updated = Some(now);
+                item.option = None;
+            } else {
+                items.push(crate::config::PrfItem {
+                    uid: Some(SOURCE_PROFILE_UID.into()),
+                    itype: Some("local".into()),
+                    name: Some("OpenP2P Source".into()),
+                    file: Some(SOURCE_PROFILE_FILE.into()),
+                    desc: Some("openp2p-source".into()),
+                    updated: Some(now),
+                    ..crate::config::PrfItem::default()
+                });
+            }
+            candidate.save_file().await?;
+            Ok((candidate, ()))
+        })
+        .await
+        .map_err(|error| coded_error("OPENP2P_SOURCE_PROFILE_FAILED", format!("{error:#}")))?;
+    Ok(())
+}
+
 async fn refresh_active_composition() -> CmdResult<()> {
     let profiles = crate::config::Config::profiles().await.latest_arc();
     if profiles.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
@@ -576,6 +620,14 @@ pub async fn apply_openp2p_import(
             logging!(warn, Type::Config, "openp2p import rollback failed: {rollback:#}");
         }
         return Err(coded_error("OPENP2P_PROFILE_SYNC_FAILED", detail));
+    }
+    if let Some(mihomo) = parsed.mihomo.as_deref()
+        && let Err(error) = materialize_mihomo_profile(mihomo).await
+    {
+        if let Err(rollback) = transaction.rollback() {
+            logging!(warn, Type::Config, "openp2p import rollback failed: {rollback:#}");
+        }
+        return Err(error);
     }
     let metadata = ImportMetadata {
         kind: match resolved.kind {

@@ -155,7 +155,7 @@
     "node": "Node {{name}}",
     "noNodes": "No nodes will be generated.",
     "noAccounts": "No accounts in this import.",
-    "mihomoHint": "Only the OpenP2P part is managed here. Activate or combine generated profiles in Profiles.",
+    "mihomoHint": "The mihomo part is imported as a local base profile; activate it or add it to a Bundle. OpenP2P accounts remain separate managed profiles.",
     "credential": {
       "token": "Token",
       "key": "SSH key",

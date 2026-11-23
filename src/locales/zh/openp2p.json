@@ -155,7 +155,7 @@
     "node": "节点 {{name}}",
     "noNodes": "不会生成节点。",
     "noAccounts": "本次导入没有账号。",
-    "mihomoHint": "这里只管理 OpenP2P 部分；生成配置的激活与组合在「配置」页完成。",
+    "mihomoHint": "The mihomo part is imported as a local base profile; activate it or add it to a Bundle. OpenP2P accounts remain separate managed profiles.",
     "credential": {
       "token": "Token",
       "key": "SSH 密钥",

@@ -190,6 +190,11 @@ x-openp2p-secrets:
     let parsed = parse_import(&document, None);
     assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
     assert!(parsed.has_mihomo);
+    let mihomo = parsed.mihomo.as_deref().expect("mihomo part");
+    assert!(mihomo.contains("mixed-port"));
+    assert!(!mihomo.contains("x-openp2p"));
+    assert!(!mihomo.contains(TOKEN));
+    assert!(!mihomo.contains("PRIVATE KEY"));
     assert_eq!(parsed.config.accounts.len(), 1);
     assert_eq!(parsed.config.proxies.len(), 1);
     assert_eq!(parsed.config.proxies[0].name, "op2p-home");
