@@ -23,13 +23,62 @@ fn resolve_app<'a>(config: &'a OpenP2PConfig, proxy: &'a ProxySpec) -> Option<&'
 }
 
 pub(super) fn build_artifacts(config: &OpenP2PConfig, require_secrets: bool) -> ArtifactSet {
-    build_artifacts_with(config, require_secrets, token_present, |reference| {
+    build_artifacts_with_named(config, GROUP_NAME, require_secrets, token_present, |reference| {
         key_path(reference).ok().is_some_and(|path| path.is_file())
     })
 }
 
+#[cfg(test)]
 pub(super) fn build_artifacts_with<T, K>(
     config: &OpenP2PConfig,
+    require_secrets: bool,
+    token_ok: T,
+    key_ok: K,
+) -> ArtifactSet
+where
+    T: Fn(&str) -> bool,
+    K: Fn(&str) -> bool,
+{
+    build_artifacts_with_named(config, GROUP_NAME, require_secrets, token_ok, key_ok)
+}
+
+/// Builds the nodes/rules/DNS for one account. Routes are included only when
+/// they already belong to that account (or when migrating a single-account
+/// global config).
+#[allow(dead_code)] // wired by profile sync in the next slice
+pub(super) fn build_artifacts_for_account<T, K>(
+    config: &OpenP2PConfig,
+    account_id: &str,
+    require_secrets: bool,
+    token_ok: T,
+    key_ok: K,
+) -> ArtifactSet
+where
+    T: Fn(&str) -> bool,
+    K: Fn(&str) -> bool,
+{
+    if config.account(account_id).is_none() {
+        return ArtifactSet::empty();
+    }
+    let mut scoped = config.clone();
+    scoped.accounts.retain(|account| account.id == account_id);
+    scoped.proxies.retain(|proxy| proxy.account == account_id);
+    let single_legacy = config.accounts.len() == 1;
+    scoped.networks.retain(|network| {
+        network.account.as_deref() == Some(account_id) || (network.account.is_none() && single_legacy)
+    });
+    build_artifacts_with_named(
+        &scoped,
+        &crate::core::openp2p::schema::account_group_name(account_id),
+        require_secrets,
+        token_ok,
+        key_ok,
+    )
+}
+
+fn build_artifacts_with_named<T, K>(
+    config: &OpenP2PConfig,
+    group_name: &str,
     require_secrets: bool,
     token_ok: T,
     key_ok: K,
@@ -107,7 +156,7 @@ where
 
     if !set.proxies.is_empty() {
         let mut group = Mapping::new();
-        group.insert("name".into(), Value::from(GROUP_NAME));
+        group.insert("name".into(), Value::from(group_name));
         group.insert("type".into(), Value::from("fallback"));
         group.insert(
             "proxies".into(),
@@ -120,24 +169,28 @@ where
         group.insert("empty-fallback".into(), Value::from("REJECT"));
         set.group = Some(Value::Mapping(group));
 
-        set.rule_texts = network_rules(config);
+        set.rule_texts = network_rules_for(&config.networks, group_name);
         set.rules = set.rule_texts.iter().map(|rule| Value::from(rule.as_str())).collect();
-        set.dns = network_dns(config);
+        set.dns = network_dns_for(&config.networks, group_name);
     }
     set
 }
 
 pub(super) fn network_rules(config: &OpenP2PConfig) -> Vec<std::string::String> {
+    network_rules_for(&config.networks, RULE_TARGET)
+}
+
+pub(super) fn network_rules_for(networks: &[schema::NetworkSpec], target: &str) -> Vec<std::string::String> {
     let mut udp_rules = Vec::new();
     let mut tunnel_rules = Vec::new();
     let mut seen_rules = BTreeSet::new();
-    for network in &config.networks {
+    for network in networks {
         for domain in &network.domains {
             let udp = format!("AND,((NETWORK,UDP),(DOMAIN-SUFFIX,{domain})),REJECT");
             if seen_rules.insert(udp.clone()) {
                 udp_rules.push(udp);
             }
-            let rule = format!("DOMAIN-SUFFIX,{domain},{RULE_TARGET}");
+            let rule = format!("DOMAIN-SUFFIX,{domain},{target}");
             if seen_rules.insert(rule.clone()) {
                 tunnel_rules.push(rule);
             }
@@ -147,7 +200,7 @@ pub(super) fn network_rules(config: &OpenP2PConfig) -> Vec<std::string::String> 
             if seen_rules.insert(udp.clone()) {
                 udp_rules.push(udp);
             }
-            let rule = format!("IP-CIDR,{cidr},{RULE_TARGET},no-resolve");
+            let rule = format!("IP-CIDR,{cidr},{target},no-resolve");
             if seen_rules.insert(rule.clone()) {
                 tunnel_rules.push(rule);
             }
@@ -157,8 +210,12 @@ pub(super) fn network_rules(config: &OpenP2PConfig) -> Vec<std::string::String> 
 }
 
 pub(super) fn network_dns(config: &OpenP2PConfig) -> BTreeMap<std::string::String, Value> {
+    network_dns_for(&config.networks, RULE_TARGET)
+}
+
+pub(super) fn network_dns_for(networks: &[schema::NetworkSpec], target: &str) -> BTreeMap<std::string::String, Value> {
     let mut dns_entries: BTreeMap<std::string::String, Vec<std::string::String>> = BTreeMap::new();
-    for network in &config.networks {
+    for network in networks {
         if network.dns.is_empty() {
             continue;
         }
@@ -166,7 +223,7 @@ pub(super) fn network_dns(config: &OpenP2PConfig) -> BTreeMap<std::string::Strin
             let key = dns_policy_key(domain);
             let servers = dns_entries.entry(key).or_default();
             for server in &network.dns {
-                let value = format!("tcp://{server}#{RULE_TARGET}");
+                let value = format!("tcp://{server}#{target}");
                 if !servers.contains(&value) {
                     servers.push(value);
                 }

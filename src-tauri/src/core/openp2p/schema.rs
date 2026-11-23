@@ -6,6 +6,11 @@ use serde_yaml_ng::Value;
 pub const GROUP_NAME: &str = "OP2P";
 pub const RULE_TARGET: &str = GROUP_NAME;
 
+#[allow(dead_code)] // wired by profile render/sync in the next slice
+pub fn account_group_name(account_id: &str) -> std::string::String {
+    format!("OP2P-{account_id}")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum IssueSeverity {
@@ -205,6 +210,10 @@ pub struct HealthSpec {
 #[serde(default, deny_unknown_fields)]
 pub struct NetworkSpec {
     pub name: Option<std::string::String>,
+    /// Account that owns this route. None is legacy/global and is allowed only
+    /// for migration from the single-account overlay format.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<std::string::String>,
     pub domains: Vec<std::string::String>,
     pub cidrs: Vec<std::string::String>,
     pub dns: Vec<std::string::String>,

@@ -94,6 +94,15 @@ fn deep_merge_mapping(base: &mut Mapping, supp: &Mapping, ctx: &mut MergeContext
 }
 
 fn deep_merge_field(base: &mut Mapping, supp: &Mapping, field: &str, ctx: &mut MergeContext) {
+    // DNS is special: a supplementary profile may be the only one that defines
+    // dns (a generated OpenP2P profile). Dropping it makes the generated
+    // nameserver-policy silently disappear in a bundle whose base has no dns.
+    if field == "dns" && base.get(field).is_none() {
+        if let Some(Value::Mapping(s)) = supp.get(field) {
+            base.insert(Value::from(field), Value::Mapping(s.clone()));
+        }
+        return;
+    }
     if let (Some(Value::Mapping(b)), Some(Value::Mapping(s))) = (base.get_mut(field), supp.get(field)) {
         deep_merge_mapping(b, s, ctx);
     }

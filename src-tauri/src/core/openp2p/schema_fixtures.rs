@@ -50,6 +50,7 @@ pub(crate) fn sample_config() -> OpenP2PConfig {
         }],
         networks: vec![NetworkSpec {
             name: Some("corp".into()),
+            account: Some("home".into()),
             domains: vec!["corp.example".into()],
             cidrs: vec!["10.0.0.0/8".into()],
             dns: vec!["10.0.0.53:53".into()],

@@ -21,6 +21,22 @@ fn dns_nested_fields_are_deep_merged() {
 }
 
 #[test]
+fn supplementary_dns_policy_survives_a_primary_without_dns() {
+    let primary = mapping("proxies:\n  - name: p\n    type: ss");
+    let supp = mapping(
+        "dns:\n  nameserver-policy:\n    '+.corp.example':\n      - tcp://10.0.0.53:53#OP2P-home\nproxies:\n  - name: home\n    type: ssh",
+    );
+    let (result, _conflicts) = multi_profile_merge(&[primary, supp], &["primary", "openp2p"]);
+    let policy = result
+        .get("dns")
+        .and_then(|dns| dns.get("nameserver-policy"))
+        .and_then(|policy| policy.get("+.corp.example"))
+        .and_then(|servers| servers.as_sequence())
+        .expect("supplementary DNS policy must survive");
+    assert_eq!(policy[0].as_str(), Some("tcp://10.0.0.53:53#OP2P-home"));
+}
+
+#[test]
 fn duplicate_proxy_name_with_different_definition_is_renamed_not_dropped() {
     let primary = mapping("proxies:\n  - name: dup\n    type: ss\n    server: a.com");
     let supp = mapping(

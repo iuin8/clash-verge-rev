@@ -37,6 +37,107 @@ fn deleting_the_last_account_clears_networks_and_proxies() {
 }
 
 #[test]
+fn two_accounts_render_independent_stable_profiles() {
+    let mut config = sample_config();
+    let mut office = config.accounts[0].clone();
+    office.id = "office".into();
+    office.label = Some("Office".into());
+    office.node = "office-node".into();
+    office.token_ref = "o2p/office".into();
+    office.public_ip_port = 2066;
+    office.apps[0].src_port = 21002;
+    config.accounts.push(office);
+    let mut office_proxy = config.proxies[0].clone();
+    office_proxy.name = "op2p-office".into();
+    office_proxy.account = "office".into();
+    office_proxy.private_key_ref = "o2p/office/id_ed25519".into();
+    config.proxies.push(office_proxy);
+    let mut office_network = config.networks[0].clone();
+    office_network.account = Some("office".into());
+    office_network.domains = vec!["office.example".into()];
+    office_network.dns = vec!["10.0.0.54:53".into()];
+    office_network.health = Some(schema::HealthSpec {
+        host: "health.office.example".into(),
+        port: Some(80),
+    });
+    config.networks.push(office_network);
+
+    let render = |id: &str| {
+        render_account_profile_with(&config, id, |_| true, |_| true)
+            .expect("render")
+            .expect("account")
+    };
+    let home = render("home");
+    let office = render("office");
+    assert_eq!(home, render("home"));
+    assert!(home.contains("OP2P-home"));
+    assert!(home.contains("op2p-home"));
+    assert!(!home.contains("op2p-office"));
+    assert!(!home.contains("office.example"));
+    assert!(!home.contains("MATCH"));
+    assert!(!home.contains("PRIVATE KEY"));
+    assert!(!home.contains("token"));
+    assert!(office.contains("OP2P-office"));
+    assert!(office.contains("op2p-office"));
+    assert!(!office.contains("op2p-home"));
+    assert!(!office.contains("corp.example"), "{office}");
+    assert!(office.contains("office.example,OP2P-office"));
+    assert!(office.contains("10.0.0.54:53#OP2P-office"));
+    let parsed = serde_yaml_ng::from_str::<Mapping>(office.split_once('\n').expect("header").1).expect("yaml");
+    assert!(parsed.get("proxies").and_then(Value::as_sequence).is_some());
+    assert!(parsed.get("rules").and_then(Value::as_sequence).is_some());
+}
+
+#[test]
+fn an_account_profile_merges_with_an_airport_bundle() {
+    let profile = render_account_profile_with(&sample_config(), "home", |_| true, |_| true)
+        .expect("render")
+        .expect("home");
+    let account =
+        serde_yaml_ng::from_str::<Mapping>(profile.split_once('\n').expect("header").1).expect("account yaml");
+    let airport = serde_yaml_ng::from_str::<Mapping>(
+        "proxies:\n  - {name: airport, type: ss, server: a.example, port: 443}\nproxy-groups:\n  - {name: PROXY, type: select, proxies: [airport]}\nrules:\n  - MATCH,PROXY\ndns:\n  enable: true\n  nameserver: [1.1.1.1]\n",
+    )
+    .expect("airport yaml");
+    let (merged, conflicts) =
+        crate::enhance::multi_merge::multi_profile_merge(&[airport, account], &["airport", "OpenP2P home"]);
+    let proxies = merged.get("proxies").and_then(Value::as_sequence).expect("proxies");
+    assert!(
+        proxies
+            .iter()
+            .any(|p| p.get("name").and_then(Value::as_str) == Some("airport"))
+    );
+    assert!(
+        proxies
+            .iter()
+            .any(|p| p.get("name").and_then(Value::as_str) == Some("op2p-home"))
+    );
+    let groups = merged.get("proxy-groups").and_then(Value::as_sequence).expect("groups");
+    assert!(
+        groups
+            .iter()
+            .any(|g| g.get("name").and_then(Value::as_str) == Some("OP2P-home"))
+    );
+    let rules = merged.get("rules").and_then(Value::as_sequence).expect("rules");
+    assert!(
+        rules
+            .iter()
+            .any(|r| r.as_str().is_some_and(|r| r.ends_with(",OP2P-home")))
+    );
+    let dns = merged.get("dns").and_then(Value::as_mapping).expect("dns");
+    assert!(
+        dns.get("nameserver-policy")
+            .and_then(|p| p.get("+.corp.example"))
+            .is_some()
+    );
+    assert!(
+        !conflicts
+            .iter()
+            .any(|c| c.code == crate::enhance::multi_merge::ConflictCode::TopLevelKeyIgnored)
+    );
+}
+
+#[test]
 fn a_profile_seed_is_read_once_and_missing_blocks_are_ignored() {
     let path = std::env::temp_dir().join(format!(
         "cvr-openp2p-seed-{}-{}.yaml",
