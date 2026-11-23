@@ -198,6 +198,50 @@ impl ProfileStore {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectReport {
+    pub files: SyncReport,
+    pub items_changed: bool,
+}
+
+impl ProfileStore {
+    pub fn managed_uids(&self) -> Result<Vec<std::string::String>> {
+        Ok(self.load_manifest()?.profiles.keys().cloned().collect())
+    }
+
+    pub fn managed_profiles(&self, config: &OpenP2PConfig) -> Vec<crate::core::openp2p::profile_items::ManagedProfile> {
+        let manifest = self.load_manifest().unwrap_or_default();
+        let mut managed = Vec::new();
+        for account in &config.accounts {
+            let uid = format!("op2p-{}", account.id);
+            let generated_at = manifest
+                .profiles
+                .get(&uid)
+                .map(|entry| entry.generated_at)
+                .unwrap_or_else(now_secs);
+            managed.push(crate::core::openp2p::profile_items::ManagedProfile {
+                account_id: account.id.clone(),
+                uid,
+                name: format!("OpenP2P · {}", account.label()),
+                file: format!("op2p-{}.yaml", account.id),
+                updated: generated_at,
+            });
+        }
+        managed
+    }
+
+    /// Saves the source, projects profile files and updates the managed
+    /// profiles.yaml items. The caller owns the profiles.yaml transaction.
+    pub fn project(&self, config: &OpenP2PConfig, profiles: &mut crate::config::IProfiles) -> Result<ProjectReport> {
+        let previous = self.managed_uids()?;
+        self.save_config(config)?;
+        let files = self.sync(config)?;
+        let managed = self.managed_profiles(config);
+        let items_changed = crate::core::openp2p::profile_items::sync_managed_items(profiles, &managed, &previous)?;
+        Ok(ProjectReport { files, items_changed })
+    }
+}
+
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -245,6 +289,28 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn projects_source_files_and_managed_items_idempotently() {
+        let root = root();
+        let store = ProfileStore::at(root.clone());
+        let config = sample_config();
+        let mut profiles = crate::config::IProfiles::default();
+        let first = store.project(&config, &mut profiles).expect("project");
+        assert_eq!(first.files.written, vec!["op2p-home"]);
+        assert!(first.items_changed);
+        assert!(profiles.current.is_none());
+        let items = profiles.items.as_ref().expect("items");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].uid.as_deref(), Some("op2p-home"));
+        assert_eq!(items[0].itype.as_deref(), Some("local"));
+        assert!(items[0].option.is_none());
+        assert!(store.profile_path("op2p-home").is_file());
+        let second = store.project(&config, &mut profiles).expect("project again");
+        assert_eq!(second.files.written, Vec::<String>::new());
+        assert!(!second.items_changed);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
