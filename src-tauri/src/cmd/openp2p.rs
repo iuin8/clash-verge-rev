@@ -477,6 +477,27 @@ pub(crate) async fn detach_profile_from_bundle(uid: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
+async fn refresh_active_composition() -> CmdResult<()> {
+    let profiles = crate::config::Config::profiles().await.latest_arc();
+    if profiles.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
+        return Ok(());
+    }
+    let Some(meta) = crate::config::bundle::load_meta()
+        .await
+        .map_err(|error| coded_error("OPENP2P_BUNDLE_REFRESH_FAILED", format!("{error:#}")))?
+    else {
+        return Ok(());
+    };
+    if !meta.members.iter().any(|member| member.starts_with("op2p-")) {
+        return Ok(());
+    }
+    let members = meta.members.iter().map(ToString::to_string).collect::<Vec<_>>();
+    crate::cmd::bundle::set_bundle_members(members)
+        .await
+        .map_err(|error| coded_error("OPENP2P_BUNDLE_REFRESH_FAILED", format!("{error:?}")))?;
+    Ok(())
+}
+
 fn find_account(view: &OpenP2PView, account_id: &str) -> CmdResult<OpenP2PAccount> {
     view.accounts
         .iter()
@@ -532,6 +553,19 @@ pub async fn apply_openp2p_import(
     if !parsed.can_apply() {
         return Err(import_failure(&parsed.issues));
     }
+    if let Some(existing) = existing.as_ref() {
+        let removed = existing
+            .accounts
+            .iter()
+            .filter(|account| !parsed.config.accounts.iter().any(|next| next.id == account.id))
+            .map(|account| account.id.clone())
+            .collect::<Vec<_>>();
+        for account_id in removed {
+            detach_profile_from_bundle(&format!("op2p-{account_id}"))
+                .await
+                .map_err(|error| coded_error("OPENP2P_BUNDLE_DETACH_FAILED", format!("{error:#}")))?;
+        }
+    }
     let vault = portable::SecretVault::app_default()
         .map_err(|error| coded_error("OPENP2P_IMPORT_APPLY_FAILED", format!("{error:#}")))?;
     let transaction = portable::ImportTransaction::begin(&store, &vault, &parsed)
@@ -562,6 +596,7 @@ pub async fn apply_openp2p_import(
         return Err(coded_error("OPENP2P_IMPORT_APPLY_FAILED", detail));
     }
     transaction.finish();
+    refresh_active_composition().await?;
     if let Err(error) = OpenP2PManager::global().reload_from_current().await {
         return Err(account_failure(error));
     }
