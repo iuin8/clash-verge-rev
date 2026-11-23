@@ -529,6 +529,7 @@ export interface TranslationResources {
         previewing: string
         removeWarning: string
         routes: string
+        secretWarning: string
         selfContained: string
         source: string
         title: string

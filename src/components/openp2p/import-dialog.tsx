@@ -265,6 +265,9 @@ export const OpenP2PImportDialog = ({
                   htmlInput: { spellCheck: false },
                 }}
               />
+              <Alert severity="warning">
+                {t('openp2p.import.secretWarning')}
+              </Alert>
             </>
           ) : (
             <>

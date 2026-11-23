@@ -186,7 +186,8 @@
       "key_missing": "SSH private key is not saved for this account.",
       "account_disabled": "This account is disabled in the YAML."
     },
-    "deviceHint": "Device node names and local source ports are generated automatically when the YAML omits them."
+    "deviceHint": "Device node names and local source ports are generated automatically when the YAML omits them.",
+    "secretWarning": "This YAML may contain credentials. Do not share it or expose it in screenshots/logs; CVR extracts secrets on Apply."
   },
   "errors": {
     "config_too_large": "The configuration exceeds 1 MiB.",

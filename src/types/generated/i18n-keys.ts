@@ -351,6 +351,7 @@ export const translationKeys = [
   'openp2p.import.warnings.key_missing',
   'openp2p.import.warnings.account_disabled',
   'openp2p.import.deviceHint',
+  'openp2p.import.secretWarning',
   'openp2p.errors.config_too_large',
   'openp2p.errors.yaml_syntax',
   'openp2p.errors.x_openp2p_missing',

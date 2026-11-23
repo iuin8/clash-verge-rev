@@ -186,7 +186,8 @@
       "key_missing": "该账号尚未保存 SSH 私钥。",
       "account_disabled": "该账号在 YAML 中已禁用。"
     },
-    "deviceHint": "YAML 未提供时，将自动生成本设备节点名与本地源端口。"
+    "deviceHint": "YAML 未提供时，将自动生成本设备节点名与本地源端口。",
+    "secretWarning": "This YAML may contain credentials. Do not share it or expose it in screenshots/logs; CVR extracts secrets on Apply."
   },
   "errors": {
     "config_too_large": "配置超过 1 MiB。",
