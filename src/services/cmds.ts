@@ -774,6 +774,10 @@ export async function getOpenP2pState(): Promise<OpenP2pState> {
   return normalizeState(await commands.getOpenp2pState())
 }
 
+export async function getOpenP2pVersion(): Promise<string | null> {
+  return commands.getOpenp2pVersion()
+}
+
 export async function previewOpenP2pImport(
   request: OpenP2pImportRequest,
 ): Promise<OpenP2pImportPreview> {

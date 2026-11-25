@@ -1,7 +1,6 @@
 import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined'
 import ForkRightOutlinedIcon from '@mui/icons-material/ForkRightOutlined'
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined'
-import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import LanguageOutlinedIcon from '@mui/icons-material/LanguageOutlined'
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
@@ -22,7 +21,6 @@ import { navigationItems } from './_navigation-meta'
 import ConnectionsPage from './connections'
 import HomePage from './home'
 import LogsPage from './logs'
-import OpenP2PPage from './openp2p'
 import ProfilePage from './profiles'
 import ProxyPage from './proxies'
 import RulesPage from './rules'
@@ -71,11 +69,6 @@ export const navItems: NavigationItem[] = [
     ...navigationItems.unlock,
     icon: [<LockOpenOutlinedIcon key="mui" />, <UnlockSvg key="svg" />],
     Component: UnlockPage,
-  },
-  {
-    ...navigationItems.openp2p,
-    icon: [<HubOutlinedIcon key="mui" />, <HubOutlinedIcon key="svg" />],
-    Component: OpenP2PPage,
   },
   {
     ...navigationItems.settings,

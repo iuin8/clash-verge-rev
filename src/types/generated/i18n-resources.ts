@@ -596,6 +596,11 @@ export interface TranslationResources {
         }
         title: string
       }
+      settings: {
+        title: string
+        unknown: string
+        version: string
+      }
       token: {
         hint: string
         invalid: string

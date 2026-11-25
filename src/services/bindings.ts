@@ -140,6 +140,7 @@ export const commands = {
     __TAURI_INVOKE<NetworkInterfaceView[]>('get_network_interfaces_info'),
   getOpenp2pState: () =>
     __TAURI_INVOKE<OpenP2PView_Serialize>('get_openp2p_state'),
+  getOpenp2pVersion: () => __TAURI_INVOKE<string | null>('get_openp2p_version'),
   previewOpenp2pImport: (yaml: string | null, url: string | null) =>
     __TAURI_INVOKE<OpenP2PImportPreview_Serialize>('preview_openp2p_import', {
       yaml,

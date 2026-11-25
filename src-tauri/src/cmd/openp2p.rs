@@ -638,6 +638,31 @@ pub async fn apply_openp2p_import(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn get_openp2p_version() -> CmdResult<Option<std::string::String>> {
+    let binary = crate::core::openp2p::process::sidecar_binary()
+        .map_err(|error| coded_error("OPENP2P_VERSION_FAILED", format!("{error:#}")))?;
+    if !binary.is_file() {
+        return Ok(None);
+    }
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(&binary).arg("-v").output(),
+    )
+    .await
+    .map_err(|_| coded_error("OPENP2P_VERSION_FAILED", "openp2p -v timed out"))?
+    .map_err(|error| coded_error("OPENP2P_VERSION_FAILED", format!("{error:#}")))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if version.is_empty() || version.len() > 128 {
+        return Ok(None);
+    }
+    Ok(Some(version))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn start_openp2p_account(account_id: std::string::String) -> CmdResult<OpenP2PAccount> {
     require_platform()?;
     OpenP2PManager::global()

@@ -18,10 +18,6 @@ export const navigationItems = {
     label: 'layout.components.navigation.tabs.unlock',
     path: '/unlock',
   },
-  openp2p: {
-    label: 'layout.components.navigation.tabs.openp2p',
-    path: '/openp2p',
-  },
   settings: {
     label: 'layout.components.navigation.tabs.settings',
     path: '/settings',
