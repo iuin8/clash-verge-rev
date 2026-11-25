@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -634,13 +634,26 @@ async fn purge_inactive_accounts() {
     };
     let current = Config::profiles().await.latest_arc().current.clone();
     let current_id = current.as_deref().and_then(id_from_profile_uid);
+    let active_accounts = current_id
+        .as_ref()
+        .and_then(|id| store.load_config(id).ok())
+        .map(|config| {
+            config
+                .accounts
+                .into_iter()
+                .map(|account| account.id)
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
     for meta in store.list().unwrap_or_default() {
         if current_id == Some(meta.id.as_str()) {
             continue;
         }
         if let Ok(config) = store.load_config(&meta.id) {
             for account in config.accounts {
-                purge_account_dir(&account.id);
+                if !active_accounts.contains(&account.id) {
+                    purge_account_dir(&account.id);
+                }
             }
         }
     }

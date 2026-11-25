@@ -22,9 +22,9 @@
 //! previous device fields because the normalized config doubles as the merge
 //! source for parse_import.
 //!
-//! Account ids (and therefore account working directories and credential
-//! references) must be unique across subscriptions: two subscriptions that name
-//! the same account would share openp2p/accounts/<id>.
+//! Account ids and credential references may repeat across subscriptions; only
+//! the active source runs its sidecars, so a shared account workdir is reused
+//! serially and shared vault refs are reference-counted during removal.
 //!
 //! The generated profile is profiles/op2p-sub-<id>.yaml and its PrfItem carries
 //! desc: openp2p-subscription:<id>. Import never changes profiles.yaml:current.
@@ -321,7 +321,6 @@ impl SubscriptionStore {
         if !parsed.can_apply() {
             bail!("the subscription is invalid: {}", describe_issues(&parsed.issues));
         }
-        self.ensure_exclusive(&id, &parsed.config)?;
 
         let name = existing_meta.as_ref().map_or(derived_name, |meta| meta.name.clone());
         let meta = SubscriptionMeta {
@@ -396,7 +395,9 @@ impl SubscriptionStore {
         std::fs::rename(&dir, &tombstone).with_context(|| format!("rename {}", dir.display()))?;
         if let Some(config) = &config {
             for account in &config.accounts {
-                self.purge_account_workdir(&account.id);
+                if !self.account_used_elsewhere(id, &account.id) {
+                    self.purge_account_workdir(&account.id);
+                }
             }
             self.remove_secrets(&refs_of(config));
         }
@@ -408,6 +409,21 @@ impl SubscriptionStore {
             }
         }
         Ok(())
+    }
+
+    fn account_used_elsewhere(&self, id: &str, account_id: &str) -> bool {
+        for meta in self.list().unwrap_or_default() {
+            if meta.id == id {
+                continue;
+            }
+            if self
+                .load_config(&meta.id)
+                .is_ok_and(|config| config.accounts.iter().any(|account| account.id == account_id))
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn purge_account_workdir(&self, account_id: &str) {
@@ -424,40 +440,6 @@ impl SubscriptionStore {
                 "failed to remove an openp2p account directory: {error}"
             ),
         }
-    }
-
-    fn ensure_exclusive(&self, id: &str, config: &OpenP2PConfig) -> Result<()> {
-        let account_ids = config
-            .accounts
-            .iter()
-            .map(|account| account.id.as_str())
-            .collect::<BTreeSet<_>>();
-        let refs = refs_of(config);
-        for meta in self.list()? {
-            if meta.id == id {
-                continue;
-            }
-            let Ok(other) = self.load_config(&meta.id) else {
-                continue;
-            };
-            for account in &other.accounts {
-                if account_ids.contains(account.id.as_str()) {
-                    bail!(
-                        "account id {} is already used by subscription {}; account directories are per id, rename it in the imported document",
-                        account.id,
-                        meta.name
-                    );
-                }
-            }
-            if let Some(conflict) = refs.intersection(&refs_of(&other)).next() {
-                bail!(
-                    "secret reference {} is already used by subscription {}; rename the account or reference in the imported document",
-                    conflict.reference,
-                    meta.name
-                );
-            }
-        }
-        Ok(())
     }
 
     fn remove_secrets(&self, refs: &BTreeSet<SecretRef>) {

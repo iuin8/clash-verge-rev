@@ -397,8 +397,8 @@ fn credential_document(account: &str, label: &str, token_ref: &str, token: &str)
 }
 
 #[test]
-fn subscriptions_cannot_share_an_account_id() {
-    let scratch = Scratch::new("account-ids");
+fn subscriptions_may_share_an_account_id_when_references_differ() {
+    let scratch = Scratch::new("account-ids-shared");
     let store = scratch.store();
     let vault = scratch.vault();
     let mut profiles = IProfiles::default();
@@ -406,28 +406,28 @@ fn subscriptions_cannot_share_an_account_id() {
         .prepare_import(
             &vault,
             OpenP2PImportSourceKind::Local,
-            &document("One", TOKEN, &indent(KEY)),
+            &credential_document("home", "One", "o2p/one/token", TOKEN),
             None,
             &mut profiles,
         )
         .expect("first")
         .commit();
-    let error = store
+    store
         .prepare_import(
             &vault,
             OpenP2PImportSourceKind::Local,
-            &document("Two", TOKEN_TWO, &indent(KEY)),
+            &credential_document("home", "Two", "o2p/two/token", TOKEN_TWO),
             None,
             &mut profiles,
         )
-        .expect_err("shared account ids must be rejected");
-    assert!(format!("{error:#}").contains("account id"), "{error:#}");
-    assert_eq!(store.list().expect("list").len(), 1);
+        .expect("shared account id is allowed when refs differ")
+        .commit();
+    assert_eq!(store.list().expect("list").len(), 2);
 }
 
 #[test]
-fn subscriptions_cannot_share_credential_references() {
-    let scratch = Scratch::new("refs");
+fn subscriptions_may_share_credential_references() {
+    let scratch = Scratch::new("refs-shared");
     let store = scratch.store();
     let vault = scratch.vault();
     let mut profiles = IProfiles::default();
@@ -441,7 +441,7 @@ fn subscriptions_cannot_share_credential_references() {
         )
         .expect("first")
         .commit();
-    let error = store
+    store
         .prepare_import(
             &vault,
             OpenP2PImportSourceKind::Local,
@@ -449,9 +449,9 @@ fn subscriptions_cannot_share_credential_references() {
             None,
             &mut profiles,
         )
-        .expect_err("shared references must be rejected");
-    assert!(format!("{error:#}").contains("secret reference"), "{error:#}");
-    assert_eq!(store.list().expect("list").len(), 1);
+        .expect("shared references are allowed")
+        .commit();
+    assert_eq!(store.list().expect("list").len(), 2);
 }
 
 #[test]
