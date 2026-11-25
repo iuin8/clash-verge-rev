@@ -70,6 +70,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             cmd::exit_app,
             cmd::get_network_interfaces_info,
             cmd::get_openp2p_state,
+            cmd::detect_openp2p_source,
             cmd::get_openp2p_version,
             cmd::preview_openp2p_import,
             cmd::apply_openp2p_import,

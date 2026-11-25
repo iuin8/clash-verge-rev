@@ -496,3 +496,18 @@ fn preview_actions_cover_add_update_and_remove() {
     assert_eq!(action("gamma"), OpenP2PPreviewAction::Add);
     assert_eq!(action("beta"), OpenP2PPreviewAction::Remove);
 }
+
+#[test]
+fn openp2p_detection_requires_a_schema_marker_not_just_proxies() {
+    assert!(is_openp2p_document(
+        "mixed-port: 7890\nproxies: []\nx-openp2p:\n  accounts: []\n"
+    ));
+    assert!(is_openp2p_document("version: 1\naccounts:\n  - id: home\n"));
+    assert!(is_openp2p_document(
+        "version: 1\nnetworks: []\nproxies:\n  - name: home\n    account: home\n    private_key_ref: o2p/home\n"
+    ));
+    assert!(!is_openp2p_document(
+        "mixed-port: 7890\nproxies:\n  - {name: airport, type: ss, server: 192.0.2.1, port: 8388}\nrules:\n  - MATCH,airport\n"
+    ));
+    assert!(!is_openp2p_document("not: yaml"));
+}

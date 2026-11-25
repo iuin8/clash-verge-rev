@@ -37,16 +37,20 @@ const isValidImportUrl = (value: string) => {
 }
 
 export const OpenP2PImportDialog = ({
+  initialYaml,
+  initialUrl,
   onClose,
   onApplied,
 }: {
+  initialYaml?: string
+  initialUrl?: string
   onClose: () => void
   onApplied: () => void
 }) => {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<'yaml' | 'url'>('yaml')
-  const [yaml, setYaml] = useState('')
-  const [url, setUrl] = useState('')
+  const [mode, setMode] = useState<'yaml' | 'url'>(initialUrl ? 'url' : 'yaml')
+  const [yaml, setYaml] = useState(initialYaml ?? '')
+  const [url, setUrl] = useState(initialUrl ?? '')
   const [fileName, setFileName] = useState('')
   const [preview, setPreview] = useState<OpenP2pImportPreview | null>(null)
   const [previewRequest, setPreviewRequest] =

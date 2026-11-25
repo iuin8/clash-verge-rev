@@ -11,7 +11,6 @@ import {
   ClearRounded,
   ContentPasteRounded,
   DeleteRounded,
-  HubOutlined,
   IndeterminateCheckBoxRounded,
   LayersRounded,
   LocalFireDepartmentRounded,
@@ -63,6 +62,7 @@ import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
   createProfile,
   deleteProfile,
+  detectOpenP2pSource,
   enhanceProfiles,
   getRuntimeLogs,
   importProfile,
@@ -115,6 +115,10 @@ const ProfilePage = () => {
   const [openP2PImportOpen, setOpenP2PImportOpen] = useState(
     () => new URLSearchParams(location.search).get('openp2p') === '1',
   )
+  const [openP2PImportSeed, setOpenP2PImportSeed] = useState<{
+    yaml?: string
+    url?: string
+  } | null>(null)
 
   const [batchMode, setBatchMode] = useState(false)
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
@@ -165,6 +169,14 @@ const ProfilePage = () => {
           },
         } as IProfileItem
         const data = await readTextFile(file)
+        const isOpenP2P = await detectOpenP2pSource({ yaml: data }).catch(
+          () => false,
+        )
+        if (isOpenP2P) {
+          setOpenP2PImportSeed({ yaml: data })
+          setOpenP2PImportOpen(true)
+          continue
+        }
         await mutate(() => createProfile(item, data), {
           id: 'create-profile',
           errorNotice: false,
@@ -230,9 +242,15 @@ const ProfilePage = () => {
 
   const closeOpenP2PImport = () => {
     setOpenP2PImportOpen(false)
+    setOpenP2PImportSeed(null)
     if (location.search) {
       navigate({ pathname: '/profile' }, { replace: true })
     }
+  }
+
+  const openOpenP2PImport = (seed: { yaml?: string; url?: string } = {}) => {
+    setOpenP2PImportSeed(seed)
+    setOpenP2PImportOpen(true)
   }
 
   const handleOpenP2PApplied = () => {
@@ -248,6 +266,13 @@ const ProfilePage = () => {
       return
     }
     setLoading(true)
+
+    const isOpenP2P = await detectOpenP2pSource({ url }).catch(() => false)
+    if (isOpenP2P) {
+      setLoading(false)
+      openOpenP2PImport({ url })
+      return
+    }
 
     const prevCurrent = profiles.current
 
@@ -958,15 +983,6 @@ const ProfilePage = () => {
           {t('profiles.page.actions.import')}
         </Button>
         <Button
-          variant="outlined"
-          size="small"
-          startIcon={<HubOutlined />}
-          sx={{ borderRadius: '6px' }}
-          onClick={() => setOpenP2PImportOpen(true)}
-        >
-          {t('profiles.page.actions.importOpenP2P')}
-        </Button>
-        <Button
           variant="contained"
           size="small"
           sx={{ borderRadius: '6px' }}
@@ -1115,6 +1131,9 @@ const ProfilePage = () => {
 
       <ProfileViewer
         ref={viewerRef}
+        onOpenP2PImport={(seed) => {
+          openOpenP2PImport(seed)
+        }}
         onChange={async (isActivating) => {
           mutateProfiles()
           if (isActivating) {
@@ -1160,6 +1179,8 @@ const ProfilePage = () => {
       </BaseDialog>
       {openP2PImportOpen && (
         <OpenP2PImportDialog
+          initialYaml={openP2PImportSeed?.yaml}
+          initialUrl={openP2PImportSeed?.url}
           onClose={closeOpenP2PImport}
           onApplied={handleOpenP2PApplied}
         />

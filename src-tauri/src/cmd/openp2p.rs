@@ -638,6 +638,18 @@ pub async fn apply_openp2p_import(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn detect_openp2p_source(
+    yaml: Option<std::string::String>,
+    url: Option<std::string::String>,
+) -> CmdResult<bool> {
+    Ok(read_import(yaml, url)
+        .await
+        .map(|resolved| portable::is_openp2p_document(&resolved.text))
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn get_openp2p_version() -> CmdResult<Option<std::string::String>> {
     let binary = crate::core::openp2p::process::sidecar_binary()
         .map_err(|error| coded_error("OPENP2P_VERSION_FAILED", format!("{error:#}")))?;

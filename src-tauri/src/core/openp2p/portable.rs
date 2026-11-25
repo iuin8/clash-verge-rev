@@ -98,6 +98,31 @@ impl ParsedImport {
     }
 }
 
+/// Returns true only for a document that carries OpenP2P schema markers.
+/// A normal mihomo profile also has `proxies`, so that key alone is not enough.
+pub fn is_openp2p_document(yaml: &str) -> bool {
+    let Ok(value) = serde_yaml_ng::from_str::<Value>(yaml) else {
+        return false;
+    };
+    let Some(document) = value.as_mapping() else {
+        return false;
+    };
+    if document.contains_key("x-openp2p") || document.contains_key("accounts") {
+        return true;
+    }
+    document.contains_key("networks")
+        && document
+            .get("proxies")
+            .and_then(Value::as_sequence)
+            .is_some_and(|proxies| {
+                proxies.iter().any(|proxy| {
+                    proxy
+                        .as_mapping()
+                        .is_some_and(|proxy| proxy.contains_key("account") && proxy.contains_key("private_key_ref"))
+                })
+            })
+}
+
 /// Parses one document, merging device fields that this document omits from the
 /// existing store so a policy-only re-import keeps the local binding.
 pub fn parse_import(yaml: &str, existing: Option<&OpenP2PConfig>) -> ParsedImport {

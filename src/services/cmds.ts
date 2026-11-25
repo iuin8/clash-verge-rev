@@ -778,6 +778,13 @@ export async function getOpenP2pVersion(): Promise<string | null> {
   return commands.getOpenp2pVersion()
 }
 
+export async function detectOpenP2pSource(
+  request: OpenP2pImportRequest,
+): Promise<boolean> {
+  const [yaml, url] = importArgs(request)
+  return commands.detectOpenp2pSource(yaml, url)
+}
+
 export async function previewOpenP2pImport(
   request: OpenP2pImportRequest,
 ): Promise<OpenP2pImportPreview> {

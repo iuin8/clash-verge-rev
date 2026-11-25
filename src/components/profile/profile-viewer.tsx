@@ -16,7 +16,11 @@ import { useTranslation } from 'react-i18next'
 
 import { BaseDialog, Switch } from '@/components/base'
 import { useProfiles } from '@/hooks/use-profiles'
-import { createProfile, patchProfile } from '@/services/cmds'
+import {
+  createProfile,
+  detectOpenP2pSource,
+  patchProfile,
+} from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { version } from '@root/package.json'
@@ -25,6 +29,7 @@ import { FileInput } from './file-input'
 
 interface Props {
   onChange: (isActivating?: boolean) => void
+  onOpenP2PImport: (seed: { yaml?: string; url?: string }) => void
 }
 
 export interface ProfileViewerRef {
@@ -37,7 +42,11 @@ type ProfileViewerProps = Props & { ref?: Ref<ProfileViewerRef> }
 // 同后端 constants::profile::MIN_UPDATE_INTERVAL
 const MIN_UPDATE_INTERVAL = 1440
 
-export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
+export function ProfileViewer({
+  onChange,
+  onOpenP2PImport,
+  ref,
+}: ProfileViewerProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [openType, setOpenType] = useState<'new' | 'edit'>('new')
@@ -126,6 +135,23 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         const isUpdate = openType === 'edit'
 
         const isActivating = isUpdate && form.uid === (profiles?.current ?? '')
+
+        if (openType === 'new') {
+          const remoteUrl = form.url ?? ''
+          const detected = await detectOpenP2pSource(
+            isRemote ? { url: remoteUrl } : { yaml: fileDataRef.current ?? '' },
+          ).catch(() => false)
+          if (detected) {
+            const seed = isRemote
+              ? { url: remoteUrl }
+              : { yaml: fileDataRef.current ?? '' }
+            setOpen(false)
+            fileDataRef.current = null
+            setTimeout(() => reset(), 500)
+            onOpenP2PImport(seed)
+            return
+          }
+        }
 
         // Preserve proxy settings when the remote retry succeeds through another route.
         const originalOptions = {
