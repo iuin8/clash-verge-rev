@@ -96,7 +96,8 @@
       "restart": "Restart",
       "logs": "Open log directory",
       "token": "Set token",
-      "key": "Set SSH key"
+      "key": "Set SSH key",
+      "updateYaml": "Update YAML"
     }
   },
   "token": {

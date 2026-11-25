@@ -344,6 +344,7 @@ export interface TranslationResources {
           start: string
           stop: string
           token: string
+          updateYaml: string
         }
         checks: {
           apps: string

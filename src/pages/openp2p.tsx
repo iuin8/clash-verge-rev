@@ -187,6 +187,7 @@ const OpenP2PPage = () => {
                 key={account.id}
                 account={account}
                 source={view.source}
+                onImport={() => setImportOpen(true)}
               />
             ))}
           </Stack>

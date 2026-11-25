@@ -276,6 +276,7 @@ export const translationKeys = [
   'openp2p.account.actions.logs',
   'openp2p.account.actions.token',
   'openp2p.account.actions.key',
+  'openp2p.account.actions.updateYaml',
   'openp2p.token.title',
   'openp2p.token.hint',
   'openp2p.token.label',

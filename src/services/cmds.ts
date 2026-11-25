@@ -808,21 +808,6 @@ export async function restartOpenP2pAccount(
   return commands.restartOpenp2pAccount(accountId)
 }
 
-export async function saveOpenP2pToken(
-  accountId: string,
-  token: string,
-): Promise<OpenP2PAccount> {
-  return commands.saveOpenp2pToken(accountId, token)
-}
-
-export async function saveOpenP2pKey(
-  accountId: string,
-  privateKeyRef: string,
-  privateKey: string,
-): Promise<OpenP2PAccount> {
-  return commands.saveOpenp2pKey(accountId, privateKeyRef, privateKey)
-}
-
 export async function openOpenP2pLogDir(accountId: string) {
   return commands.openOpenp2pLogDir(accountId)
 }

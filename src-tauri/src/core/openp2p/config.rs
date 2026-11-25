@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
 
-use crate::core::openp2p::account::{self, key_path, token_path};
+use crate::core::openp2p::account::{self, token_path};
 use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
 
 /// The account token. No Debug/Display output ever exposes the value.
@@ -83,11 +83,7 @@ pub fn parse_token(raw: &str) -> Result<TokenValue> {
     Ok(TokenValue(token))
 }
 
-pub fn write_token(token_ref: &str, token: TokenValue) -> Result<()> {
-    let path = token_path(token_ref)?;
-    write_token_file(&path, token)
-}
-
+#[cfg(test)]
 fn write_token_file(path: &std::path::Path, token: TokenValue) -> Result<()> {
     if let Some(parent) = path.parent() {
         account::create_private_dir(parent)?;
@@ -95,19 +91,6 @@ fn write_token_file(path: &std::path::Path, token: TokenValue) -> Result<()> {
     let mut bytes = token.as_u64().to_string().into_bytes();
     bytes.push(b'\n');
     account::atomic_write(path, &bytes, 0o600)
-}
-
-pub fn write_private_key(key_ref: &str, private_key: &str) -> Result<()> {
-    let path = key_path(key_ref)?;
-    write_private_key_file(&path, private_key)
-}
-
-fn write_private_key_file(path: &std::path::Path, private_key: &str) -> Result<()> {
-    validate_private_key(private_key)?;
-    if let Some(parent) = path.parent() {
-        account::create_private_dir(parent)?;
-    }
-    account::atomic_write(path, private_key.as_bytes(), 0o600)
 }
 
 pub fn validate_private_key(private_key: &str) -> Result<()> {

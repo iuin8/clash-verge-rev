@@ -75,8 +75,6 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             cmd::start_openp2p_account,
             cmd::stop_openp2p_account,
             cmd::restart_openp2p_account,
-            cmd::save_openp2p_token,
-            cmd::save_openp2p_key,
             cmd::delete_openp2p_account,
             cmd::open_openp2p_log_dir,
             cmd::get_profiles,

@@ -162,21 +162,6 @@ export const commands = {
     __TAURI_INVOKE<OpenP2PAccount_Serialize>('restart_openp2p_account', {
       accountId,
     }),
-  saveOpenp2pToken: (accountId: string, token: string) =>
-    __TAURI_INVOKE<OpenP2PAccount_Serialize>('save_openp2p_token', {
-      accountId,
-      token,
-    }),
-  saveOpenp2pKey: (
-    accountId: string,
-    privateKeyRef: string,
-    privateKey: string,
-  ) =>
-    __TAURI_INVOKE<OpenP2PAccount_Serialize>('save_openp2p_key', {
-      accountId,
-      privateKeyRef,
-      privateKey,
-    }),
   deleteOpenp2pAccount: (accountId: string) =>
     __TAURI_INVOKE<OpenP2PView_Serialize>('delete_openp2p_account', {
       accountId,

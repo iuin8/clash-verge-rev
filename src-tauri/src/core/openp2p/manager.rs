@@ -454,39 +454,6 @@ impl OpenP2PManager {
         self.start_account(account_id).await
     }
 
-    pub async fn refresh_account_secrets(&self, account_id: &str) -> Result<OpenP2PAccount> {
-        let config = self.config();
-        let slot = self
-            .data
-            .read()
-            .accounts
-            .get(account_id)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("openp2p account not found"))?;
-        let account = slot.spec();
-        let running = slot
-            .worker
-            .lock()
-            .await
-            .as_ref()
-            .is_some_and(|worker| !worker.join.is_finished());
-        if !account::token_present(&account.token_ref) {
-            if running {
-                self.stop_slot(&slot, STOP_TIMEOUT).await;
-            }
-            slot.set_terminal(OpenP2PPhase::TokenMissing, "token is not saved for this account".into());
-            return Ok(slot.to_view(&config));
-        }
-        if !account.enabled {
-            return Ok(slot.to_view(&config));
-        }
-        if running {
-            self.stop_slot(&slot, STOP_TIMEOUT).await;
-        }
-        self.start_slot(&slot).await;
-        Ok(slot.to_view(&config))
-    }
-
     pub async fn stop_all(&self, limit: Duration) {
         SHUTTING_DOWN.store(true, Ordering::Release);
         let deadline = Instant::now() + limit;

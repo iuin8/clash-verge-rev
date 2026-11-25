@@ -1,11 +1,9 @@
 import {
   DnsOutlined,
   FolderOpenOutlined,
-  KeyOutlined,
   PlayArrowRounded,
   RefreshRounded,
   StopRounded,
-  VpnKeyOutlined,
 } from '@mui/icons-material'
 import {
   Alert,
@@ -33,7 +31,6 @@ import type { TranslationKey } from '@/types/generated/i18n-keys'
 
 import { OpenP2PDetail } from './detail'
 import { translateOpenP2pErrorText } from './errors'
-import { OpenP2PKeyDialog } from './key-dialog'
 import {
   OpenP2PKeyBadge,
   OpenP2PListenBadge,
@@ -43,7 +40,6 @@ import {
   OpenP2PTcpBadge,
   OpenP2PTokenBadge,
 } from './status-badges'
-import { OpenP2PTokenDialog } from './token-dialog'
 
 const RUNNING_PHASES = new Set([
   'starting',
@@ -59,16 +55,16 @@ const WARNING_PHASES = new Set(['degraded', 'backoff', 'tokenMissing'])
 export const OpenP2PAccountCard = ({
   account,
   source,
+  onImport,
 }: {
   account: OpenP2pAccount
   source: OpenP2pSource | null
+  onImport: () => void
 }) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
-  const [tokenOpen, setTokenOpen] = useState(false)
-  const [keyOpen, setKeyOpen] = useState(false)
 
   const running = RUNNING_PHASES.has(account.phase)
   const hasKeyNode = account.keyRefs.length > 0
@@ -248,12 +244,8 @@ export const OpenP2PAccountCard = ({
           <Alert
             severity="warning"
             action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => setTokenOpen(true)}
-              >
-                {t('openp2p.account.actions.token')}
+              <Button color="inherit" size="small" onClick={onImport}>
+                {t('openp2p.account.actions.updateYaml')}
               </Button>
             }
           >
@@ -265,12 +257,8 @@ export const OpenP2PAccountCard = ({
           <Alert
             severity="warning"
             action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => setKeyOpen(true)}
-              >
-                {t('openp2p.account.actions.key')}
+              <Button color="inherit" size="small" onClick={onImport}>
+                {t('openp2p.account.actions.updateYaml')}
               </Button>
             }
           >
@@ -411,25 +399,6 @@ export const OpenP2PAccountCard = ({
           <Button
             size="small"
             variant="outlined"
-            startIcon={<VpnKeyOutlined />}
-            disabled={busy}
-            onClick={() => setTokenOpen(true)}
-          >
-            {t('openp2p.account.actions.token')}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<KeyOutlined />}
-            disabled={busy || !hasKeyNode}
-            title={hasKeyNode ? undefined : t('openp2p.account.keyNoNode')}
-            onClick={() => setKeyOpen(true)}
-          >
-            {t('openp2p.account.actions.key')}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
             startIcon={<FolderOpenOutlined />}
             disabled={busy}
             onClick={() =>
@@ -440,16 +409,6 @@ export const OpenP2PAccountCard = ({
           </Button>
         </Stack>
       </Stack>
-
-      {tokenOpen && (
-        <OpenP2PTokenDialog
-          accountId={account.id}
-          onClose={() => setTokenOpen(false)}
-        />
-      )}
-      {keyOpen && (
-        <OpenP2PKeyDialog account={account} onClose={() => setKeyOpen(false)} />
-      )}
     </Paper>
   )
 }

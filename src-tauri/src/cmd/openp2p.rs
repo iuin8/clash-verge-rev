@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{CmdResult, CommandFailure, coded_error};
 use crate::core::openp2p::account;
-use crate::core::openp2p::config as o2p_config;
 use crate::core::openp2p::manager::OpenP2PManager;
 use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind, ParsedImport};
 use crate::core::openp2p::profile_store::{ImportMetadata, ProfileStore};
@@ -428,20 +427,6 @@ fn failed_preview(error: ImportReadError) -> OpenP2PImportPreview {
     preview
 }
 
-async fn refresh_store_profiles() -> CmdResult<()> {
-    let store = ProfileStore::app_default()
-        .map_err(|error| coded_error("OPENP2P_PROFILE_SYNC_FAILED", format!("{error:#}")))?;
-    store
-        .project_current()
-        .await
-        .map_err(|error| coded_error("OPENP2P_PROFILE_SYNC_FAILED", format!("{error:#}")))?;
-    OpenP2PManager::global()
-        .reload_from_current()
-        .await
-        .map_err(account_failure)?;
-    Ok(())
-}
-
 pub(crate) async fn detach_profile_from_bundle(uid: &str) -> anyhow::Result<()> {
     let Some(meta) = crate::config::bundle::load_meta().await? else {
         return Ok(());
@@ -540,14 +525,6 @@ async fn refresh_active_composition() -> CmdResult<()> {
         .await
         .map_err(|error| coded_error("OPENP2P_BUNDLE_REFRESH_FAILED", format!("{error:?}")))?;
     Ok(())
-}
-
-fn find_account(view: &OpenP2PView, account_id: &str) -> CmdResult<OpenP2PAccount> {
-    view.accounts
-        .iter()
-        .find(|account| account.id == account_id)
-        .cloned()
-        .ok_or_else(|| coded_error("OPENP2P_ACCOUNT_NOT_FOUND", "openp2p account not found"))
 }
 
 #[tauri::command]
@@ -686,60 +663,6 @@ pub async fn restart_openp2p_account(account_id: std::string::String) -> CmdResu
         .restart_account(&account_id)
         .await
         .map_err(account_failure)
-}
-
-#[tauri::command]
-#[tracing::instrument(skip_all, level = "info", fields(account_id = %account_id))]
-#[specta::specta]
-pub async fn save_openp2p_token(
-    account_id: std::string::String,
-    token: std::string::String,
-) -> CmdResult<OpenP2PAccount> {
-    let manager = OpenP2PManager::global();
-    let spec = manager
-        .account_spec(&account_id)
-        .ok_or_else(|| coded_error("OPENP2P_ACCOUNT_NOT_FOUND", "openp2p account not found"))?;
-    let token = o2p_config::parse_token(token.trim())
-        .map_err(|error| coded_error("OPENP2P_TOKEN_INVALID", format!("{error:#}")))?;
-    o2p_config::write_token(&spec.token_ref, token)
-        .map_err(|error| coded_error("OPENP2P_TOKEN_WRITE_FAILED", format!("{error:#}")))?;
-    // Restart with the new credential before regenerating artifacts; the artifact reload keeps
-    // an unchanged running worker as-is, so doing it in the other order would leave the old token.
-    if let Err(error) = manager.refresh_account_secrets(&account_id).await {
-        tracing::warn!("openp2p account restart after token save failed: {error:#}");
-    }
-    if let Err(error) = refresh_store_profiles().await {
-        tracing::warn!("openp2p profile refresh after token save failed: {error:#}");
-    }
-    find_account(&manager.view(), &account_id)
-}
-
-#[tauri::command]
-#[tracing::instrument(skip_all, level = "info", fields(account_id = %account_id))]
-#[specta::specta]
-pub async fn save_openp2p_key(
-    account_id: std::string::String,
-    private_key_ref: std::string::String,
-    private_key: std::string::String,
-) -> CmdResult<OpenP2PAccount> {
-    let manager = OpenP2PManager::global();
-    let config = manager.config();
-    let owned = config
-        .proxies
-        .iter()
-        .any(|proxy| proxy.account == account_id && proxy.private_key_ref == private_key_ref);
-    if !owned {
-        return Err(coded_error(
-            "OPENP2P_KEY_REF_MISMATCH",
-            "private_key_ref does not belong to this account",
-        ));
-    }
-    o2p_config::write_private_key(&private_key_ref, &private_key)
-        .map_err(|error| coded_error("OPENP2P_KEY_WRITE_FAILED", format!("{error:#}")))?;
-    if let Err(error) = refresh_store_profiles().await {
-        tracing::warn!("openp2p profile refresh after key save failed: {error:#}");
-    }
-    find_account(&manager.view(), &account_id)
 }
 
 #[tauri::command]

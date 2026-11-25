@@ -96,7 +96,8 @@
       "restart": "重启",
       "logs": "打开日志目录",
       "token": "设置 Token",
-      "key": "设置 SSH 密钥"
+      "key": "设置 SSH 密钥",
+      "updateYaml": "Update YAML"
     }
   },
   "token": {
