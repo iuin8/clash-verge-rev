@@ -39,7 +39,7 @@
         "reorderFailed": "Abonnements konnten nicht neu angeordnet werden",
         "switchFailed": "Abonnement konnte nicht gewechselt werden",
         "updateFailed": "Abonnement konnte nicht aktualisiert werden",
-        "openp2pBundleUnsupported": "OpenP2P-Abonnements können keinem Profilbündel hinzugefügt werden."
+        "openp2pBundleLimit": "Ein Profilbündel kann nur ein OpenP2P-Abonnement enthalten."
       },
       "notifications": {
         "importRetry": "Import des Abonnements fehlgeschlagen. Versuche es mit dem Clash-Proxy erneut...",

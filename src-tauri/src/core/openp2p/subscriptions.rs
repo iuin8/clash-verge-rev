@@ -696,6 +696,17 @@ pub fn id_from_profile_uid(uid: &str) -> Option<&str> {
         .filter(|id| schema::valid_slug(id, 32))
 }
 
+/// A Profile Bundle may carry at most one OpenP2P subscription member; it is
+/// then the sidecar source while the bundle is the current profile.
+pub fn single_subscription_member<M: AsRef<str>>(members: &[M]) -> Result<Option<std::string::String>> {
+    let mut subscriptions = members.iter().filter(|uid| is_subscription_profile_uid(uid.as_ref()));
+    let first = subscriptions.next();
+    if subscriptions.next().is_some() {
+        bail!("a profile bundle can contain at most one OpenP2P subscription");
+    }
+    Ok(first.map(|uid| uid.as_ref().to_owned()))
+}
+
 fn validate_id(id: &str) -> Result<()> {
     if !schema::valid_slug(id, 32) {
         bail!("invalid openp2p subscription id");

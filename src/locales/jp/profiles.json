@@ -39,7 +39,7 @@
         "reorderFailed": "プロファイルの並べ替えに失敗しました",
         "switchFailed": "プロファイルの切り替えに失敗しました",
         "updateFailed": "プロファイルの更新に失敗しました",
-        "openp2pBundleUnsupported": "OpenP2P サブスクリプションはプロファイルバンドルに追加できません。"
+        "openp2pBundleLimit": "プロファイルバンドルに追加できる OpenP2P サブスクリプションは 1 つだけです。"
       },
       "notifications": {
         "importRetry": "インポートに失敗しました。Clashプロキシを使用して再試行します...",

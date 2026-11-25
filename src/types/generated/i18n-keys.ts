@@ -463,7 +463,7 @@ export const translationKeys = [
   'profiles.page.feedback.errors.reorderFailed',
   'profiles.page.feedback.errors.switchFailed',
   'profiles.page.feedback.errors.updateFailed',
-  'profiles.page.feedback.errors.openp2pBundleUnsupported',
+  'profiles.page.feedback.errors.openp2pBundleLimit',
   'profiles.page.feedback.notifications.importRetry',
   'profiles.page.feedback.notifications.importFail',
   'profiles.page.feedback.notifications.importNeedsRefresh',

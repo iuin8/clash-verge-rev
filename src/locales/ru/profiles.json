@@ -39,7 +39,7 @@
         "reorderFailed": "Не удалось изменить порядок профилей",
         "switchFailed": "Не удалось переключить профиль",
         "updateFailed": "Не удалось обновить профиль",
-        "openp2pBundleUnsupported": "Подписки OpenP2P нельзя добавить в набор профилей."
+        "openp2pBundleLimit": "Набор профилей может содержать только одну подписку OpenP2P."
       },
       "notifications": {
         "importRetry": "Не удалось импортировать, повторная попытка через Clash proxy...",

@@ -34,6 +34,92 @@ export interface BundleConfirmState {
   members: BundleDraftMember[]
 }
 
+/** Bundle members are normal profiles; the generated bundle itself is not. */
+export const selectableBundleProfiles = (profileItems: IProfileItem[]) =>
+  profileItems.filter((item) => item.uid && !isBundleUid(item.uid))
+
+const isSubscriptionItem = (item: IProfileItem) =>
+  isOpenP2pSubscriptionUid(item.uid)
+
+/**
+ * Selects every ordinary profile plus at most one OpenP2P subscription,
+ * keeping the already selected subscription when there is one.
+ */
+export const selectAllBundleProfiles = (
+  profileItems: IProfileItem[],
+  selectedProfiles: ReadonlySet<string>,
+): Set<string> => {
+  const selectable = selectableBundleProfiles(profileItems)
+  const subscriptions = selectable.filter(isSubscriptionItem)
+  const keptSubscription =
+    subscriptions.find((item) => selectedProfiles.has(item.uid!)) ??
+    subscriptions[0]
+  return new Set([
+    ...selectable
+      .filter((item) => !isSubscriptionItem(item))
+      .map((item) => item.uid!),
+    ...(keptSubscription?.uid ? [keptSubscription.uid] : []),
+  ])
+}
+
+export type BundleSelectionState = 'none' | 'partial' | 'all'
+
+/** Completeness is cap-aware: one subscription is the full subscription set. */
+export const bundleSelectionState = (
+  selectableProfiles: readonly IProfileItem[],
+  selectedProfiles: ReadonlySet<string>,
+): BundleSelectionState => {
+  const selected = selectableProfiles.filter(
+    (item) => item.uid && selectedProfiles.has(item.uid),
+  )
+  if (selected.length === 0) return 'none'
+  const ordinary = selectableProfiles.filter(
+    (item) => item.uid && !isSubscriptionItem(item),
+  )
+  const subscriptions = selectableProfiles.filter(
+    (item) => item.uid && isSubscriptionItem(item),
+  )
+  const selectedSubscriptions = selected.filter(isSubscriptionItem)
+  const complete =
+    selected.length - selectedSubscriptions.length === ordinary.length &&
+    selectedSubscriptions.length === Math.min(subscriptions.length, 1)
+  return complete ? 'all' : 'partial'
+}
+
+export const toggleBundleProfileSelection = (
+  selectedProfiles: ReadonlySet<string>,
+  uid: string,
+): { selected: Set<string>; refused: boolean } => {
+  const selected = new Set(selectedProfiles)
+  if (selected.has(uid)) {
+    selected.delete(uid)
+    return { selected, refused: false }
+  }
+  const hasOtherSubscription = [...selected].some(
+    (candidate) => candidate !== uid && isOpenP2pSubscriptionUid(candidate),
+  )
+  if (isOpenP2pSubscriptionUid(uid) && hasOtherSubscription) {
+    return { selected, refused: true }
+  }
+  selected.add(uid)
+  return { selected, refused: false }
+}
+
+/** The bundle draft may carry one subscription even if a stale selection has more. */
+export const selectedBundleMembers = (
+  profileItems: IProfileItem[],
+  selectedProfiles: ReadonlySet<string>,
+): BundleDraftMember[] => {
+  const selected = profileItems.filter(
+    (item) =>
+      item.uid && !isBundleUid(item.uid) && selectedProfiles.has(item.uid),
+  )
+  const subscription = selected.find(isSubscriptionItem)
+  return selected
+    .filter((item) => !isSubscriptionItem(item) || item === subscription)
+    .map((item) => ({ uid: item.uid!, name: item.name || item.uid! }))
+}
+
 interface Options {
   profileItems: IProfileItem[]
   selectedProfiles: ReadonlySet<string>
@@ -151,25 +237,12 @@ export function useProfileBundle({
   )
   // The generated bundle is not a normal batch target: it has its own confirmed
   // delete flow and can never be a bundle member.
-  // OpenP2P subscriptions are not Bundle members in v1.
   const selectableProfiles = useMemo(
-    () =>
-      profileItems.filter(
-        (item) => !isBundleUid(item.uid) && !isOpenP2pSubscriptionUid(item.uid),
-      ),
+    () => selectableBundleProfiles(profileItems),
     [profileItems],
   )
   const selectedMembers = useMemo<BundleDraftMember[]>(
-    () =>
-      profileItems
-        .filter(
-          (item) =>
-            item.uid &&
-            !isBundleUid(item.uid) &&
-            !isOpenP2pSubscriptionUid(item.uid) &&
-            selectedProfiles.has(item.uid),
-        )
-        .map((item) => ({ uid: item.uid!, name: item.name || item.uid! })),
+    () => selectedBundleMembers(profileItems, selectedProfiles),
     [profileItems, selectedProfiles],
   )
   const isBundleItem = useCallback(

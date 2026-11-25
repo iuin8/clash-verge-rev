@@ -39,7 +39,7 @@
         "reorderFailed": "No se pudo reordenar las suscripciones",
         "switchFailed": "No se pudo cambiar de suscripción",
         "updateFailed": "No se pudo actualizar la suscripción",
-        "openp2pBundleUnsupported": "Las suscripciones OpenP2P no se pueden añadir a un paquete de perfiles."
+        "openp2pBundleLimit": "Un paquete de perfiles solo puede contener una suscripción OpenP2P."
       },
       "notifications": {
         "importRetry": "Error al importar la suscripción. Intentando con el proxy de Clash...",

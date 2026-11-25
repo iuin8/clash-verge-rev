@@ -7,6 +7,7 @@ use crate::core::openp2p::portable::OpenP2PImportSourceKind;
 use crate::core::openp2p::schema::fixtures::sample_host_key;
 use crate::core::openp2p::subscriptions::{
     PROFILE_DESC_PREFIX, SubscriptionStore, id_from_profile_uid, is_subscription_profile_uid,
+    single_subscription_member,
 };
 
 const TOKEN: &str = "1234567890123";
@@ -452,6 +453,62 @@ fn subscriptions_may_share_credential_references() {
         .expect("shared references are allowed")
         .commit();
     assert_eq!(store.list().expect("list").len(), 2);
+}
+
+#[test]
+fn a_bundle_resolves_at_most_one_subscription_member() {
+    let plain = "local".to_owned();
+    let one = "op2p-sub-0123456789abcdef".to_owned();
+    let two = "op2p-sub-fedcba9876543210".to_owned();
+
+    assert_eq!(
+        single_subscription_member(&[plain.clone(), one.clone()]).expect("one member"),
+        Some(one.clone())
+    );
+    assert_eq!(
+        single_subscription_member(std::slice::from_ref(&plain)).expect("no member"),
+        None
+    );
+    let error = single_subscription_member(&[one, two]).expect_err("two members must be rejected");
+    assert!(
+        format!("{error:#}").contains("at most one OpenP2P subscription"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn removing_a_subscription_keeps_an_account_workdir_shared_with_another_subscription() {
+    let scratch = Scratch::new("shared-workdir");
+    let store = scratch.store();
+    let vault = scratch.vault();
+    let mut profiles = IProfiles::default();
+    let alpha = store
+        .prepare_import(
+            &vault,
+            OpenP2PImportSourceKind::Local,
+            &credential_document("shared", "Alpha", "o2p/alpha/token", TOKEN),
+            None,
+            &mut profiles,
+        )
+        .expect("alpha")
+        .commit();
+    let beta = store
+        .prepare_import(
+            &vault,
+            OpenP2PImportSourceKind::Local,
+            &credential_document("shared", "Beta", "o2p/beta/token", TOKEN_TWO),
+            None,
+            &mut profiles,
+        )
+        .expect("beta")
+        .commit();
+    let account_dir = scratch.root.join("openp2p/accounts/shared");
+    std::fs::create_dir_all(&account_dir).expect("account dir");
+
+    store.remove(&alpha.meta.id).expect("remove alpha");
+    assert!(account_dir.exists(), "the shared workdir is used by beta");
+    store.remove(&beta.meta.id).expect("remove beta");
+    assert!(!account_dir.exists(), "the last owner removes the workdir");
 }
 
 #[test]

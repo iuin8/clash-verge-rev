@@ -358,6 +358,14 @@ pub async fn delete_bundle() -> CmdResult {
     if outcome.runtime_changed {
         apply_runtime().await?;
     }
+    // Deleting the current bundle changes profiles.yaml:current; converge the
+    // OpenP2P sidecar to the successor (a bundle member subscription or none).
+    if let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
+        .ensure_current()
+        .await
+    {
+        crate::core::openp2p::manager::OpenP2PManager::global().mark_degraded(format!("{error:#}"));
+    }
     if let Err(error) = Tray::global().update_menu().await {
         logging!(
             warn,

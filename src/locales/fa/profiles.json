@@ -39,7 +39,7 @@
         "reorderFailed": "تغییر ترتیب پروفایل‌ها ناموفق بود",
         "switchFailed": "تعویض پروفایل ناموفق بود",
         "updateFailed": "به‌روزرسانی پروفایل ناموفق بود",
-        "openp2pBundleUnsupported": "اشتراک‌های OpenP2P را نمی‌توان به بسته پروفایل اضافه کرد."
+        "openp2pBundleLimit": "یک بسته پروفایل می‌تواند فقط یک اشتراک OpenP2P داشته باشد."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",

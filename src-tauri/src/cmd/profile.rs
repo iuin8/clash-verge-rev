@@ -161,8 +161,22 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     if openp2p_subscription.is_none() && !crate::core::openp2p::subscriptions::is_subscription_profile_uid(&index) {
         super::bundle_save::ensure_not_managed(&index)?;
     }
+    // A deleted bundle loses the store of its OpenP2P subscription member too;
+    // collect it before the bundle metadata is torn down.
+    let bundled_subscriptions = if crate::config::bundle::is_bundle_uid(&index) {
+        super::openp2p::bundle_subscriptions().await
+    } else {
+        Vec::new()
+    };
     // FORK: Profile Bundle members/bundle take the fork-only transactional path.
     if let Some(result) = super::bundle_delete::try_delete(index.clone()).await {
+        if result.is_ok() {
+            let mut deleted = bundled_subscriptions;
+            if let Some(subscription) = openp2p_subscription {
+                deleted.push(subscription);
+            }
+            super::openp2p::cleanup_deleted_subscriptions(&deleted).await;
+        }
         return result;
     }
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
@@ -205,29 +219,9 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
 
     if let Some(subscription) = openp2p_subscription {
         // The deleted card may have been the current one. profiles.yaml has
-        // already moved to its successor, so reconcile the sidecar before the
+        // already moved to its successor; converge the sidecar before the
         // account working directories (which hold rendered tokens) are removed.
-        if should_update
-            && let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
-                .reconcile_current()
-                .await
-        {
-            logging!(
-                warn,
-                Type::Config,
-                "failed to reconcile the openp2p sidecar after a profile deletion: {error:#}"
-            );
-        }
-        if let Ok(store) = crate::core::openp2p::subscriptions::SubscriptionStore::app_default()
-            && let Err(error) = store.remove(&subscription.id)
-        {
-            logging!(
-                warn,
-                Type::Config,
-                "failed to remove the openp2p subscription {}: {error:#}",
-                subscription.id
-            );
-        }
+        super::openp2p::cleanup_deleted_subscriptions(std::slice::from_ref(&subscription)).await;
     }
 
     if let Err(e) = Tray::global().update_tooltip().await {

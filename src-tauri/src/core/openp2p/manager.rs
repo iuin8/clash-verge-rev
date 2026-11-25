@@ -294,30 +294,42 @@ impl OpenP2PManager {
             manager.deactivate().await;
             manager.set_config_error(Some(format!("{error:#}")));
         }
-        purge_inactive_accounts().await;
+        let active_uid = manager
+            .data
+            .read()
+            .active
+            .as_ref()
+            .map(|active| active.profile_uid.clone());
+        purge_inactive_accounts(active_uid.as_deref());
     }
 
-    /// profiles.yaml:current is the only authority: run the subscription behind
-    /// the current profile, stop everything for any other profile or a bundle.
+    /// profiles.yaml:current is the only authority: a subscription card is the
+    /// sidecar source directly, and a Profile Bundle is the source of its single
+    /// OpenP2P subscription member. Any other current profile stops the sidecar.
     pub async fn reconcile_current(&self) -> Result<()> {
         if !PLATFORM_SUPPORTED {
             self.deactivate().await;
             return Ok(());
         }
         let current = Config::profiles().await.latest_arc().current.clone();
-        let Some(uid) = current else {
+        let uid = match self.sidecar_profile_uid_for_current(current.as_deref()).await {
+            Ok(uid) => uid,
+            Err(error) => {
+                self.deactivate().await;
+                return Err(error);
+            }
+        };
+        let Some(uid) = uid else {
             self.deactivate().await;
             return Ok(());
         };
         let store = SubscriptionStore::app_default()?;
         let Some(runtime) = store.runtime_for_uid(&uid)? else {
-            if id_from_profile_uid(&uid).is_some() {
-                logging!(
-                    warn,
-                    Type::Network,
-                    "the current profile is an OpenP2P subscription card without a subscription store"
-                );
-            }
+            logging!(
+                warn,
+                Type::Network,
+                "the current profile resolves to an OpenP2P subscription card without a subscription store"
+            );
             self.deactivate().await;
             return Ok(());
         };
@@ -341,20 +353,44 @@ impl OpenP2PManager {
     /// Profile Bundle activation).
     pub async fn ensure_current(&self) -> Result<()> {
         let current = Config::profiles().await.latest_arc().current.clone();
+        let expected = match self.sidecar_profile_uid_for_current(current.as_deref()).await {
+            Ok(expected) => expected,
+            Err(error) => {
+                self.deactivate().await;
+                return Err(error);
+            }
+        };
         let active = self
             .data
             .read()
             .active
             .as_ref()
             .map(|active| active.profile_uid.clone());
-        let expected = current
-            .as_deref()
-            .filter(|uid| id_from_profile_uid(uid).is_some())
-            .map(str::to_owned);
         if expected == active {
             return Ok(());
         }
         self.reconcile_current().await
+    }
+
+    /// Resolves the profile uid that should drive the sidecar for a current
+    /// profile: the subscription card itself, or a bundle's single OpenP2P
+    /// subscription member. More than one member is a hard error.
+    async fn sidecar_profile_uid_for_current(&self, current: Option<&str>) -> Result<Option<std::string::String>> {
+        let Some(current) = current else {
+            return Ok(None);
+        };
+        if current == crate::config::bundle::BUNDLE_UID {
+            let Some(meta) = crate::config::bundle::load_meta().await? else {
+                return Ok(None);
+            };
+            return subscriptions::single_subscription_member(&meta.members);
+        }
+        Ok(Self::direct_subscription_uid(current))
+    }
+
+    /// Returns the full profile uid for a direct subscription current profile.
+    fn direct_subscription_uid(current: &str) -> Option<std::string::String> {
+        id_from_profile_uid(current).map(|_| current.to_owned())
     }
 
     /// Records a sidecar failure without undoing an already valid mihomo switch.
@@ -628,12 +664,11 @@ fn is_orphan_subscription_item(item: &crate::config::PrfItem, store: &Subscripti
 
 /// An inactive subscription keeps no account working directory: config.json holds
 /// the rendered token and must not outlive the sidecar run.
-async fn purge_inactive_accounts() {
+fn purge_inactive_accounts(active_profile_uid: Option<&str>) {
     let Ok(store) = SubscriptionStore::app_default() else {
         return;
     };
-    let current = Config::profiles().await.latest_arc().current.clone();
-    let current_id = current.as_deref().and_then(id_from_profile_uid);
+    let current_id = active_profile_uid.and_then(id_from_profile_uid);
     let active_accounts = current_id
         .as_ref()
         .and_then(|id| store.load_config(id).ok())
@@ -735,6 +770,16 @@ mod tests {
         let manager = OpenP2PManager::new();
         let view = manager.view();
         assert!(view.accounts.is_empty());
+    }
+
+    #[test]
+    fn a_direct_subscription_keeps_its_full_profile_uid() {
+        assert_eq!(
+            OpenP2PManager::direct_subscription_uid("op2p-sub-7bab4a2044fddf4e"),
+            Some("op2p-sub-7bab4a2044fddf4e".to_owned())
+        );
+        assert_eq!(OpenP2PManager::direct_subscription_uid("bundle-main"), None);
+        assert_eq!(OpenP2PManager::direct_subscription_uid("plain-profile"), None);
     }
 
     #[test]

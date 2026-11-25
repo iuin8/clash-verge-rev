@@ -39,7 +39,7 @@
         "reorderFailed": "调整订阅顺序失败",
         "switchFailed": "切换订阅失败",
         "updateFailed": "更新订阅失败",
-        "openp2pBundleUnsupported": "OpenP2P 订阅不能加入订阅组合。"
+        "openp2pBundleLimit": "一个订阅组合只能包含一个 OpenP2P 订阅。"
       },
       "notifications": {
         "importRetry": "订阅导入失败，尝试使用 Clash 代理导入",

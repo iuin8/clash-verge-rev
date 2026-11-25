@@ -39,7 +39,7 @@
         "reorderFailed": "Failed to reorder profiles",
         "switchFailed": "Failed to switch profile",
         "updateFailed": "Failed to update profile",
-        "openp2pBundleUnsupported": "OpenP2P subscriptions cannot be added to a Profile Bundle."
+        "openp2pBundleLimit": "A Profile Bundle can contain only one OpenP2P subscription."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",

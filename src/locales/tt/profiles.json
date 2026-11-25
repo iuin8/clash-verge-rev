@@ -39,7 +39,7 @@
         "reorderFailed": "Профильләр тәртибен үзгәртеп булмады",
         "switchFailed": "Профильне алыштырып булмады",
         "updateFailed": "Профильне яңартып булмады",
-        "openp2pBundleUnsupported": "OpenP2P язылуларын Профиль тупламасына өстәп булмый."
+        "openp2pBundleLimit": "Профиль тупламасында бер генә OpenP2P язылуы була ала."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",

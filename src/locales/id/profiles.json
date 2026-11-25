@@ -39,7 +39,7 @@
         "reorderFailed": "Gagal mengurutkan ulang profil",
         "switchFailed": "Gagal beralih profil",
         "updateFailed": "Gagal memperbarui profil",
-        "openp2pBundleUnsupported": "Langganan OpenP2P tidak dapat ditambahkan ke Paket Profil."
+        "openp2pBundleLimit": "Paket Profil hanya dapat berisi satu langganan OpenP2P."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",

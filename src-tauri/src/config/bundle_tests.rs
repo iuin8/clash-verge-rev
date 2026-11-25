@@ -68,30 +68,106 @@ fn validation_rejects_non_subscriptions_and_missing_items() {
     }
 }
 
+fn subscription_item(uid: &str) -> PrfItem {
+    let id = uid.strip_prefix("op2p-sub-").expect("subscription uid");
+    PrfItem {
+        uid: Some(uid.into()),
+        itype: Some("local".into()),
+        file: Some(format!("{uid}.yaml").into()),
+        desc: Some(format!("{}{id}", crate::core::openp2p::subscriptions::PROFILE_DESC_PREFIX).into()),
+        ..PrfItem::default()
+    }
+}
+
 #[test]
-fn openp2p_subscription_cards_cannot_be_bundle_members() {
-    let mut subscription = item(
-        "op2p-sub-0123456789abcdef",
-        "local",
-        Some("op2p-sub-0123456789abcdef.yaml"),
-    );
-    subscription.desc = Some(
-        format!(
-            "{}0123456789abcdef",
-            crate::core::openp2p::subscriptions::PROFILE_DESC_PREFIX
-        )
-        .into(),
-    );
+fn a_bundle_accepts_one_openp2p_subscription_member() {
     let profiles = IProfiles {
         current: None,
-        items: Some(vec![item("local", "local", Some("local.yaml")), subscription]),
+        items: Some(vec![
+            item("local", "local", Some("local.yaml")),
+            subscription_item("op2p-sub-0123456789abcdef"),
+        ]),
     };
-    let error = validate_members(&profiles, &uids(&["local", "op2p-sub-0123456789abcdef"]))
-        .expect_err("an openp2p subscription must not become a bundle member");
+    validate_members(&profiles, &uids(&["local", "op2p-sub-0123456789abcdef"]))
+        .expect("one OpenP2P subscription member is allowed");
+}
+
+#[test]
+fn a_bundle_rejects_two_openp2p_subscription_members() {
+    let profiles = IProfiles {
+        current: None,
+        items: Some(vec![
+            item("local", "local", Some("local.yaml")),
+            subscription_item("op2p-sub-0123456789abcdef"),
+            subscription_item("op2p-sub-fedcba9876543210"),
+        ]),
+    };
+    let error = validate_members(
+        &profiles,
+        &uids(&["local", "op2p-sub-0123456789abcdef", "op2p-sub-fedcba9876543210"]),
+    )
+    .expect_err("two OpenP2P subscriptions must be rejected");
     assert!(
-        format!("{error:#}").contains("cannot be a profile bundle member"),
+        format!("{error:#}").contains("at most one OpenP2P subscription"),
         "{error:#}"
     );
+}
+
+#[test]
+fn a_bundle_merges_a_subscription_member_without_its_secrets() {
+    use crate::core::openp2p::portable::parse_import;
+    use crate::core::openp2p::profile_render;
+    use serde_yaml_ng::{Mapping, Value};
+
+    const TOKEN: &str = "1234567890123";
+    const KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----";
+    let key = KEY
+        .lines()
+        .map(|line| format!("      {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let document = format!(
+        r#"accounts:
+  - id: home
+    label: Home
+    gateway: {{ host: api.openp2p.cn, port: 27183 }}
+    token: {TOKEN}
+    apps:
+      - {{ name: ssh-home, protocol: tcp, peer_node: home-exit-01, dst_host: 127.0.0.1, dst_port: 22 }}
+proxies:
+  - name: op2p-home
+    account: home
+    ssh_user: tunnel
+    private_key: |-
+{key}
+    host_key: "{host_key}"
+"#,
+        host_key = crate::core::openp2p::schema::fixtures::sample_host_key()
+    );
+    let parsed = parse_import(&document, None);
+    assert!(parsed.can_apply(), "{:?}", parsed.issues);
+    let member = profile_render::render_subscription_profile_with(
+        &parsed.config,
+        parsed.mihomo.as_deref(),
+        "",
+        |_| true,
+        |_| true,
+    )
+    .expect("render")
+    .yaml;
+    assert!(!member.contains(TOKEN));
+    assert!(!member.contains("PRIVATE KEY"));
+
+    let base: Mapping = serde_yaml_ng::from_str("mixed-port: 7890\nrules:\n  - MATCH,DIRECT\n").expect("base");
+    let member: Mapping = serde_yaml_ng::from_str(&member).expect("member");
+    let (merged, _) = crate::enhance::multi_merge::multi_profile_merge(&[base, member], &["base", "openp2p"]);
+    let merged = serde_yaml_ng::to_string(&Value::Mapping(merged)).expect("yaml");
+    assert!(!merged.contains(TOKEN), "token must not reach the bundle profile");
+    assert!(
+        !merged.contains("PRIVATE KEY"),
+        "key body must not reach the bundle profile"
+    );
+    assert!(merged.contains("op2p-home"));
 }
 
 #[test]

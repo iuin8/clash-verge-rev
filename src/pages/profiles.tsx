@@ -56,7 +56,12 @@ import {
   ProfileViewer,
   type ProfileViewerRef,
 } from '@/components/profile/profile-viewer'
-import { useProfileBundle } from '@/components/profile/use-profile-bundle'
+import {
+  bundleSelectionState,
+  selectAllBundleProfiles,
+  toggleBundleProfileSelection,
+  useProfileBundle,
+} from '@/components/profile/use-profile-bundle'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
@@ -644,8 +649,13 @@ const ProfilePage = () => {
     onLogsChanged: mutateLogs,
     onEditMembers: (uids) => {
       setBatchMode(true)
+      const subscriptionUid = uids.find((uid) => isOpenP2pSubscriptionUid(uid))
       setSelectedProfiles(
-        new Set(uids.filter((uid) => !isOpenP2pSubscriptionUid(uid))),
+        new Set(
+          uids.filter(
+            (uid) => !isOpenP2pSubscriptionUid(uid) || uid === subscriptionUid,
+          ),
+        ),
       )
     },
     onSelectionCleared: () => {
@@ -719,25 +729,16 @@ const ProfilePage = () => {
 
   const toggleProfileSelection = (uid: string) => {
     if (bundle.isBundleItem(uid)) return
-    if (isOpenP2pSubscriptionUid(uid)) {
-      showNotice.error('profiles.page.feedback.errors.openp2pBundleUnsupported')
+    const result = toggleBundleProfileSelection(selectedProfiles, uid)
+    if (result.refused) {
+      showNotice.error('profiles.page.feedback.errors.openp2pBundleLimit')
       return
     }
-    setSelectedProfiles((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(uid)) {
-        newSet.delete(uid)
-      } else {
-        newSet.add(uid)
-      }
-      return newSet
-    })
+    setSelectedProfiles(result.selected)
   }
 
   const selectAllProfiles = () => {
-    setSelectedProfiles(
-      new Set(bundle.selectableProfiles.map((item) => item.uid!)),
-    )
+    setSelectedProfiles(selectAllBundleProfiles(profileItems, selectedProfiles))
   }
 
   const clearAllSelections = () => {
@@ -746,23 +747,13 @@ const ProfilePage = () => {
 
   const isAllSelected = () => {
     return (
-      bundle.selectableProfiles.length > 0 &&
-      bundle.selectableProfiles.every((item) => selectedProfiles.has(item.uid!))
+      bundleSelectionState(bundle.selectableProfiles, selectedProfiles) ===
+      'all'
     )
   }
 
-  const getSelectionState = () => {
-    const selectedCount = bundle.selectableProfiles.filter((item) =>
-      selectedProfiles.has(item.uid!),
-    ).length
-    if (selectedCount === 0) {
-      return 'none'
-    } else if (selectedCount === bundle.selectableProfiles.length) {
-      return 'all'
-    } else {
-      return 'partial'
-    }
-  }
+  const getSelectionState = () =>
+    bundleSelectionState(bundle.selectableProfiles, selectedProfiles)
 
   const deleteSelectedProfiles = useLockFn(async () => {
     const targets = [...selectedProfiles].filter(

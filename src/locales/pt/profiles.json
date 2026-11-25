@@ -39,7 +39,7 @@
         "reorderFailed": "Falha ao reordenar os perfis",
         "switchFailed": "Falha ao trocar de perfil",
         "updateFailed": "Falha ao atualizar o perfil",
-        "openp2pBundleUnsupported": "Assinaturas OpenP2P não podem ser adicionadas a um pacote de perfis."
+        "openp2pBundleLimit": "Um pacote de perfis pode conter apenas uma assinatura OpenP2P."
       },
       "notifications": {
         "importRetry": "Falha na importação, tentando novamente com o proxy Clash...",

@@ -811,7 +811,7 @@ export interface TranslationResources {
             invalidUrl: string
             onlyYaml: string
             openFailed: string
-            openp2pBundleUnsupported: string
+            openp2pBundleLimit: string
             readFailed: string
             reorderFailed: string
             switchFailed: string

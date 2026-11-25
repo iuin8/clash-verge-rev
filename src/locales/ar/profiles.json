@@ -39,7 +39,7 @@
         "reorderFailed": "تعذّر إعادة ترتيب الملفات الشخصية",
         "switchFailed": "تعذّر تبديل الملف الشخصي",
         "updateFailed": "تعذّر تحديث الملف الشخصي",
-        "openp2pBundleUnsupported": "لا يمكن إضافة اشتراكات OpenP2P إلى حزمة ملفات شخصية."
+        "openp2pBundleLimit": "يمكن أن تحتوي حزمة الملفات الشخصية على اشتراك OpenP2P واحد فقط."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",

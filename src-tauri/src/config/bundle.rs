@@ -207,15 +207,6 @@ pub fn validate_member_list(members: &[String]) -> Result<()> {
 }
 
 pub(super) fn validate_member_item(uid: &str, item: &PrfItem) -> Result<()> {
-    // An OpenP2P subscription owns its generated profile lifecycle; v1 keeps it
-    // out of bundles so one current profile has exactly one active source.
-    if item
-        .desc
-        .as_deref()
-        .is_some_and(|desc| desc.starts_with(crate::core::openp2p::subscriptions::PROFILE_DESC_PREFIX))
-    {
-        bail!("openp2p subscription '{uid}' cannot be a profile bundle member in this version");
-    }
     if !matches!(item.itype.as_deref(), Some("local" | "remote")) {
         bail!("bundle member '{uid}' is not a subscription");
     }
@@ -234,6 +225,7 @@ pub fn validate_members(profiles: &IProfiles, members: &[String]) -> Result<()> 
             .with_context(|| format!("bundle member '{uid}' no longer exists"))?;
         validate_member_item(uid, item)?;
     }
+    crate::core::openp2p::subscriptions::single_subscription_member(members)?;
     Ok(())
 }
 

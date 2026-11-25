@@ -39,7 +39,7 @@
         "reorderFailed": "Profiller yeniden sıralanamadı",
         "switchFailed": "Profil değiştirilemedi",
         "updateFailed": "Profil güncellenemedi",
-        "openp2pBundleUnsupported": "OpenP2P abonelikleri bir Profil Paketine eklenemez."
+        "openp2pBundleLimit": "Bir Profil Paketi yalnızca bir OpenP2P aboneliği içerebilir."
       },
       "notifications": {
         "importRetry": "İçe aktarma başarısız oldu, Clash vekil ile yeniden deneniyor...",

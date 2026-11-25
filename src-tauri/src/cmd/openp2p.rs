@@ -8,7 +8,7 @@ use crate::core::openp2p::manager::OpenP2PManager;
 use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind, SecretVault};
 use crate::core::openp2p::state::OpenP2PView;
 use crate::core::openp2p::subscriptions::{
-    SubscriptionImport, SubscriptionMeta, SubscriptionRuntime, SubscriptionStore,
+    self, SubscriptionImport, SubscriptionMeta, SubscriptionRuntime, SubscriptionStore,
 };
 use crate::core::validate::ValidationOutcome;
 use crate::utils::network::{NetworkManager, ProxyType};
@@ -224,7 +224,7 @@ fn find_subscription(store: &SubscriptionStore, profile_uid: &str) -> CmdResult<
 
 async fn subscription_view(meta: &SubscriptionMeta) -> CmdResult<OpenP2PSubscription> {
     let profile_uid = meta.profile_uid();
-    let current = Config::profiles().await.latest_arc().current.clone();
+    let active = current_sidecar_uid().await.as_deref() == Some(profile_uid.as_str());
     Ok(OpenP2PSubscription {
         id: meta.id.clone(),
         profile_uid: profile_uid.clone(),
@@ -233,8 +233,94 @@ async fn subscription_view(meta: &SubscriptionMeta) -> CmdResult<OpenP2PSubscrip
         source_url: meta.source_url.clone(),
         imported_at: meta.imported_at,
         account_count: meta.account_count,
-        active: current.as_deref() == Some(profile_uid.as_str()),
+        active,
     })
+}
+
+/// The subscription profile uid that currently drives the sidecar: the current
+/// subscription card itself, or the single OpenP2P subscription member of the
+/// current Profile Bundle.
+async fn current_sidecar_uid() -> Option<std::string::String> {
+    let current = Config::profiles().await.latest_arc().current.clone();
+    let current = current?;
+    if current == crate::config::bundle::BUNDLE_UID {
+        return bundle_subscription_uid().await;
+    }
+    subscriptions::is_subscription_profile_uid(&current).then(|| current.to_string())
+}
+
+async fn bundle_subscription_uid() -> Option<std::string::String> {
+    let meta = crate::config::bundle::load_meta().await.ok().flatten()?;
+    subscriptions::single_subscription_member(&meta.members).ok().flatten()
+}
+
+/// The live OpenP2P subscriptions referenced by the current bundle membership.
+/// Used before deleting a bundle so its subscription store can be cleaned up.
+pub(crate) async fn bundle_subscriptions() -> Vec<SubscriptionMeta> {
+    let Ok(Some(meta)) = crate::config::bundle::load_meta().await else {
+        return Vec::new();
+    };
+    let Ok(store) = SubscriptionStore::app_default() else {
+        return Vec::new();
+    };
+    meta.members
+        .iter()
+        .filter_map(|uid| store.find_by_profile_uid(uid).ok().flatten())
+        .collect()
+}
+
+/// After a bundle/profile deletion: converge the sidecar to the new current
+/// profile first (so account working directories are idle), then remove the
+/// subscription stores that belonged to deleted cards.
+pub(crate) async fn cleanup_deleted_subscriptions(subscriptions: &[SubscriptionMeta]) {
+    if subscriptions.is_empty() {
+        return;
+    }
+    let manager = OpenP2PManager::global();
+    if let Err(error) = manager.ensure_current().await {
+        manager.mark_degraded(format!("{error:#}"));
+    }
+    let Ok(store) = SubscriptionStore::app_default() else {
+        return;
+    };
+    for subscription in subscriptions {
+        if let Err(error) = store.remove(&subscription.id) {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to remove the openp2p subscription {}: {error:#}",
+                subscription.id
+            );
+        }
+    }
+}
+
+/// Regenerates the current bundle from its member files after an OpenP2P member
+/// subscription changed, so the merged mihomo profile reflects the new content.
+async fn refresh_active_bundle() -> CmdResult<()> {
+    let _profile_write_guard = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+    let profiles = Config::profiles().await;
+    let snapshot = profiles.latest_arc();
+    if snapshot.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
+        return Ok(());
+    }
+    let artifacts = crate::config::bundle::snapshot_artifacts()
+        .await
+        .map_err(|error| coded_error("OPENP2P_PROFILE_SYNC_FAILED", format!("{error:#}")))?;
+    if let Err(error) = crate::config::bundle::refresh(&snapshot, true, true).await {
+        if let Err(rollback) = crate::config::bundle::restore_artifacts(&artifacts).await {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to restore bundle artifacts after an openp2p update: {rollback:#}"
+            );
+        }
+        return Err(coded_error(
+            "OPENP2P_PROFILE_SYNC_FAILED",
+            format!("failed to refresh the active profile bundle: {error:#}"),
+        ));
+    }
+    Ok(())
 }
 
 enum SubscriptionWrite<'a> {
@@ -399,11 +485,24 @@ pub async fn update_openp2p_subscription(profile_uid: std::string::String) -> Cm
     .await?;
     log_import_warnings(&import);
     let current = Config::profiles().await.latest_arc().current.clone();
-    if current.as_deref() == Some(import.profile_uid.as_str()) {
+    let direct_current = current.as_deref() == Some(import.profile_uid.as_str());
+    let bundle_member_active = current.as_deref() == Some(crate::config::bundle::BUNDLE_UID)
+        && bundle_subscription_uid().await.as_deref() == Some(import.profile_uid.as_str());
+    if bundle_member_active {
+        refresh_active_bundle().await?;
+    }
+    if direct_current || bundle_member_active {
         if let Err(error) = OpenP2PManager::global().reconcile_current().await {
             OpenP2PManager::global().mark_degraded(format!("{error:#}"));
         }
         refresh_runtime().await?;
+        if bundle_member_active && let Err(error) = crate::config::bundle::mark_validated_if_current().await {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to mark the refreshed bundle validated: {error:#}"
+            );
+        }
     }
     subscription_view(&import.meta).await
 }
