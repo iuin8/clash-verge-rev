@@ -270,8 +270,9 @@
     "OPENP2P_IMPORT_APPLY_FAILED": "无法应用 OpenP2P 导入。"
   },
   "settings": {
-    "title": "OpenP2P",
+    "title": "OpenP2P 设置",
     "version": "内核版本",
-    "unknown": "未知"
+    "unknown": "未知",
+    "kernel": "OpenP2P 内核"
   }
 }

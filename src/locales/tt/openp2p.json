@@ -270,8 +270,9 @@
     "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied."
   },
   "settings": {
-    "title": "OpenP2P",
+    "title": "OpenP2P settings",
     "version": "Kernel version",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "kernel": "OpenP2P core"
   }
 }

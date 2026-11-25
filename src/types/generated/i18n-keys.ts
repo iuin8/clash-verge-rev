@@ -433,6 +433,7 @@ export const translationKeys = [
   'openp2p.settings.title',
   'openp2p.settings.version',
   'openp2p.settings.unknown',
+  'openp2p.settings.kernel',
   'profiles.page.actions.updateAll',
   'profiles.page.actions.viewRuntimeConfig',
   'profiles.page.actions.reactivate',

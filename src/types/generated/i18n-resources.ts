@@ -598,6 +598,7 @@ export interface TranslationResources {
         title: string
       }
       settings: {
+        kernel: string
         title: string
         unknown: string
         version: string
