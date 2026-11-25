@@ -1,14 +1,16 @@
-use std::collections::BTreeSet;
-
 use serde::{Deserialize, Serialize};
 
 use super::{CmdResult, CommandFailure, coded_error};
+use crate::config::Config;
+use crate::core::notify::{Refresh, announce};
 use crate::core::openp2p::account;
 use crate::core::openp2p::manager::OpenP2PManager;
-use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind, ParsedImport};
-use crate::core::openp2p::profile_store::{ImportMetadata, ProfileStore};
-use crate::core::openp2p::schema::{AppProtocol, AppSpec, OpenP2PConfig, OpenP2PIssue, ProxySpec};
-use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PApplyOutcome, OpenP2PPreviewAction, OpenP2PView};
+use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind, SecretVault};
+use crate::core::openp2p::state::OpenP2PView;
+use crate::core::openp2p::subscriptions::{
+    SubscriptionImport, SubscriptionMeta, SubscriptionRuntime, SubscriptionStore,
+};
+use crate::core::validate::ValidationOutcome;
 use crate::utils::network::{NetworkManager, ProxyType};
 use clash_verge_logging::{Type, logging};
 
@@ -16,47 +18,16 @@ const FETCH_TIMEOUT_SECS: u64 = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct OpenP2PImportSource {
-    pub kind: OpenP2PImportSourceKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<std::string::String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<u32>,
-    pub contains_mihomo: bool,
-    /// Every credential this document needs is carried by the document itself.
-    pub self_contained: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "lowercase")]
-pub enum OpenP2PSecretState {
-    /// Carried by this import and written on apply.
-    Inline,
-    /// Not in this import, but a credential file already exists.
-    Present,
-    Missing,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenP2PImportAccount {
+pub struct OpenP2PSubscription {
     pub id: std::string::String,
-    pub label: std::string::String,
-    pub action: OpenP2PPreviewAction,
-    pub token: OpenP2PSecretState,
-    pub key: OpenP2PSecretState,
-    pub nodes: Vec<std::string::String>,
-    pub route_count: u32,
-    pub warnings: Vec<std::string::String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenP2PImportPreview {
-    pub can_apply: bool,
-    pub issues: Vec<OpenP2PIssue>,
-    pub source: OpenP2PImportSource,
-    pub accounts: Vec<OpenP2PImportAccount>,
+    pub profile_uid: std::string::String,
+    pub name: std::string::String,
+    pub source: OpenP2PImportSourceKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<std::string::String>,
+    pub imported_at: u64,
+    pub account_count: usize,
+    pub active: bool,
 }
 
 #[derive(Debug)]
@@ -87,6 +58,8 @@ impl std::error::Error for ImportReadError {}
 pub struct ResolvedImport {
     pub kind: OpenP2PImportSourceKind,
     pub text: std::string::String,
+    /// Canonical HTTPS URL of a remote source; never logged.
+    pub url: Option<std::string::String>,
 }
 
 impl std::fmt::Debug for ResolvedImport {
@@ -94,6 +67,7 @@ impl std::fmt::Debug for ResolvedImport {
         f.debug_struct("ResolvedImport")
             .field("kind", &self.kind)
             .field("bytes", &self.text.len())
+            .field("url", &self.url.as_ref().map(|_| "<url>"))
             .finish()
     }
 }
@@ -127,6 +101,7 @@ pub async fn read_import(
             Ok(ResolvedImport {
                 kind: OpenP2PImportSourceKind::Local,
                 text,
+                url: None,
             })
         }
         (None, Some(raw_url)) => {
@@ -140,10 +115,11 @@ pub async fn read_import(
                 )
                 .await
                 .map_err(|error| {
+                    let detail = crate::utils::help::mask_err(&format!("{error:#}"));
                     ImportReadError::new(
                         OpenP2PImportSourceKind::Url,
                         "fetch_failed",
-                        format!("failed to fetch the import URL: {error:#}"),
+                        format!("failed to fetch the import URL: {detail}"),
                     )
                 })?;
             let text = std::string::String::from_utf8(fetched).map_err(|_| {
@@ -163,6 +139,7 @@ pub async fn read_import(
             Ok(ResolvedImport {
                 kind: OpenP2PImportSourceKind::Url,
                 text,
+                url: Some(url.to_string()),
             })
         }
     }
@@ -193,164 +170,6 @@ fn parse_https_url(raw: &str) -> std::result::Result<reqwest::Url, ImportReadErr
     Ok(url)
 }
 
-const fn secret_state(inline: bool, present: bool) -> OpenP2PSecretState {
-    if inline {
-        OpenP2PSecretState::Inline
-    } else if present {
-        OpenP2PSecretState::Present
-    } else {
-        OpenP2PSecretState::Missing
-    }
-}
-
-/// Whether a node would be rendered. Mirrors the artifacts build eligibility
-/// rule without consulting credentials.
-fn renderable_nodes(config: &OpenP2PConfig) -> BTreeSet<std::string::String> {
-    config
-        .proxies
-        .iter()
-        .filter_map(|proxy| {
-            let account = config.account(&proxy.account)?;
-            if !account.enabled {
-                return None;
-            }
-            let tcp_apps: Vec<&AppSpec> = account
-                .apps
-                .iter()
-                .filter(|app| app.enabled.is_enabled() && app.protocol() == AppProtocol::Tcp)
-                .collect();
-            let selected = match proxy.app.as_deref() {
-                Some(name) => tcp_apps.iter().copied().find(|app| app.name == name),
-                None if tcp_apps.len() == 1 => tcp_apps.first().copied(),
-                None => None,
-            };
-            selected?;
-            proxy.host_key.as_ref()?;
-            Some(proxy.name.clone())
-        })
-        .collect()
-}
-
-fn route_count(config: &OpenP2PConfig, account_id: &str) -> u32 {
-    let single = config.accounts.len() == 1;
-    config
-        .networks
-        .iter()
-        .filter(|network| network.account.as_deref() == Some(account_id) || (network.account.is_none() && single))
-        .map(|network| 2 * (network.domains.len() + network.cidrs.len()) as u32)
-        .sum()
-}
-
-pub(crate) fn build_preview<T, K>(
-    parsed: &ParsedImport,
-    existing: Option<&OpenP2PConfig>,
-    token_present: T,
-    key_present: K,
-    kind: OpenP2PImportSourceKind,
-) -> OpenP2PImportPreview
-where
-    T: Fn(&str) -> bool,
-    K: Fn(&str) -> bool,
-{
-    let issues = parsed.issues.clone();
-    let nodes = renderable_nodes(&parsed.config);
-    let mut accounts = Vec::new();
-    for account in &parsed.config.accounts {
-        let action = match existing.and_then(|old| old.account(&account.id)) {
-            None => OpenP2PPreviewAction::Add,
-            Some(old) if old == account => OpenP2PPreviewAction::Unchanged,
-            Some(_) => OpenP2PPreviewAction::Update,
-        };
-        let token = secret_state(
-            parsed.carries_token(&account.token_ref),
-            token_present(&account.token_ref),
-        );
-        let account_proxies: Vec<&ProxySpec> = parsed
-            .config
-            .proxies
-            .iter()
-            .filter(|proxy| proxy.account == account.id)
-            .collect();
-        let mut key = OpenP2PSecretState::Present;
-        for proxy in &account_proxies {
-            let state = secret_state(
-                parsed.carries_key(&proxy.private_key_ref),
-                key_present(&proxy.private_key_ref),
-            );
-            if state == OpenP2PSecretState::Missing {
-                key = OpenP2PSecretState::Missing;
-                break;
-            }
-            if state == OpenP2PSecretState::Inline {
-                key = OpenP2PSecretState::Inline;
-            }
-        }
-        let mut warnings = Vec::new();
-        if !account.enabled {
-            warnings.push("account_disabled".to_owned());
-        }
-        if account.enabled && token == OpenP2PSecretState::Missing {
-            warnings.push("token_missing".to_owned());
-        }
-        if account.enabled && key == OpenP2PSecretState::Missing {
-            warnings.push("key_missing".to_owned());
-        }
-        accounts.push(OpenP2PImportAccount {
-            id: account.id.clone(),
-            label: account.label().to_owned(),
-            action,
-            token,
-            key,
-            nodes: account_proxies
-                .iter()
-                .filter(|proxy| nodes.contains(&proxy.name))
-                .map(|proxy| proxy.name.clone())
-                .collect(),
-            route_count: route_count(&parsed.config, &account.id),
-            warnings,
-        });
-    }
-    if let Some(existing) = existing {
-        for account in &existing.accounts {
-            if parsed.config.account(&account.id).is_some() {
-                continue;
-            }
-            let key = if existing
-                .proxies_for(&account.id)
-                .all(|proxy| key_present(&proxy.private_key_ref))
-            {
-                OpenP2PSecretState::Present
-            } else {
-                OpenP2PSecretState::Missing
-            };
-            accounts.push(OpenP2PImportAccount {
-                id: account.id.clone(),
-                label: account.label().to_owned(),
-                action: OpenP2PPreviewAction::Remove,
-                token: secret_state(false, token_present(&account.token_ref)),
-                key,
-                nodes: Vec::new(),
-                route_count: 0,
-                warnings: Vec::new(),
-            });
-        }
-    }
-    OpenP2PImportPreview {
-        can_apply: !issues
-            .iter()
-            .any(|issue| issue.severity == crate::core::openp2p::schema::IssueSeverity::Error),
-        issues,
-        source: OpenP2PImportSource {
-            kind,
-            name: None,
-            version: None,
-            contains_mihomo: parsed.has_mihomo,
-            self_contained: parsed.self_contained(),
-        },
-        accounts,
-    }
-}
-
 fn require_platform() -> CmdResult<()> {
     if crate::core::openp2p::manager::PLATFORM_SUPPORTED {
         Ok(())
@@ -362,20 +181,18 @@ fn require_platform() -> CmdResult<()> {
     }
 }
 
-fn account_failure(error: anyhow::Error) -> CommandFailure {
-    coded_error("OPENP2P_ACCOUNT_FAILED", format!("{error:#}"))
-}
-
-fn import_failure(issues: &[OpenP2PIssue]) -> CommandFailure {
-    let detail = issues
-        .iter()
-        .map(|issue| format!("{}: {} ({})", issue.path, issue.message, issue.code))
-        .collect::<Vec<_>>()
-        .join("; ");
-    coded_error("OPENP2P_CONFIG_INVALID", detail)
+fn subscription_failure(error: anyhow::Error) -> CommandFailure {
+    coded_error("OPENP2P_SUBSCRIPTION_FAILED", format!("{error:#}"))
 }
 
 fn source_failure(error: ImportReadError) -> CommandFailure {
+    logging!(
+        warn,
+        Type::Cmd,
+        "openp2p import source rejected ({:?}): {}",
+        error.kind,
+        error.message
+    );
     let code = match error.code {
         "url_insecure" | "url_invalid" => "OPENP2P_IMPORT_URL_INVALID",
         "fetch_failed" | "source_not_utf8" => "OPENP2P_IMPORT_FETCH_FAILED",
@@ -385,255 +202,247 @@ fn source_failure(error: ImportReadError) -> CommandFailure {
     coded_error(code, error.message)
 }
 
-fn key_present(reference: &str) -> bool {
-    account::key_path(reference).ok().is_some_and(|path| path.is_file())
+fn subscription_store() -> CmdResult<SubscriptionStore> {
+    SubscriptionStore::app_default().map_err(subscription_failure)
 }
 
-fn load_existing(store: &ProfileStore) -> Option<OpenP2PConfig> {
-    match store.load_config() {
-        Ok(config) => config,
-        Err(error) => {
-            logging!(warn, Type::Config, "failed to read the openp2p source: {error:#}");
-            None
-        }
-    }
+fn secret_vault() -> CmdResult<SecretVault> {
+    SecretVault::app_default().map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))
 }
 
-fn mark_platform_unsupported(preview: &mut OpenP2PImportPreview) {
-    if !crate::core::openp2p::manager::PLATFORM_SUPPORTED {
-        preview.issues.push(OpenP2PIssue::error(
-            "platform_unsupported",
-            "",
-            "openp2p sidecar is supported on macOS only in this build",
-        ));
-        preview.can_apply = false;
-    }
+fn find_subscription(store: &SubscriptionStore, profile_uid: &str) -> CmdResult<SubscriptionMeta> {
+    store
+        .find_by_profile_uid(profile_uid)
+        .map_err(subscription_failure)?
+        .ok_or_else(|| {
+            coded_error(
+                "OPENP2P_SUBSCRIPTION_NOT_FOUND",
+                "no openp2p subscription belongs to this profile",
+            )
+        })
 }
 
-fn failed_preview(error: ImportReadError) -> OpenP2PImportPreview {
-    let mut preview = OpenP2PImportPreview {
-        can_apply: false,
-        issues: vec![OpenP2PIssue::error(error.code, "", error.message)],
-        source: OpenP2PImportSource {
-            kind: error.kind,
-            name: None,
-            version: None,
-            contains_mihomo: false,
-            self_contained: false,
-        },
-        accounts: Vec::new(),
-    };
-    mark_platform_unsupported(&mut preview);
-    preview
+async fn subscription_view(meta: &SubscriptionMeta) -> CmdResult<OpenP2PSubscription> {
+    let profile_uid = meta.profile_uid();
+    let current = Config::profiles().await.latest_arc().current.clone();
+    Ok(OpenP2PSubscription {
+        id: meta.id.clone(),
+        profile_uid: profile_uid.clone(),
+        name: meta.name.clone(),
+        source: meta.source,
+        source_url: meta.source_url.clone(),
+        imported_at: meta.imported_at,
+        account_count: meta.account_count,
+        active: current.as_deref() == Some(profile_uid.as_str()),
+    })
 }
 
-pub(crate) async fn detach_profile_from_bundle(uid: &str) -> anyhow::Result<()> {
-    let Some(meta) = crate::config::bundle::load_meta().await? else {
-        return Ok(());
-    };
-    if !meta.members.iter().any(|member| member == uid) {
-        return Ok(());
-    }
-    let members = meta
-        .members
-        .iter()
-        .filter(|member| member.as_str() != uid)
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    if members.len() < crate::config::bundle::MIN_MEMBERS {
-        anyhow::bail!(
-            "cannot remove {uid}: the Profile Bundle would have fewer than {} members",
-            crate::config::bundle::MIN_MEMBERS
-        );
-    }
-    let profiles = crate::config::Config::profiles().await.latest_arc();
-    if profiles.current.as_deref() == Some(crate::config::bundle::BUNDLE_UID) {
-        crate::cmd::bundle::set_bundle_members(members)
-            .await
-            .map_err(|error| anyhow::anyhow!("cannot detach {uid} from the active bundle: {error:?}"))?;
-    } else {
-        let smart_members = members
-            .iter()
-            .map(|member| member.as_str().into())
-            .collect::<Vec<smartstring::alias::String>>();
-        let meta = crate::config::bundle::stale_meta_after_prune(&meta, &smart_members);
-        crate::config::bundle::save_meta(&meta).await?;
-    }
-    Ok(())
+enum SubscriptionWrite<'a> {
+    Import {
+        kind: OpenP2PImportSourceKind,
+        text: &'a str,
+        url: Option<&'a str>,
+    },
+    Update {
+        text: &'a str,
+        id: &'a str,
+    },
 }
 
-const SOURCE_PROFILE_UID: &str = "op2p-source";
-const SOURCE_PROFILE_FILE: &str = "op2p-source.yaml";
-
-async fn materialize_mihomo_profile(yaml: &str) -> CmdResult<()> {
-    let profiles = crate::config::Config::profiles().await;
-    let yaml = yaml.to_owned();
+/// Writes one subscription and its generated profile, then persists the profile
+/// item list. On a failed profiles.yaml write the subscription files,
+/// credentials and generated profile are rolled back.
+async fn run_subscription_write(
+    store: &SubscriptionStore,
+    vault: &SecretVault,
+    write: SubscriptionWrite<'_>,
+) -> CmdResult<SubscriptionImport> {
+    let _profile_write_guard = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+    let profiles = Config::profiles().await;
     profiles
         .with_data_modify(|mut candidate| async move {
-            let dir = crate::utils::dirs::app_profiles_dir()?;
-            tokio::fs::create_dir_all(&dir).await?;
-            let path = dir.join(SOURCE_PROFILE_FILE);
-            crate::core::openp2p::profile_store::write_private(&path, yaml.as_bytes())?;
-            let now = chrono::Local::now().timestamp() as usize;
-            let items = candidate.items.get_or_insert_with(Vec::new);
-            if let Some(item) = items
-                .iter_mut()
-                .find(|item| item.uid.as_deref() == Some(SOURCE_PROFILE_UID))
-            {
-                if item.itype.as_deref() != Some("local") || item.file.as_deref() != Some(SOURCE_PROFILE_FILE) {
-                    anyhow::bail!("profile {SOURCE_PROFILE_UID} conflicts with an existing item");
+            let prepared = match write {
+                SubscriptionWrite::Import { kind, text, url } => {
+                    store.prepare_import(vault, kind, text, url, &mut candidate)?
                 }
-                item.name = Some("OpenP2P Source".into());
-                item.desc = Some("openp2p-source".into());
-                item.updated = Some(now);
-                item.option = None;
-            } else {
-                items.push(crate::config::PrfItem {
-                    uid: Some(SOURCE_PROFILE_UID.into()),
-                    itype: Some("local".into()),
-                    name: Some("OpenP2P Source".into()),
-                    file: Some(SOURCE_PROFILE_FILE.into()),
-                    desc: Some("openp2p-source".into()),
-                    updated: Some(now),
-                    ..crate::config::PrfItem::default()
-                });
+                SubscriptionWrite::Update { text, id } => store.prepare_update(vault, text, id, &mut candidate)?,
+            };
+            if let Err(error) = candidate.save_file().await {
+                if let Err(rollback) = prepared.rollback() {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "openp2p subscription write rollback failed: {rollback:#}"
+                    );
+                }
+                return Err(error);
             }
-            candidate.save_file().await?;
-            Ok((candidate, ()))
+            let import = prepared.commit();
+            Ok((candidate, import))
         })
         .await
-        .map_err(|error| coded_error("OPENP2P_SOURCE_PROFILE_FAILED", format!("{error:#}")))?;
-    Ok(())
+        .map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))
 }
 
-async fn refresh_active_composition() -> CmdResult<()> {
-    let profiles = crate::config::Config::profiles().await.latest_arc();
-    if profiles.current.as_deref() != Some(crate::config::bundle::BUNDLE_UID) {
+fn log_import_warnings(import: &SubscriptionImport) {
+    logging!(
+        info,
+        Type::Network,
+        "openp2p subscription {} {} (profile changed: {}, cards changed: {})",
+        import.meta.id,
+        if import.created { "imported" } else { "updated" },
+        import.profile_changed,
+        import.items_changed
+    );
+    for warning in &import.warnings {
+        logging!(
+            warn,
+            Type::Network,
+            "openp2p subscription {}: {} ({})",
+            import.meta.id,
+            warning.message,
+            warning.path
+        );
+    }
+}
+
+async fn refresh_runtime() -> CmdResult<()> {
+    match crate::core::CoreManager::global().update_config_with_force(true).await {
+        Ok(outcome) if outcome.is_valid() => {
+            announce(Refresh::Clash);
+            Ok(())
+        }
+        Ok(outcome) => Err(coded_error(
+            "OPENP2P_PROFILE_SYNC_FAILED",
+            format!("the updated profile did not pass validation: {outcome}"),
+        )),
+        Err(error) => Err(coded_error("OPENP2P_PROFILE_SYNC_FAILED", format!("{error:#}"))),
+    }
+}
+
+fn ensure_subscription_profile(store: &SubscriptionStore, runtime: &SubscriptionRuntime) -> CmdResult<()> {
+    let path = store.profile_path(&runtime.profile_uid);
+    if path.is_file() {
         return Ok(());
     }
-    let Some(meta) = crate::config::bundle::load_meta()
-        .await
-        .map_err(|error| coded_error("OPENP2P_BUNDLE_REFRESH_FAILED", format!("{error:#}")))?
-    else {
-        return Ok(());
-    };
-    if !meta.members.iter().any(|member| member.starts_with("op2p-")) {
-        return Ok(());
-    }
-    let members = meta.members.iter().map(ToString::to_string).collect::<Vec<_>>();
-    crate::cmd::bundle::set_bundle_members(members)
-        .await
-        .map_err(|error| coded_error("OPENP2P_BUNDLE_REFRESH_FAILED", format!("{error:?}")))?;
-    Ok(())
+    let rendered = store.render(&runtime.meta).map_err(subscription_failure)?;
+    account::atomic_write(&path, rendered.yaml.as_bytes(), 0o600).map_err(subscription_failure)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_openp2p_state() -> CmdResult<OpenP2PView> {
-    Ok(OpenP2PManager::global().view())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn preview_openp2p_import(
-    yaml: Option<std::string::String>,
-    url: Option<std::string::String>,
-) -> CmdResult<OpenP2PImportPreview> {
-    let store =
-        ProfileStore::app_default().map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))?;
-    let existing = load_existing(&store);
-    match read_import(yaml, url).await {
-        Ok(resolved) => {
-            let parsed = portable::parse_import(&resolved.text, existing.as_ref());
-            let mut preview = build_preview(
-                &parsed,
-                existing.as_ref(),
-                account::token_present,
-                key_present,
-                resolved.kind,
-            );
-            mark_platform_unsupported(&mut preview);
-            Ok(preview)
-        }
-        Err(error) => Ok(failed_preview(error)),
+    let manager = OpenP2PManager::global();
+    if let Err(error) = manager.ensure_current().await {
+        manager.mark_degraded(format!("{error:#}"));
     }
+    Ok(manager.view())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_openp2p_import(
+pub async fn import_openp2p_subscription(
     yaml: Option<std::string::String>,
     url: Option<std::string::String>,
-) -> CmdResult<OpenP2PApplyOutcome> {
-    require_platform()?;
+) -> CmdResult<OpenP2PSubscription> {
     let resolved = read_import(yaml, url).await.map_err(source_failure)?;
-    let store =
-        ProfileStore::app_default().map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))?;
-    let existing = load_existing(&store);
-    let parsed = portable::parse_import(&resolved.text, existing.as_ref());
-    if !parsed.can_apply() {
-        return Err(import_failure(&parsed.issues));
-    }
-    if let Some(existing) = existing.as_ref() {
-        let removed = existing
-            .accounts
-            .iter()
-            .filter(|account| !parsed.config.accounts.iter().any(|next| next.id == account.id))
-            .map(|account| account.id.clone())
-            .collect::<Vec<_>>();
-        for account_id in removed {
-            detach_profile_from_bundle(&format!("op2p-{account_id}"))
-                .await
-                .map_err(|error| coded_error("OPENP2P_BUNDLE_DETACH_FAILED", format!("{error:#}")))?;
-        }
-    }
-    let vault = portable::SecretVault::app_default()
-        .map_err(|error| coded_error("OPENP2P_IMPORT_APPLY_FAILED", format!("{error:#}")))?;
-    let transaction = portable::ImportTransaction::begin(&store, &vault, &parsed)
-        .map_err(|error| coded_error("OPENP2P_IMPORT_APPLY_FAILED", format!("{error:#}")))?;
-    if let Err(error) = store.project_current().await {
-        let detail = format!("{error:#}");
-        if let Err(rollback) = transaction.rollback() {
-            logging!(warn, Type::Config, "openp2p import rollback failed: {rollback:#}");
-        }
-        return Err(coded_error("OPENP2P_PROFILE_SYNC_FAILED", detail));
-    }
-    if let Some(mihomo) = parsed.mihomo.as_deref()
-        && let Err(error) = materialize_mihomo_profile(mihomo).await
-    {
-        if let Err(rollback) = transaction.rollback() {
-            logging!(warn, Type::Config, "openp2p import rollback failed: {rollback:#}");
-        }
-        return Err(error);
-    }
-    let metadata = ImportMetadata {
-        kind: match resolved.kind {
-            OpenP2PImportSourceKind::Local => "local".to_owned(),
-            OpenP2PImportSourceKind::Url => "url".to_owned(),
+    let store = subscription_store()?;
+    let vault = secret_vault()?;
+    let import = run_subscription_write(
+        &store,
+        &vault,
+        SubscriptionWrite::Import {
+            kind: resolved.kind,
+            text: &resolved.text,
+            url: resolved.url.as_deref(),
         },
-        name: None,
-        version: None,
-        applied_at: 0,
-        contains_mihomo: parsed.has_mihomo,
-        self_contained: parsed.self_contained(),
-    };
-    if let Err(error) = store.save_import_metadata(&metadata) {
-        let detail = format!("{error:#}");
-        if let Err(rollback) = transaction.rollback() {
-            logging!(warn, Type::Config, "openp2p import rollback failed: {rollback:#}");
+    )
+    .await?;
+    log_import_warnings(&import);
+    subscription_view(&import.meta).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_openp2p_subscription_content(profile_uid: std::string::String) -> CmdResult<std::string::String> {
+    let store = subscription_store()?;
+    let meta = find_subscription(&store, &profile_uid)?;
+    store.read_source(&meta.id).map_err(subscription_failure)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn update_openp2p_subscription(profile_uid: std::string::String) -> CmdResult<OpenP2PSubscription> {
+    let store = subscription_store()?;
+    let meta = find_subscription(&store, &profile_uid)?;
+    let text = match meta.source {
+        OpenP2PImportSourceKind::Url => {
+            let url = meta.source_url.clone().ok_or_else(|| {
+                coded_error(
+                    "OPENP2P_SUBSCRIPTION_FAILED",
+                    "the URL subscription has no saved source URL",
+                )
+            })?;
+            read_import(None, Some(url)).await.map_err(source_failure)?.text
         }
-        return Err(coded_error("OPENP2P_IMPORT_APPLY_FAILED", detail));
+        OpenP2PImportSourceKind::Local => store.read_source(&meta.id).map_err(subscription_failure)?,
+    };
+    let vault = secret_vault()?;
+    let import = run_subscription_write(
+        &store,
+        &vault,
+        SubscriptionWrite::Update {
+            text: &text,
+            id: &meta.id,
+        },
+    )
+    .await?;
+    log_import_warnings(&import);
+    let current = Config::profiles().await.latest_arc().current.clone();
+    if current.as_deref() == Some(import.profile_uid.as_str()) {
+        if let Err(error) = OpenP2PManager::global().reconcile_current().await {
+            OpenP2PManager::global().mark_degraded(format!("{error:#}"));
+        }
+        refresh_runtime().await?;
     }
-    transaction.finish();
-    refresh_active_composition().await?;
-    if let Err(error) = OpenP2PManager::global().reload_from_current().await {
-        return Err(account_failure(error));
+    subscription_view(&import.meta).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn activate_openp2p_subscription(profile_uid: std::string::String) -> CmdResult<OpenP2PView> {
+    require_platform()?;
+    let store = subscription_store()?;
+    let runtime = store
+        .runtime_for_uid(&profile_uid)
+        .map_err(subscription_failure)?
+        .ok_or_else(|| {
+            coded_error(
+                "OPENP2P_SUBSCRIPTION_NOT_FOUND",
+                "no openp2p subscription belongs to this profile",
+            )
+        })?;
+    if Config::profiles().await.latest_arc().get_item(&profile_uid).is_err() {
+        return Err(coded_error(
+            "OPENP2P_SUBSCRIPTION_FAILED",
+            "the subscription profile item is missing; import the subscription again",
+        ));
     }
-    Ok(OpenP2PApplyOutcome {
-        applied: true,
-        state: OpenP2PManager::global().view(),
-        validation: None,
-    })
+    // Validate the source and repair a missing generated profile before the switch.
+    store.render(&runtime.meta).map_err(subscription_failure)?;
+    ensure_subscription_profile(&store, &runtime)?;
+
+    let outcome = crate::cmd::profile::patch_profiles_config_by_profile_index(profile_uid.as_str().into()).await?;
+    if !matches!(outcome, ValidationOutcome::Valid) {
+        return Err(coded_error(
+            "OPENP2P_ACTIVATION_FAILED",
+            format!("mihomo rejected the subscription profile: {outcome}"),
+        ));
+    }
+    // The generic profile switch already reconciled the sidecar to the new
+    // profiles.yaml:current. A sidecar failure is recorded as config_error on the
+    // view; the valid mihomo switch is never rolled back.
+    Ok(OpenP2PManager::global().view())
 }
 
 #[tauri::command]
@@ -671,44 +480,6 @@ pub async fn get_openp2p_version() -> CmdResult<Option<std::string::String>> {
         return Ok(None);
     }
     Ok(Some(version))
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn start_openp2p_account(account_id: std::string::String) -> CmdResult<OpenP2PAccount> {
-    require_platform()?;
-    OpenP2PManager::global()
-        .start_account(&account_id)
-        .await
-        .map_err(account_failure)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn stop_openp2p_account(account_id: std::string::String) -> CmdResult<OpenP2PAccount> {
-    OpenP2PManager::global()
-        .stop_account(&account_id)
-        .await
-        .map_err(account_failure)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn restart_openp2p_account(account_id: std::string::String) -> CmdResult<OpenP2PAccount> {
-    require_platform()?;
-    OpenP2PManager::global()
-        .restart_account(&account_id)
-        .await
-        .map_err(account_failure)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn delete_openp2p_account(account_id: std::string::String) -> CmdResult<OpenP2PView> {
-    OpenP2PManager::global()
-        .delete_account(&account_id)
-        .await
-        .map_err(account_failure)
 }
 
 #[tauri::command]

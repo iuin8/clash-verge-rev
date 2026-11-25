@@ -1,9 +1,8 @@
 #![allow(clippy::needless_raw_string_hashes)] // fixtures intentionally use r#"..."#
 use super::*;
-use crate::cmd::openp2p::{OpenP2PSecretState, build_preview, read_import};
+use crate::cmd::openp2p::read_import;
 use crate::core::openp2p::profile_render;
 use crate::core::openp2p::schema::fixtures::sample_host_key;
-use crate::core::openp2p::state::OpenP2PPreviewAction;
 
 const KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----";
 const TOKEN: &str = "1234567890123";
@@ -139,16 +138,6 @@ fn a_policy_only_document_generates_stable_device_fields() {
     assert!((SRC_PORT_MIN..=SRC_PORT_MAX).contains(&account.apps[0].src_port));
     assert_eq!(config.proxies[0].private_key_ref, "o2p/home/op2p-home");
     assert!(!parsed.has_mihomo);
-
-    let preview = build_preview(&parsed, None, |_| false, |_| false, OpenP2PImportSourceKind::Local);
-    assert!(preview.can_apply);
-    assert!(!preview.source.self_contained);
-    assert_eq!(preview.source.kind, OpenP2PImportSourceKind::Local);
-    assert_eq!(preview.accounts[0].nodes, vec!["op2p-home".to_owned()]);
-    assert_eq!(preview.accounts[0].route_count, 4);
-    assert_eq!(preview.accounts[0].token, OpenP2PSecretState::Missing);
-    assert_eq!(preview.accounts[0].key, OpenP2PSecretState::Missing);
-    assert!(preview.accounts[0].warnings.contains(&"token_missing".to_owned()));
 }
 
 #[test]
@@ -200,12 +189,6 @@ x-openp2p-secrets:
     assert_eq!(parsed.config.proxies[0].name, "op2p-home");
     assert!(parsed.self_contained());
 
-    let preview = build_preview(&parsed, None, |_| false, |_| false, OpenP2PImportSourceKind::Local);
-    assert!(preview.source.contains_mihomo);
-    assert!(preview.source.self_contained);
-    assert_eq!(preview.accounts[0].token, OpenP2PSecretState::Inline);
-    assert_eq!(preview.accounts[0].key, OpenP2PSecretState::Inline);
-
     ImportTransaction::begin(&store, &vault, &parsed)
         .expect("commit")
         .finish();
@@ -246,9 +229,15 @@ fn inline_credentials_are_written_0600_and_never_enter_the_source_or_profiles() 
     assert!(!source.contains("PRIVATE KEY"));
     assert!(source.contains("token_ref"));
 
-    let profile = profile_render::render_account_profile_with(&parsed.config, "home", |_| true, |_| true)
-        .expect("render")
-        .expect("profile");
+    let profile = profile_render::render_subscription_profile_with(
+        &parsed.config,
+        parsed.mihomo.as_deref(),
+        "",
+        |_| true,
+        |_| true,
+    )
+    .expect("render")
+    .yaml;
     assert!(!profile.contains(TOKEN));
     assert!(!profile.contains("PRIVATE KEY"));
     assert!(profile.contains("private-key: openp2p/keys/o2p/home/op2p-home"));
@@ -446,55 +435,6 @@ fn a_failed_credential_write_rolls_back_earlier_files_and_the_source() {
     assert!(format!("{error:#}").contains("credential"), "{error:#}");
     assert!(!scratch.token_file("o2p/home/token").exists());
     assert!(store.load_config().expect("load").is_none());
-}
-
-#[test]
-fn preview_actions_cover_add_update_and_remove() {
-    let existing = parse_import(
-        r#"accounts:
-  - id: alpha
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-01 }
-  - id: beta
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-02 }
-"#,
-        None,
-    );
-    assert!(existing.can_apply(), "{:?}", existing.issues);
-    let incoming = parse_import(
-        r#"accounts:
-  - id: alpha
-    gateway: { host: gw.example.net, port: 27183 }
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-01 }
-  - id: gamma
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-03 }
-"#,
-        Some(&existing.config),
-    );
-    let preview = build_preview(
-        &incoming,
-        Some(&existing.config),
-        |_| false,
-        |_| false,
-        OpenP2PImportSourceKind::Local,
-    );
-    let action = |id: &str| {
-        preview
-            .accounts
-            .iter()
-            .find(|account| account.id == id)
-            .map(|account| account.action)
-            .expect("account")
-    };
-    assert_eq!(action("alpha"), OpenP2PPreviewAction::Update);
-    assert_eq!(action("gamma"), OpenP2PPreviewAction::Add);
-    assert_eq!(action("beta"), OpenP2PPreviewAction::Remove);
 }
 
 #[test]

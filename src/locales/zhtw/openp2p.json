@@ -7,7 +7,7 @@
     },
     "empty": {
       "title": "No OpenP2P accounts",
-      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically.",
+      "description": "在「訂閱」頁匯入 OpenP2P 訂閱，它會顯示為一般訂閱並可啟用。",
       "goToProfiles": "前往訂閱頁匯入"
     },
     "error": {
@@ -267,7 +267,11 @@
     "invalid_secret": "The secret value is invalid.",
     "profile_import_required": "Import the mihomo part as a normal profile.",
     "OPENP2P_IMPORT_SOURCE_INVALID": "The OpenP2P import source is invalid.",
-    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied."
+    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied.",
+    "OPENP2P_SUBSCRIPTION_NOT_FOUND": "找不到 OpenP2P 訂閱。",
+    "OPENP2P_SUBSCRIPTION_FAILED": "OpenP2P 訂閱操作失敗。",
+    "OPENP2P_ACTIVATION_FAILED": "無法啟用 OpenP2P 訂閱。",
+    "OPENP2P_PLATFORM_UNSUPPORTED": "此平台不支援 OpenP2P。"
   },
   "settings": {
     "title": "OpenP2P 設定",

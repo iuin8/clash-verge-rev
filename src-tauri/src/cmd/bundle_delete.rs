@@ -248,6 +248,13 @@ async fn delete_profile_with_bundle(index: String) -> CmdResult {
     }
     drop(config_update_guard);
     drop(profile_write_guard);
+    if needs_runtime_update
+        && let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
+            .reconcile_current()
+            .await
+    {
+        crate::core::openp2p::manager::OpenP2PManager::global().mark_degraded(format!("{error:#}"));
+    }
     finish_profile_delete(needs_runtime_update, current.as_ref()).await;
     Ok(())
 }

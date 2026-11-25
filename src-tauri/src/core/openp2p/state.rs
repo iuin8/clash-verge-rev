@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::core::validate::ValidationOutcome;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenP2PPhase {
@@ -138,22 +136,4 @@ pub struct OpenP2PView {
     pub accounts: Vec<OpenP2PAccount>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_error: Option<std::string::String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub enum OpenP2PPreviewAction {
-    Add,
-    Update,
-    Unchanged,
-    Remove,
-}
-
-#[derive(Debug, Clone, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenP2PApplyOutcome {
-    pub applied: bool,
-    pub state: OpenP2PView,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validation: Option<ValidationOutcome>,
 }

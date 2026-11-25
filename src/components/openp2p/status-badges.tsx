@@ -2,7 +2,6 @@ import { Chip, type ChipProps } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 
 import type { OpenP2PCheckState, OpenP2PPhase } from '@/services/bindings'
-import type { OpenP2pProfileStatus } from '@/services/cmds'
 import type { TranslationKey } from '@/types/generated/i18n-keys'
 
 const PHASE_LABEL_KEYS: Record<OpenP2PPhase, TranslationKey> = {
@@ -165,38 +164,6 @@ export const OpenP2PKeyBadge = ({
           ? t('openp2p.account.keySaved')
           : t('openp2p.account.keyMissing')
       }
-    />
-  )
-}
-
-const PROFILE_LABEL_KEYS: Record<OpenP2pProfileStatus, TranslationKey> = {
-  ready: 'openp2p.account.profileStatus.ready',
-  needsToken: 'openp2p.account.profileStatus.needsToken',
-  needsKey: 'openp2p.account.profileStatus.needsKey',
-  error: 'openp2p.account.profileStatus.error',
-  unknown: 'openp2p.account.profileStatus.unknown',
-}
-
-const PROFILE_COLORS: Record<OpenP2pProfileStatus, ChipProps['color']> = {
-  ready: 'success',
-  needsToken: 'warning',
-  needsKey: 'warning',
-  error: 'error',
-  unknown: 'default',
-}
-
-export const OpenP2PProfileBadge = ({
-  status,
-}: {
-  status: OpenP2pProfileStatus
-}) => {
-  const { t } = useTranslation()
-  return (
-    <Chip
-      size="small"
-      variant="outlined"
-      color={PROFILE_COLORS[status]}
-      label={t(PROFILE_LABEL_KEYS[status])}
     />
   )
 }

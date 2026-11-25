@@ -49,6 +49,7 @@ import {
 } from '@/components/profile/bundle-dialog'
 import { BundleProfileItem } from '@/components/profile/bundle-profile-item'
 import { refreshBundleQueries } from '@/components/profile/bundle-queries'
+import { isOpenP2pSubscriptionUid } from '@/components/profile/openp2p-subscription'
 import { ProfileItem } from '@/components/profile/profile-item'
 import { ProfileMore } from '@/components/profile/profile-more'
 import {
@@ -59,12 +60,13 @@ import { useProfileBundle } from '@/components/profile/use-profile-bundle'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
-  applyOpenP2pImport,
+  activateOpenP2pSubscription,
   createProfile,
   deleteProfile,
   detectOpenP2pSource,
   enhanceProfiles,
   getRuntimeLogs,
+  importOpenP2pSubscription,
   importProfile,
   reorderProfile,
   updateProfile,
@@ -144,6 +146,7 @@ const ProfilePage = () => {
     const unlisten = getCurrentWindow().onDragDropEvent(async (event) => {
       if (event.payload.type !== 'drop') return
       const paths = event.payload.paths
+      let createdProfile = false
 
       for (const file of paths) {
         if (!file.endsWith('.yaml') && !file.endsWith('.yml')) {
@@ -173,11 +176,14 @@ const ProfilePage = () => {
           errorNotice: false,
           revalidate: [['getProfiles']],
         })
+        createdProfile = true
       }
-      await mutate(() => enhanceProfiles(), {
-        id: 'enhance-profiles',
-        errorNotice: false,
-      })
+      if (createdProfile) {
+        await mutate(() => enhanceProfiles(), {
+          id: 'enhance-profiles',
+          errorNotice: false,
+        })
+      }
     })
 
     return () => {
@@ -233,15 +239,20 @@ const ProfilePage = () => {
 
   const importOpenP2P = async (seed: { yaml?: string; url?: string }) => {
     try {
-      await mutate(() => applyOpenP2pImport(seed), {
+      await mutate(() => importOpenP2pSubscription(seed), {
         id: 'import-openp2p',
         errorNotice: false,
       })
       showNotice.success('shared.feedback.notifications.importSuccess')
-      await Promise.all([
-        revalidateQuery(['getProfiles']),
-        revalidateQuery(['getOpenP2pState']),
-      ])
+      try {
+        await Promise.all([
+          revalidateQuery(['getProfiles']),
+          revalidateQuery(['getOpenP2pState']),
+        ])
+      } catch (error) {
+        // The import succeeded; only the list refresh failed.
+        debugLog('[Profile] OpenP2P import refresh failed', error)
+      }
     } catch (error) {
       showNotice.error(error)
     }
@@ -397,9 +408,35 @@ const ProfilePage = () => {
     }
   }
 
+  const activateOpenP2pTarget = useCallback(async (profile: string) => {
+    const activation = await mutate(
+      () => activateOpenP2pSubscription(profile),
+      { id: 'activate-openp2p-subscription', errorNotice: false },
+    )
+    if (!activation.ok) return { status: 'busy' as const }
+    const outcome = activation.value
+    if (outcome.status === 'valid') {
+      try {
+        await Promise.all([
+          revalidateQuery(['getProfiles']),
+          revalidateQuery(['getOpenP2pState']),
+        ])
+      } catch (error) {
+        // The switch already succeeded; a stale list is a refresh failure.
+        debugLog('[Profile] OpenP2P activation refresh failed', error)
+      }
+    }
+    return outcome
+  }, [])
+
   const executeProfileSwitch = useCallback(
     async ({ profile, notifySuccess, force }: ProfileSwitchRequest) => {
-      if (!force && currentProfileRef.current === profile) {
+      const openP2pSubscription = isOpenP2pSubscriptionUid(profile)
+      if (
+        !force &&
+        !openP2pSubscription &&
+        currentProfileRef.current === profile
+      ) {
         debugProfileSwitch('ALREADY_CURRENT_IGNORED', profile)
         return
       }
@@ -407,7 +444,10 @@ const ProfilePage = () => {
       debugProfileSwitch('SWITCH_START', profile)
 
       try {
-        const outcome = await patchProfiles({ current: profile })
+        // The canonical profile uid is authoritative; a cached desc may lag.
+        const outcome = openP2pSubscription
+          ? await activateOpenP2pTarget(profile)
+          : await patchProfiles({ current: profile })
         if (outcome.status === 'busy') {
           debugProfileSwitch('SWITCH_BUSY', profile)
           showNotice.info(
@@ -443,11 +483,12 @@ const ProfilePage = () => {
       } catch (err: any) {
         console.error(`[Profile] 切换失败:`, err)
         showNotice.error(err, 4000)
+        void mutateProfiles().catch(() => {})
       } finally {
         debugProfileSwitch('SWITCH_END', profile)
       }
     },
-    [mutateLogs, patchProfiles],
+    [activateOpenP2pTarget, mutateLogs, mutateProfiles, patchProfiles],
   )
 
   const runProfileSwitchQueue = useCallback(async () => {
@@ -464,6 +505,7 @@ const ProfilePage = () => {
 
       if (
         !force &&
+        !isOpenP2pSubscriptionUid(profile) &&
         currentProfileRef.current === profile &&
         switchRunnerRef.current === null
       ) {
@@ -602,7 +644,9 @@ const ProfilePage = () => {
     onLogsChanged: mutateLogs,
     onEditMembers: (uids) => {
       setBatchMode(true)
-      setSelectedProfiles(new Set(uids))
+      setSelectedProfiles(
+        new Set(uids.filter((uid) => !isOpenP2pSubscriptionUid(uid))),
+      )
     },
     onSelectionCleared: () => {
       setBatchMode(false)
@@ -675,6 +719,10 @@ const ProfilePage = () => {
 
   const toggleProfileSelection = (uid: string) => {
     if (bundle.isBundleItem(uid)) return
+    if (isOpenP2pSubscriptionUid(uid)) {
+      showNotice.error('profiles.page.feedback.errors.openp2pBundleUnsupported')
+      return
+    }
     setSelectedProfiles((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(uid)) {
@@ -1045,11 +1093,10 @@ const ProfilePage = () => {
                   }
                   itemData={item}
                   titleAdornment={
-                    item.desc?.startsWith('openp2p-managed:') ||
-                    item.desc?.startsWith('openp2p-source:') ? (
+                    isOpenP2pSubscriptionUid(item.uid) ? (
                       <Chip
                         size="small"
-                        label="OpenP2P"
+                        label={t('profiles.components.profileItem.openp2p')}
                         color="primary"
                         variant="outlined"
                         sx={{ ml: 0.5, height: 20, flexShrink: 0 }}
@@ -1057,10 +1104,7 @@ const ProfilePage = () => {
                     ) : undefined
                   }
                   titleAdornmentReserve={
-                    item.desc?.startsWith('openp2p-managed:') ||
-                    item.desc?.startsWith('openp2p-source:')
-                      ? 78
-                      : 0
+                    isOpenP2pSubscriptionUid(item.uid) ? 78 : 0
                   }
                   timerUpdateRevision={timerRevisions.get(item.uid!) ?? 0}
                   completedUpdateRevision={

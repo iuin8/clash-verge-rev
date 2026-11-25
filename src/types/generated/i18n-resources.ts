@@ -438,6 +438,7 @@ export interface TranslationResources {
         networks: string
         OPENP2P_ACCOUNT_FAILED: string
         OPENP2P_ACCOUNT_NOT_FOUND: string
+        OPENP2P_ACTIVATION_FAILED: string
         OPENP2P_CONFIG_INVALID: string
         OPENP2P_IMPORT_APPLY_FAILED: string
         OPENP2P_IMPORT_FAILED: string
@@ -449,7 +450,10 @@ export interface TranslationResources {
         OPENP2P_KEY_WRITE_FAILED: string
         OPENP2P_LOG_DIR_FAILED: string
         openp2p_missing: string
+        OPENP2P_PLATFORM_UNSUPPORTED: string
         OPENP2P_PROFILE_SYNC_FAILED: string
+        OPENP2P_SUBSCRIPTION_FAILED: string
+        OPENP2P_SUBSCRIPTION_NOT_FOUND: string
         OPENP2P_TOKEN_INVALID: string
         OPENP2P_TOKEN_WRITE_FAILED: string
         platform_unsupported: string
@@ -637,6 +641,7 @@ export interface TranslationResources {
           shareQrCode: string
           update: string
           updateViaProxy: string
+          viewSource: string
         }
         more: {
           chips: {
@@ -649,6 +654,7 @@ export interface TranslationResources {
           }
         }
         profileItem: {
+          openp2p: string
           status: {
             autoUpdateDisabled: string
             lastUpdateFailed: string
@@ -719,6 +725,9 @@ export interface TranslationResources {
           }
         }
         logViewer: {
+          title: string
+        }
+        openp2pSource: {
           title: string
         }
         profileForm: {
@@ -802,6 +811,7 @@ export interface TranslationResources {
             invalidUrl: string
             onlyYaml: string
             openFailed: string
+            openp2pBundleUnsupported: string
             readFailed: string
             reorderFailed: string
             switchFailed: string

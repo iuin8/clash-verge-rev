@@ -38,7 +38,8 @@
         "readFailed": "Не удалось прочитать профиль",
         "reorderFailed": "Не удалось изменить порядок профилей",
         "switchFailed": "Не удалось переключить профиль",
-        "updateFailed": "Не удалось обновить профиль"
+        "updateFailed": "Не удалось обновить профиль",
+        "openp2pBundleUnsupported": "Подписки OpenP2P нельзя добавить в набор профилей."
       },
       "notifications": {
         "importRetry": "Не удалось импортировать, повторная попытка через Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "Изменить Script",
       "openFile": "Открыть файл",
       "update": "Обновить",
-      "updateViaProxy": "Обновить через прокси"
+      "updateViaProxy": "Обновить через прокси",
+      "viewSource": "Просмотреть источник"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "Без расписания",
         "unknown": "Неизвестно",
         "autoUpdateDisabled": "Автообновление отключено"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "QR-код подписки"
+    },
+    "openp2pSource": {
+      "title": "Источник подписки OpenP2P"
     }
   }
 }

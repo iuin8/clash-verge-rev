@@ -38,7 +38,8 @@
         "readFailed": "خواندن پروفایل ناموفق بود",
         "reorderFailed": "تغییر ترتیب پروفایل‌ها ناموفق بود",
         "switchFailed": "تعویض پروفایل ناموفق بود",
-        "updateFailed": "به‌روزرسانی پروفایل ناموفق بود"
+        "updateFailed": "به‌روزرسانی پروفایل ناموفق بود",
+        "openp2pBundleUnsupported": "اشتراک‌های OpenP2P را نمی‌توان به بسته پروفایل اضافه کرد."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "ادغام اسکریپت",
       "openFile": "باز کردن فایل",
       "update": "به‌روزرسانی",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "مشاهده منبع"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "No schedule",
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "منبع اشتراک OpenP2P"
     }
   }
 }

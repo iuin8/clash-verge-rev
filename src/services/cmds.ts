@@ -16,6 +16,8 @@ import type {
   ProfilePatch,
   ProfileCreate,
   OpenP2PAccount_Serialize as OpenP2PAccount,
+  OpenP2PPhase,
+  OpenP2PSubscription_Serialize as OpenP2PSubscription,
   OpenP2PView_Serialize as OpenP2PViewBase,
 } from './bindings'
 
@@ -525,7 +527,7 @@ export async function checkMediaUnlockItem(name: string) {
   return commands.checkMediaUnlockItem(name)
 }
 
-// FORK: OpenP2P account manager
+// FORK: OpenP2P subscriptions
 
 export interface OpenP2pImportRequest {
   yaml?: string
@@ -546,26 +548,11 @@ interface OpenP2pSource {
   selfContained?: boolean
 }
 
-export type OpenP2pProfileStatus =
-  | 'ready'
-  | 'needsToken'
-  | 'needsKey'
-  | 'error'
-  | 'unknown'
-
-export type OpenP2pAccount = Omit<
-  OpenP2PAccount,
-  'routeCount' | 'profileStatus' | 'profileUid'
-> & {
+export type OpenP2pAccount = Omit<OpenP2PAccount, 'routeCount'> & {
   routeCount: number
-  profileStatus: OpenP2pProfileStatus
-  profileUid: string | null
 }
 
-export type OpenP2pState = Omit<
-  OpenP2PViewBase,
-  'accounts' | 'artifacts' | 'source'
-> & {
+export type OpenP2pState = Omit<OpenP2PViewBase, 'accounts' | 'source'> & {
   accounts: OpenP2pAccount[]
   source: OpenP2pSource | null
 }
@@ -613,24 +600,6 @@ const normalizeSource = (value: unknown): OpenP2pSource | null => {
   }
 }
 
-const normalizeProfileStatus = (
-  value: unknown,
-  account: OpenP2PAccount,
-): OpenP2pProfileStatus => {
-  if (
-    value === 'ready' ||
-    value === 'needsToken' ||
-    value === 'needsKey' ||
-    value === 'error' ||
-    value === 'unknown'
-  ) {
-    return value
-  }
-  if (!account.tokenPresent) return 'needsToken'
-  if (account.keyRefs.length > 0 && !account.keyPresent) return 'needsKey'
-  return 'ready'
-}
-
 const normalizeState = (raw: unknown): OpenP2pState => {
   if (!isRecord(raw)) {
     return {
@@ -644,31 +613,82 @@ const normalizeState = (raw: unknown): OpenP2pState => {
   return {
     ...(raw as Omit<OpenP2pState, 'accounts' | 'source'>),
     source: normalizeSource(raw.source),
-    accounts: accounts.filter(isRecord).map((account) => {
-      const typed = account as unknown as OpenP2PAccount
-      return {
-        ...typed,
-        routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
-        profileUid:
-          typeof account.profileUid === 'string' ? account.profileUid : null,
-        profileStatus: normalizeProfileStatus(account.profileStatus, typed),
-      }
-    }),
+    accounts: accounts.filter(isRecord).map((account) => ({
+      ...(account as unknown as OpenP2PAccount),
+      routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
+    })),
   }
 }
 
-type OpenP2pImportCommand = (
-  yaml: string | null,
-  url: string | null,
-) => Promise<unknown>
-
-interface OpenP2pImportCommands {
-  applyOpenp2pImport: OpenP2pImportCommand
+type OpenP2pActivationOutcome = {
+  status: 'valid' | 'busy' | 'invalid'
+  message?: string
+  /** Sidecar phase after reconcile; a failure here is not a switch failure. */
+  sidecarPhase?: OpenP2PPhase
+  /** Activation generation: the reconciled view's configRevision. */
+  generation?: number
 }
 
-// These commands join the Specta-generated bindings with the backend import
-// contract. The cast localizes the gap until that regeneration lands.
-const openP2pImportCommands = commands as unknown as OpenP2pImportCommands
+const OPENP2P_PHASES = new Set<OpenP2PPhase>([
+  'stopped',
+  'starting',
+  'loginPending',
+  'online',
+  'degraded',
+  'backoff',
+  'authFailed',
+  'configFailed',
+  'tokenMissing',
+  'stopping',
+  'failed',
+])
+
+const SIDECAR_PHASE_PRIORITY: OpenP2PPhase[] = [
+  'failed',
+  'configFailed',
+  'authFailed',
+  'degraded',
+  'backoff',
+  'tokenMissing',
+  'starting',
+  'loginPending',
+  'stopping',
+  'online',
+  'stopped',
+]
+
+const isOpenP2PPhase = (value: unknown): value is OpenP2PPhase =>
+  typeof value === 'string' && OPENP2P_PHASES.has(value as OpenP2PPhase)
+
+const readSidecarPhase = (
+  value: Record<string, unknown>,
+): OpenP2PPhase | undefined => {
+  if (isOpenP2PPhase(value.sidecarPhase)) return value.sidecarPhase
+  const accounts = Array.isArray(value.accounts) ? value.accounts : []
+  const phases = accounts
+    .filter(isRecord)
+    .map((account) => account.phase)
+    .filter(isOpenP2PPhase)
+  return (
+    SIDECAR_PHASE_PRIORITY.find((phase) => phases.includes(phase)) ?? phases[0]
+  )
+}
+
+const readGeneration = (value: Record<string, unknown>) =>
+  finiteNumberOrUndefined(value.generation) ??
+  finiteNumberOrUndefined(value.configRevision)
+
+// Command failures reject; a fulfilled activation returns the reconciled view.
+// Sidecar failures are reported through sidecarPhase/configError, not as a
+// failed switch.
+const normalizeActivationOutcome = (raw: unknown): OpenP2pActivationOutcome => {
+  if (!isRecord(raw)) return { status: 'valid' }
+  return {
+    status: 'valid',
+    sidecarPhase: readSidecarPhase(raw),
+    generation: readGeneration(raw),
+  }
+}
 
 const importArgs = (request: OpenP2pImportRequest) =>
   [request.yaml ?? null, request.url ?? null] as const
@@ -688,29 +708,33 @@ export async function detectOpenP2pSource(
   return commands.detectOpenp2pSource(yaml, url)
 }
 
-export async function applyOpenP2pImport(
+export async function importOpenP2pSubscription(
   request: OpenP2pImportRequest,
-): Promise<unknown> {
+): Promise<OpenP2PSubscription> {
   const [yaml, url] = importArgs(request)
-  return openP2pImportCommands.applyOpenp2pImport(yaml, url)
+  return commands.importOpenp2pSubscription(yaml, url)
 }
 
-export async function startOpenP2pAccount(
-  accountId: string,
-): Promise<OpenP2PAccount> {
-  return commands.startOpenp2pAccount(accountId)
+export async function getOpenP2pSubscriptionContent(
+  profileUid: string,
+): Promise<string> {
+  return commands.getOpenp2pSubscriptionContent(profileUid)
 }
 
-export async function stopOpenP2pAccount(
-  accountId: string,
-): Promise<OpenP2PAccount> {
-  return commands.stopOpenp2pAccount(accountId)
+export async function activateOpenP2pSubscription(
+  profileUid: string,
+): Promise<OpenP2pActivationOutcome> {
+  return normalizeActivationOutcome(
+    await commands.activateOpenp2pSubscription(profileUid),
+  )
 }
 
-export async function restartOpenP2pAccount(
-  accountId: string,
-): Promise<OpenP2PAccount> {
-  return commands.restartOpenp2pAccount(accountId)
+export async function updateOpenP2pSubscription(
+  profileUid: string,
+): Promise<OpenP2pActivationOutcome> {
+  return normalizeActivationOutcome(
+    await commands.updateOpenp2pSubscription(profileUid),
+  )
 }
 
 export async function openOpenP2pLogDir(accountId: string) {

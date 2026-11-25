@@ -38,7 +38,8 @@
         "readFailed": "プロファイルの読み込みに失敗しました",
         "reorderFailed": "プロファイルの並べ替えに失敗しました",
         "switchFailed": "プロファイルの切り替えに失敗しました",
-        "updateFailed": "プロファイルの更新に失敗しました"
+        "updateFailed": "プロファイルの更新に失敗しました",
+        "openp2pBundleUnsupported": "OpenP2P サブスクリプションはプロファイルバンドルに追加できません。"
       },
       "notifications": {
         "importRetry": "インポートに失敗しました。Clashプロキシを使用して再試行します...",
@@ -83,7 +84,8 @@
       "extendScript": "拡張スクリプト",
       "openFile": "ファイルを開く",
       "update": "更新",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "ソースを表示"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "予定がありません。",
         "unknown": "不明",
         "autoUpdateDisabled": "自動更新が無効になっています。"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P サブスクリプションソース"
     }
   }
 }

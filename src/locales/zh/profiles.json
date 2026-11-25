@@ -38,7 +38,8 @@
         "readFailed": "读取订阅失败",
         "reorderFailed": "调整订阅顺序失败",
         "switchFailed": "切换订阅失败",
-        "updateFailed": "更新订阅失败"
+        "updateFailed": "更新订阅失败",
+        "openp2pBundleUnsupported": "OpenP2P 订阅不能加入订阅组合。"
       },
       "notifications": {
         "importRetry": "订阅导入失败，尝试使用 Clash 代理导入",
@@ -83,7 +84,8 @@
       "extendScript": "扩展脚本",
       "openFile": "打开文件",
       "update": "更新",
-      "updateViaProxy": "更新（代理）"
+      "updateViaProxy": "更新（代理）",
+      "viewSource": "查看源文件"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "没有计划",
         "unknown": "未知",
         "autoUpdateDisabled": "自动更新已禁用"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "订阅二维码"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P 订阅源"
     }
   }
 }

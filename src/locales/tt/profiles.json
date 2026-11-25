@@ -38,7 +38,8 @@
         "readFailed": "Профильне укып булмады",
         "reorderFailed": "Профильләр тәртибен үзгәртеп булмады",
         "switchFailed": "Профильне алыштырып булмады",
-        "updateFailed": "Профильне яңартып булмады"
+        "updateFailed": "Профильне яңартып булмады",
+        "openp2pBundleUnsupported": "OpenP2P язылуларын Профиль тупламасына өстәп булмый."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "Script-ны үзгәртергә",
       "openFile": "Файлны ачу",
       "update": "Яңарту",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "Чыганакны карау"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "No schedule",
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P язылу чыганагы"
     }
   }
 }

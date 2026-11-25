@@ -161,11 +161,7 @@ export const OpenP2PPanel = () => {
       {view && view.accounts.length > 0 && (
         <Stack spacing={1.5}>
           {view.accounts.map((account) => (
-            <OpenP2PAccountCard
-              key={account.id}
-              account={account}
-              onImport={() => navigate('/profile')}
-            />
+            <OpenP2PAccountCard key={account.id} account={account} />
           ))}
         </Stack>
       )}

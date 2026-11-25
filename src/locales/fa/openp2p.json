@@ -7,7 +7,7 @@
     },
     "empty": {
       "title": "No OpenP2P accounts",
-      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically.",
+      "description": "اشتراک OpenP2P را از صفحه پروفایل‌ها وارد کنید؛ به‌صورت یک پروفایل معمولی نمایش داده می‌شود و می‌توانید آن را فعال کنید.",
       "goToProfiles": "Open Profiles to import"
     },
     "error": {
@@ -267,7 +267,11 @@
     "invalid_secret": "The secret value is invalid.",
     "profile_import_required": "Import the mihomo part as a normal profile.",
     "OPENP2P_IMPORT_SOURCE_INVALID": "The OpenP2P import source is invalid.",
-    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied."
+    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied.",
+    "OPENP2P_SUBSCRIPTION_NOT_FOUND": "اشتراک OpenP2P پیدا نشد.",
+    "OPENP2P_SUBSCRIPTION_FAILED": "عملیات اشتراک OpenP2P ناموفق بود.",
+    "OPENP2P_ACTIVATION_FAILED": "فعال‌سازی اشتراک OpenP2P ممکن نشد.",
+    "OPENP2P_PLATFORM_UNSUPPORTED": "OpenP2P در این پلتفرم پشتیبانی نمی‌شود."
   },
   "settings": {
     "title": "OpenP2P settings",

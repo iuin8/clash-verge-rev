@@ -69,6 +69,32 @@ fn validation_rejects_non_subscriptions_and_missing_items() {
 }
 
 #[test]
+fn openp2p_subscription_cards_cannot_be_bundle_members() {
+    let mut subscription = item(
+        "op2p-sub-0123456789abcdef",
+        "local",
+        Some("op2p-sub-0123456789abcdef.yaml"),
+    );
+    subscription.desc = Some(
+        format!(
+            "{}0123456789abcdef",
+            crate::core::openp2p::subscriptions::PROFILE_DESC_PREFIX
+        )
+        .into(),
+    );
+    let profiles = IProfiles {
+        current: None,
+        items: Some(vec![item("local", "local", Some("local.yaml")), subscription]),
+    };
+    let error = validate_members(&profiles, &uids(&["local", "op2p-sub-0123456789abcdef"]))
+        .expect_err("an openp2p subscription must not become a bundle member");
+    assert!(
+        format!("{error:#}").contains("cannot be a profile bundle member"),
+        "{error:#}"
+    );
+}
+
+#[test]
 fn upsert_keeps_a_single_bundle_item() {
     let mut profiles = IProfiles {
         current: None,

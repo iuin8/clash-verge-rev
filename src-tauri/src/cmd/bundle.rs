@@ -150,6 +150,14 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     multi_merge::publish_conflicts(generated.conflicts);
     drop(config_update_guard);
     drop(profile_write_guard);
+    // profiles.yaml:current is now the bundle; a bundle never carries an OpenP2P
+    // subscription in v1, so the sidecar must stop its previous source here.
+    if let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
+        .reconcile_current()
+        .await
+    {
+        crate::core::openp2p::manager::OpenP2PManager::global().mark_degraded(format!("{error:#}"));
+    }
     handle::Handle::refresh_clash();
     Ok(())
 }

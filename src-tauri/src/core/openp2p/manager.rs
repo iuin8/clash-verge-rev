@@ -3,18 +3,21 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::watch;
 
+use crate::config::Config;
 use crate::core::handle::Handle;
 use crate::core::openp2p::account::{self, AccountPaths};
 use crate::core::openp2p::config as o2p_config;
 
 use crate::core::openp2p::process::{self, Reconcile};
-use crate::core::openp2p::profile_store::ProfileStore;
 use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
-use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PView};
+use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PSource, OpenP2PView};
+use crate::core::openp2p::subscriptions::{
+    self, PROFILE_DESC_PREFIX, SubscriptionRuntime, SubscriptionStore, id_from_profile_uid, purge_account_dir,
+};
 use crate::singleton;
 use clash_verge_logging::{Type, logging};
 
@@ -176,11 +179,19 @@ impl AccountSlot {
     }
 }
 
+/// The active subscription the sidecar accounts were started from.
+#[derive(Debug, Clone)]
+pub struct OpenP2PActiveSource {
+    pub profile_uid: std::string::String,
+    pub view: OpenP2PSource,
+}
+
 struct ManagerData {
     revision: u64,
     config: Arc<OpenP2PConfig>,
     config_error: Option<std::string::String>,
     accounts: BTreeMap<std::string::String, Arc<AccountSlot>>,
+    active: Option<OpenP2PActiveSource>,
 }
 
 impl Default for ManagerData {
@@ -190,6 +201,7 @@ impl Default for ManagerData {
             config: Arc::new(OpenP2PConfig::default()),
             config_error: None,
             accounts: BTreeMap::new(),
+            active: None,
         }
     }
 }
@@ -202,7 +214,7 @@ pub struct OpenP2PManager {
 
 #[path = "manager_supervisor.rs"]
 mod supervisor;
-use supervisor::{force_stop_slot, reconcile_account, supervise};
+use supervisor::{force_stop_slot, supervise};
 
 singleton!(OpenP2PManager, OPENP2P_MANAGER);
 
@@ -215,31 +227,9 @@ impl OpenP2PManager {
         }
     }
 
-    pub fn config(&self) -> Arc<OpenP2PConfig> {
-        std::sync::Arc::clone(&self.data.read().config)
-    }
-
-    pub fn account_spec(&self, account_id: &str) -> Option<AccountSpec> {
-        self.data.read().accounts.get(account_id).map(|slot| slot.spec())
-    }
-
     pub fn view(&self) -> OpenP2PView {
         let data = self.data.read();
-        let source = ProfileStore::app_default().ok().and_then(|store| {
-            store
-                .load_import_metadata()
-                .ok()
-                .flatten()
-                .map(|metadata| crate::core::openp2p::state::OpenP2PSource {
-                    kind: metadata.kind,
-                    name: metadata.name,
-                    version: metadata.version,
-                    applied_at: Some(metadata.applied_at),
-                    status: Some("applied".to_owned()),
-                    contains_mihomo: metadata.contains_mihomo,
-                    self_contained: metadata.self_contained,
-                })
-        });
+        let source = data.active.as_ref().map(|active| active.view.clone());
         let accounts: Vec<OpenP2PAccount> = data
             .config
             .accounts
@@ -257,14 +247,16 @@ impl OpenP2PManager {
                     })
                     .map(|network| (network.domains.len() + network.cidrs.len()) as u32)
                     .sum();
-                account.profile_uid = Some(format!("op2p-{id}"));
-                account.profile_status = if !account.token_present {
-                    crate::core::openp2p::state::OpenP2PProfileStatus::NeedsToken
-                } else if !account.key_present {
-                    crate::core::openp2p::state::OpenP2PProfileStatus::NeedsKey
-                } else {
-                    crate::core::openp2p::state::OpenP2PProfileStatus::Ready
-                };
+                if let Some(active) = data.active.as_ref() {
+                    account.profile_uid = Some(active.profile_uid.clone());
+                    account.profile_status = if !account.token_present {
+                        crate::core::openp2p::state::OpenP2PProfileStatus::NeedsToken
+                    } else if !account.key_present {
+                        crate::core::openp2p::state::OpenP2PProfileStatus::NeedsKey
+                    } else {
+                        crate::core::openp2p::state::OpenP2PProfileStatus::Ready
+                    };
+                }
                 account
             })
             .collect();
@@ -276,53 +268,130 @@ impl OpenP2PManager {
         }
     }
 
-    async fn ensure_profile_store() {
-        let Ok(store) = ProfileStore::app_default() else {
-            return;
-        };
-        match store.load_config() {
-            Ok(Some(config)) => {
-                if let Err(error) = store.project_live(&config).await {
-                    logging!(
-                        warn,
-                        Type::Setup,
-                        "failed to refresh generated openp2p profiles: {error:#}"
-                    );
-                }
-            }
-            Ok(None) => {}
-            Err(error) => logging!(warn, Type::Setup, "failed to read openp2p profile store: {error:#}"),
-        }
-    }
-
     pub async fn init() {
         if INITIALIZED.swap(true, Ordering::AcqRel) {
             return;
         }
         let manager = Self::global();
         if !PLATFORM_SUPPORTED {
-            manager.set_config_error(Some(
-                "openp2p sidecar is supported on macOS only in this build".to_owned(),
-            ));
+            manager.mark_degraded("openp2p sidecar is supported on macOS only in this build".to_owned());
             return;
         }
         let _ = tokio::task::spawn_blocking(reconcile_orphans).await;
-        Self::ensure_profile_store().await;
-        if let Err(error) = manager.reload_from_current().await {
-            logging!(error, Type::Setup, "failed to initialize openp2p: {error:#}");
+        if let Err(error) = repair_orphan_subscription_items().await {
+            logging!(
+                warn,
+                Type::Setup,
+                "failed to repair restored openp2p subscription cards: {error:#}"
+            );
+        }
+        if let Err(error) = manager.reconcile_current().await {
+            logging!(
+                error,
+                Type::Setup,
+                "failed to reconcile openp2p with the current profile: {error:#}"
+            );
+            manager.deactivate().await;
             manager.set_config_error(Some(format!("{error:#}")));
         }
+        purge_inactive_accounts().await;
     }
 
-    pub async fn reload_from_current(&self) -> Result<()> {
-        if crate::core::handle::Handle::global().is_exiting() {
+    /// profiles.yaml:current is the only authority: run the subscription behind
+    /// the current profile, stop everything for any other profile or a bundle.
+    pub async fn reconcile_current(&self) -> Result<()> {
+        if !PLATFORM_SUPPORTED {
+            self.deactivate().await;
             return Ok(());
         }
-        let config = ProfileStore::app_default()
-            .and_then(|store| store.load_config())
-            .map(|config| config.unwrap_or_default())?;
-        self.set_config(config, None).await;
+        let current = Config::profiles().await.latest_arc().current.clone();
+        let Some(uid) = current else {
+            self.deactivate().await;
+            return Ok(());
+        };
+        let store = SubscriptionStore::app_default()?;
+        let Some(runtime) = store.runtime_for_uid(&uid)? else {
+            if id_from_profile_uid(&uid).is_some() {
+                logging!(
+                    warn,
+                    Type::Network,
+                    "the current profile is an OpenP2P subscription card without a subscription store"
+                );
+            }
+            self.deactivate().await;
+            return Ok(());
+        };
+        if let Err(error) = ensure_current_projection(&store, &runtime).await {
+            logging!(
+                warn,
+                Type::Setup,
+                "failed to repair the generated openp2p profile: {error:#}"
+            );
+        }
+        let source = OpenP2PActiveSource {
+            profile_uid: runtime.profile_uid,
+            view: runtime.source,
+        };
+        self.apply_source(runtime.config, Some(source)).await;
         Ok(())
+    }
+
+    /// Cheap convergence check for paths that change profiles.yaml:current
+    /// without going through the generic activation command (for example a
+    /// Profile Bundle activation).
+    pub async fn ensure_current(&self) -> Result<()> {
+        let current = Config::profiles().await.latest_arc().current.clone();
+        let active = self
+            .data
+            .read()
+            .active
+            .as_ref()
+            .map(|active| active.profile_uid.clone());
+        let expected = current
+            .as_deref()
+            .filter(|uid| id_from_profile_uid(uid).is_some())
+            .map(str::to_owned);
+        if expected == active {
+            return Ok(());
+        }
+        self.reconcile_current().await
+    }
+
+    /// Records a sidecar failure without undoing an already valid mihomo switch.
+    pub fn mark_degraded(&self, detail: std::string::String) {
+        logging!(warn, Type::Network, "openp2p sidecar is degraded: {detail}");
+        self.set_config_error(Some(detail));
+    }
+
+    /// Switches the sidecar to a new source without an application restart:
+    /// accounts of the previous source stop and their working directories (which
+    /// hold rendered credentials) are removed.
+    pub async fn apply_source(&self, config: OpenP2PConfig, source: Option<OpenP2PActiveSource>) {
+        let previous = self.snapshot_slots();
+        for (id, slot) in &previous {
+            self.stop_slot(slot, STOP_TIMEOUT).await;
+            if !config.accounts.iter().any(|account| &account.id == id) {
+                purge_account_dir(id);
+            }
+        }
+        self.set_config(config, None, source).await;
+    }
+
+    pub async fn deactivate(&self) {
+        let previous = self.snapshot_slots();
+        for (id, slot) in &previous {
+            self.stop_slot(slot, STOP_TIMEOUT).await;
+            purge_account_dir(id);
+        }
+        self.set_config(OpenP2PConfig::default(), None, None).await;
+    }
+
+    fn snapshot_slots(&self) -> BTreeMap<std::string::String, Arc<AccountSlot>> {
+        let data = self.data.read();
+        data.accounts
+            .iter()
+            .map(|(id, slot)| (id.clone(), Arc::clone(slot)))
+            .collect()
     }
 
     fn set_config_error(&self, error: Option<std::string::String>) {
@@ -330,7 +399,12 @@ impl OpenP2PManager {
         Self::notify_changed();
     }
 
-    pub async fn set_config(&self, config: OpenP2PConfig, config_error: Option<std::string::String>) {
+    async fn set_config(
+        &self,
+        config: OpenP2PConfig,
+        config_error: Option<std::string::String>,
+        active: Option<OpenP2PActiveSource>,
+    ) {
         let config = Arc::new(config);
         let previous: BTreeMap<std::string::String, Arc<AccountSlot>> = self.data.read().accounts.clone();
         let mut accounts = BTreeMap::new();
@@ -350,6 +424,7 @@ impl OpenP2PManager {
             data.config = std::sync::Arc::clone(&config);
             data.config_error = config_error;
             data.accounts = accounts.clone();
+            data.active = active;
         }
         Self::notify_changed();
 
@@ -394,64 +469,6 @@ impl OpenP2PManager {
             }
             self.start_slot(slot).await;
         }
-    }
-
-    pub async fn start_account(&self, account_id: &str) -> Result<OpenP2PAccount> {
-        let (config, slot) = {
-            let data = self.data.read();
-            let slot = data
-                .accounts
-                .get(account_id)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("openp2p account not found"))?;
-            (std::sync::Arc::clone(&data.config), slot)
-        };
-        let account = slot.spec();
-        if !account::token_present(&account.token_ref) {
-            slot.set_terminal(OpenP2PPhase::TokenMissing, "token is not saved for this account".into());
-            return Ok(slot.to_view(&config));
-        }
-        let paths = account::account_paths(account_id)?;
-        match reconcile_account(paths.clone()).await {
-            Reconcile::Indeterminate => {
-                let message =
-                    "an unverified previous child record exists; inspect the account child.json before starting"
-                        .to_owned();
-                slot.set_terminal(OpenP2PPhase::Failed, message);
-                return Ok(slot.to_view(&config));
-            }
-            Reconcile::Killed | Reconcile::Stale => {}
-            Reconcile::Missing => {}
-        }
-        let running = slot
-            .worker
-            .lock()
-            .await
-            .as_ref()
-            .is_some_and(|worker| !worker.join.is_finished());
-        if !running {
-            self.start_slot(&slot).await;
-        }
-        Ok(slot.to_view(&config))
-    }
-
-    pub async fn stop_account(&self, account_id: &str) -> Result<OpenP2PAccount> {
-        let (config, slot) = {
-            let data = self.data.read();
-            let slot = data
-                .accounts
-                .get(account_id)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("openp2p account not found"))?;
-            (std::sync::Arc::clone(&data.config), slot)
-        };
-        self.stop_slot(&slot, STOP_TIMEOUT).await;
-        Ok(slot.to_view(&config))
-    }
-
-    pub async fn restart_account(&self, account_id: &str) -> Result<OpenP2PAccount> {
-        self.stop_account(account_id).await?;
-        self.start_account(account_id).await
     }
 
     pub async fn stop_all(&self, limit: Duration) {
@@ -543,65 +560,89 @@ impl OpenP2PManager {
             manager.send_event();
         });
     }
+}
 
-    pub async fn delete_account(&self, account_id: &str) -> Result<OpenP2PView> {
-        let Some(account) = self.account_spec(account_id) else {
-            bail!("openp2p account not found");
-        };
-        let before = self.config();
-        self.stop_account(account_id).await?;
-        let paths = account::account_paths(account_id)?;
-        if reconcile_account(paths.clone()).await == Reconcile::Indeterminate {
-            bail!("cannot delete the account: an unverified child record remains");
-        }
-        crate::cmd::openp2p::detach_profile_from_bundle(&format!("op2p-{account_id}")).await?;
-        let store = ProfileStore::app_default()?;
-        let mut config = store
-            .load_config()?
-            .ok_or_else(|| anyhow::anyhow!("openp2p config store is missing"))?;
-        config.accounts.retain(|entry| entry.id != account_id);
-        config.proxies.retain(|proxy| proxy.account != account_id);
-        if config.accounts.is_empty() {
-            config.networks.clear();
-        } else {
-            config
-                .networks
-                .retain(|network| network.account.as_deref() != Some(account_id));
-        }
-        store.save_config(&config)?;
-        store.project_current().await?;
-        self.set_config(config, None).await;
+async fn ensure_current_projection(store: &SubscriptionStore, runtime: &SubscriptionRuntime) -> Result<()> {
+    let profile_path = store.profile_path(&runtime.profile_uid);
+    if !profile_path.is_file() {
+        let rendered = store.render(&runtime.meta)?;
+        account::atomic_write(&profile_path, rendered.yaml.as_bytes(), 0o600)?;
+    }
+    let profiles = Config::profiles().await;
+    if profiles.latest_arc().get_item(&runtime.profile_uid).is_ok() {
+        return Ok(());
+    }
+    let meta = runtime.meta.clone();
+    profiles
+        .with_data_modify(|mut candidate| async move {
+            if subscriptions::upsert_profile_item(&mut candidate, &meta)? {
+                candidate.save_file().await?;
+            }
+            Ok((candidate, ()))
+        })
+        .await?;
+    Ok(())
+}
 
-        // Credentials and the rendered config.json must not outlive the account.
-        if let Ok(token_path) = account::token_path(&account.token_ref)
-            && let Err(error) = std::fs::remove_file(&token_path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            logging!(warn, Type::Network, "failed to remove an openp2p token file: {error}");
+/// Restored backups carry subscription cards but not the subscription store.
+/// Demote those cards to plain local profiles so they stay deletable and
+/// editable; the profile file itself is still in the archive.
+async fn repair_orphan_subscription_items() -> Result<()> {
+    let store = SubscriptionStore::app_default()?;
+    let profiles = Config::profiles().await;
+    let needs_repair = profiles
+        .latest_arc()
+        .items
+        .as_ref()
+        .is_some_and(|items| items.iter().any(|item| is_orphan_subscription_item(item, &store)));
+    if !needs_repair {
+        return Ok(());
+    }
+    let store = store.clone();
+    profiles
+        .with_data_modify(|mut candidate| async move {
+            let mut changed = false;
+            if let Some(items) = candidate.items.as_mut() {
+                for item in items.iter_mut() {
+                    if is_orphan_subscription_item(item, &store) {
+                        item.desc = None;
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                candidate.save_file().await?;
+            }
+            Ok((candidate, ()))
+        })
+        .await?;
+    Ok(())
+}
+
+fn is_orphan_subscription_item(item: &crate::config::PrfItem, store: &SubscriptionStore) -> bool {
+    item.desc
+        .as_deref()
+        .and_then(|desc| desc.strip_prefix(PROFILE_DESC_PREFIX))
+        .is_some_and(|id| !store.dir_exists(id))
+}
+
+/// An inactive subscription keeps no account working directory: config.json holds
+/// the rendered token and must not outlive the sidecar run.
+async fn purge_inactive_accounts() {
+    let Ok(store) = SubscriptionStore::app_default() else {
+        return;
+    };
+    let current = Config::profiles().await.latest_arc().current.clone();
+    let current_id = current.as_deref().and_then(id_from_profile_uid);
+    for meta in store.list().unwrap_or_default() {
+        if current_id == Some(meta.id.as_str()) {
+            continue;
         }
-        let after = self.config();
-        for proxy in before.proxies_for(account_id) {
-            if !after
-                .proxies
-                .iter()
-                .any(|remaining| remaining.private_key_ref == proxy.private_key_ref)
-                && let Ok(key_path) = account::key_path(&proxy.private_key_ref)
-                && let Err(error) = std::fs::remove_file(&key_path)
-                && error.kind() != std::io::ErrorKind::NotFound
-            {
-                logging!(warn, Type::Network, "failed to remove an openp2p key file: {error}");
+        if let Ok(config) = store.load_config(&meta.id) {
+            for account in config.accounts {
+                purge_account_dir(&account.id);
             }
         }
-        if let Err(error) = std::fs::remove_dir_all(&paths.workdir)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            logging!(
-                warn,
-                Type::Network,
-                "failed to remove the openp2p account directory: {error}"
-            );
-        }
-        Ok(self.view())
     }
 }
 
@@ -681,6 +722,34 @@ mod tests {
         let manager = OpenP2PManager::new();
         let view = manager.view();
         assert!(view.accounts.is_empty());
+    }
+
+    #[test]
+    fn orphan_subscription_cards_are_detected_for_repair() {
+        let root = std::env::temp_dir().join(format!(
+            "cvr-openp2p-orphan-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let store = SubscriptionStore::at(root.clone());
+        let id = "deadbeefdeadbeef";
+        let item = crate::config::PrfItem {
+            uid: Some(format!("op2p-sub-{id}").into()),
+            desc: Some(format!("{PROFILE_DESC_PREFIX}{id}").into()),
+            ..Default::default()
+        };
+        assert!(is_orphan_subscription_item(&item, &store));
+        std::fs::create_dir_all(root.join("openp2p/subscriptions").join(id)).expect("subscription dir");
+        assert!(!is_orphan_subscription_item(&item, &store));
+        let plain = crate::config::PrfItem {
+            desc: Some("OpenP2P".into()),
+            ..Default::default()
+        };
+        assert!(!is_orphan_subscription_item(&plain, &store));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

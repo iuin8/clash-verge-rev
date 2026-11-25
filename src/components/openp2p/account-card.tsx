@@ -1,9 +1,4 @@
-import {
-  FolderOpenOutlined,
-  PlayArrowRounded,
-  RefreshRounded,
-  StopRounded,
-} from '@mui/icons-material'
+import { FolderOpenOutlined } from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -13,18 +8,11 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { OpenP2pAccount } from '@/services/cmds'
-import {
-  openOpenP2pLogDir,
-  restartOpenP2pAccount,
-  startOpenP2pAccount,
-  stopOpenP2pAccount,
-} from '@/services/cmds'
-import { mutate } from '@/services/mutate'
-import { revalidateQuery } from '@/services/query-client'
+import { openOpenP2pLogDir } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
 
 import { OpenP2PDetail } from './detail'
 import { translateOpenP2pErrorText } from './errors'
@@ -33,75 +21,19 @@ import {
   OpenP2PListenBadge,
   OpenP2PLoginBadge,
   OpenP2PPhaseBadge,
-  OpenP2PProfileBadge,
   OpenP2PTcpBadge,
   OpenP2PTokenBadge,
 } from './status-badges'
-
-const RUNNING_PHASES = new Set([
-  'starting',
-  'loginPending',
-  'online',
-  'degraded',
-  'backoff',
-  'stopping',
-])
 
 const WARNING_PHASES = new Set(['degraded', 'backoff', 'tokenMissing'])
 
 export const OpenP2PAccountCard = ({
   account,
-  onImport,
 }: {
   account: OpenP2pAccount
-  onImport: () => void
 }) => {
   const { t } = useTranslation()
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-
-  const running = RUNNING_PHASES.has(account.phase)
   const hasKeyNode = account.keyRefs.length > 0
-  const profileStatus = account.profileStatus ?? 'unknown'
-  const runAction = async (
-    name: string,
-    action: () => Promise<unknown>,
-    revalidate = true,
-  ) => {
-    if (busyRef.current) return false
-    busyRef.current = true
-    setBusy(true)
-    try {
-      const result = await mutate(action, {
-        id: `openp2p:${name}:${account.id}`,
-        ...(revalidate ? { revalidate: [['getOpenP2pState']] } : {}),
-      })
-      return result.ok
-    } catch {
-      if (revalidate) {
-        await revalidateQuery(['getOpenP2pState'])
-      }
-      return false
-    } finally {
-      busyRef.current = false
-      setBusy(false)
-    }
-  }
-
-  const canRun =
-    account.enabled &&
-    account.tokenPresent &&
-    profileStatus !== 'needsKey' &&
-    profileStatus !== 'error'
-  const actionTitle = !account.enabled
-    ? t('openp2p.account.disabled')
-    : !account.tokenPresent
-      ? t('openp2p.account.tokenMissing')
-      : profileStatus === 'needsKey'
-        ? t('openp2p.account.credentials.keyRequired')
-        : profileStatus === 'error'
-          ? t('openp2p.account.credentials.profileError')
-          : undefined
 
   const lastError = account.lastError
     ? translateOpenP2pErrorText(account.lastError, t)
@@ -211,7 +143,6 @@ export const OpenP2PAccountCard = ({
             state={account.checks.login.state}
             detail={account.checks.login.detail}
           />
-          <OpenP2PProfileBadge status={profileStatus} />
           <OpenP2PTokenBadge present={account.tokenPresent} />
           <OpenP2PKeyBadge present={account.keyPresent} hasNode={hasKeyNode} />
           {account.restartCount > 0 && (
@@ -224,38 +155,6 @@ export const OpenP2PAccountCard = ({
             />
           )}
         </Stack>
-
-        {profileStatus === 'needsToken' && (
-          <Alert
-            severity="warning"
-            action={
-              <Button color="inherit" size="small" onClick={onImport}>
-                {t('openp2p.account.actions.updateYaml')}
-              </Button>
-            }
-          >
-            {t('openp2p.account.credentials.tokenRequired')}
-          </Alert>
-        )}
-
-        {profileStatus === 'needsKey' && (
-          <Alert
-            severity="warning"
-            action={
-              <Button color="inherit" size="small" onClick={onImport}>
-                {t('openp2p.account.actions.updateYaml')}
-              </Button>
-            }
-          >
-            {t('openp2p.account.credentials.keyRequired')}
-          </Alert>
-        )}
-
-        {profileStatus === 'error' && (
-          <Alert severity="error">
-            {t('openp2p.account.credentials.profileError')}
-          </Alert>
-        )}
 
         {lastError && (
           <Alert
@@ -341,47 +240,11 @@ export const OpenP2PAccountCard = ({
         >
           <Button
             size="small"
-            variant="contained"
-            startIcon={<PlayArrowRounded />}
-            disabled={busy || running || !canRun}
-            title={actionTitle}
-            onClick={() =>
-              void runAction('start', () => startOpenP2pAccount(account.id))
-            }
-          >
-            {t('openp2p.account.actions.start')}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<StopRounded />}
-            disabled={busy || !running}
-            onClick={() =>
-              void runAction('stop', () => stopOpenP2pAccount(account.id))
-            }
-          >
-            {t('openp2p.account.actions.stop')}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<RefreshRounded />}
-            disabled={busy || !running || !canRun}
-            title={actionTitle}
-            onClick={() =>
-              void runAction('restart', () => restartOpenP2pAccount(account.id))
-            }
-          >
-            {t('openp2p.account.actions.restart')}
-          </Button>
-          <Button
-            size="small"
             variant="outlined"
             startIcon={<FolderOpenOutlined />}
-            disabled={busy}
-            onClick={() =>
-              void runAction('logs', () => openOpenP2pLogDir(account.id), false)
-            }
+            onClick={() => {
+              void openOpenP2pLogDir(account.id).catch(showNotice.error)
+            }}
           >
             {t('openp2p.account.actions.logs')}
           </Button>

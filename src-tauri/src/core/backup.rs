@@ -313,15 +313,9 @@ pub async fn create_backup() -> Result<(String, PathBuf), Error> {
         zip.write_all(fs::read(&dns_config_path).await?.as_slice())?;
     }
 
-    // OpenP2P policy/source metadata is non-secret and must survive restore.
-    // Tokens, private keys, account config.json and logs stay out of the archive.
-    for relative in ["openp2p/config.yaml", "openp2p/import.yaml"] {
-        let path = dirs::app_home_dir()?.join(relative);
-        if path.exists() {
-            zip.start_file(relative, options)?;
-            zip.write_all(fs::read(&path).await?.as_slice())?;
-        }
-    }
+    // OpenP2P subscription sources live below openp2p/subscriptions/ and may
+    // carry inline credentials, so they are never added to the archive. The
+    // generated profiles under profiles/ carry no credentials and stay included.
 
     zip.start_file(dirs::PROFILE_YAML, options)?;
     zip.write_all(fs::read(dirs::profiles_path()?).await?.as_slice())?;

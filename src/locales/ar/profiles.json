@@ -38,7 +38,8 @@
         "readFailed": "تعذّر قراءة الملف الشخصي",
         "reorderFailed": "تعذّر إعادة ترتيب الملفات الشخصية",
         "switchFailed": "تعذّر تبديل الملف الشخصي",
-        "updateFailed": "تعذّر تحديث الملف الشخصي"
+        "updateFailed": "تعذّر تحديث الملف الشخصي",
+        "openp2pBundleUnsupported": "لا يمكن إضافة اشتراكات OpenP2P إلى حزمة ملفات شخصية."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "توسيع السكربت",
       "openFile": "فتح الملف",
       "update": "تحديث",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "عرض المصدر"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "No schedule",
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "مصدر اشتراك OpenP2P"
     }
   }
 }

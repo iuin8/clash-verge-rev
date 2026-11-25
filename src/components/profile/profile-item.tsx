@@ -7,6 +7,7 @@ import {
 } from '@mui/icons-material'
 import {
   Box,
+  Chip,
   CircularProgress,
   IconButton,
   keyframes,
@@ -35,13 +36,16 @@ import { RulesEditorViewer } from '@/components/profile/rules-editor-viewer'
 import { useEditorDocument } from '@/hooks/use-editor-document'
 import {
   getNextUpdateTime,
+  getOpenP2pSubscriptionContent,
   readProfileFile,
   saveProfileFile,
+  updateOpenP2pSubscription,
   updateProfile,
   viewProfile,
 } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
+import { revalidateQuery } from '@/services/query-client'
 import {
   useProfileLoadingCache,
   useSetProfileLoading,
@@ -53,6 +57,7 @@ import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
 import { EnhanceHint } from './enhance-hint'
+import { isOpenP2pSubscriptionUid } from './openp2p-subscription'
 import { ProfileBox } from './profile-box'
 import { ProxiesEditorViewer } from './proxies-editor-viewer'
 import { QrViewer } from './qr-viewer'
@@ -153,6 +158,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const { uid, name = 'Profile', extra, updated = 0, option } = itemData
   const displayName = titleOverride ?? name
+  const openP2pSubscription = isOpenP2pSubscriptionUid(uid)
 
   const fetchNextUpdateTimeCallback = useCallback(
     async (forceRefresh = false) => {
@@ -273,7 +279,8 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const { upload = 0, download = 0, total = 0 } = extra ?? {}
   const from = parseUrl(itemData.url!)
-  const description = itemData.desc
+  // The marker identifies the card; it is not user-facing text.
+  const description = openP2pSubscription ? undefined : itemData.desc
   const expire = parseExpire(extra?.expire)
   const progress = Math.min(
     Math.round(((download + upload) * 100) / (total + 0.01)) + 1,
@@ -320,7 +327,13 @@ const ProfileItemBase = (props: ProfileItemProps) => {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
 
-  const loadProfileDocument = useCallback(() => readProfileFile(uid!), [uid])
+  const loadProfileDocument = useCallback(
+    () =>
+      openP2pSubscription
+        ? getOpenP2pSubscriptionContent(uid!)
+        : readProfileFile(uid!),
+    [openP2pSubscription, uid],
+  )
   const loadMergeDocument = useCallback(
     () => readProfileFile(option?.merge ?? ''),
     [option?.merge],
@@ -413,6 +426,27 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     setAnchorEl(null)
     setLoading(true)
 
+    if (openP2pSubscription) {
+      try {
+        const result = await mutate(
+          () => updateOpenP2pSubscription(itemData.uid!),
+          {
+            id: `update-openp2p-subscription:${itemData.uid}`,
+            errorNotice: false,
+          },
+        )
+        if (!result.ok || result.value.status !== 'valid') return
+        showNotice.success('shared.feedback.notifications.saved')
+        void revalidateQuery(['getOpenP2pState']).catch(() => {})
+        void mutateProfiles()
+      } catch (error) {
+        showNotice.error(error)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     const option: Partial<IProfileOption> = {}
     if (type === 0) {
       option.with_proxy = false
@@ -447,6 +481,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     shareQrCode: 'profiles.components.menu.shareQrCode',
     editInfo: 'profiles.components.menu.editInfo',
     editFile: 'profiles.components.menu.editFile',
+    viewSource: 'profiles.components.menu.viewSource',
     editRules: 'profiles.components.menu.editRules',
     editProxies: 'profiles.components.menu.editProxies',
     editGroups: 'profiles.components.menu.editGroups',
@@ -588,6 +623,38 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.openFile,
       handler: onOpenFile,
+      disabled: false,
+    },
+    {
+      label: menuLabels.delete,
+      handler: () => {
+        setAnchorEl(null)
+        if (batchMode) {
+          if (onSelectionChange) {
+            onSelectionChange()
+          }
+        } else {
+          setConfirmOpen(true)
+        }
+      },
+      disabled: false,
+      danger: true,
+    },
+  ]
+  const openP2pMenu: ContextMenuItem[] = [
+    {
+      label: menuLabels.select,
+      handler: onForceSelect,
+      disabled: false,
+    },
+    {
+      label: menuLabels.viewSource,
+      handler: () => setFileOpen(true),
+      disabled: false,
+    },
+    {
+      label: menuLabels.update,
+      handler: () => onUpdate(1),
       disabled: false,
     },
     {
@@ -759,7 +826,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             {titleAdornment}
           </Box>
 
-          {hasUrl && (
+          {(hasUrl || openP2pSubscription) && (
             <IconButton
               title={t('shared.actions.refresh')}
               sx={{
@@ -882,7 +949,14 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           e.preventDefault()
         }}
       >
-        {(menu ?? (hasUrl ? urlModeMenu : fileModeMenu)).map((item) => (
+        {(
+          menu ??
+          (openP2pSubscription
+            ? openP2pMenu
+            : hasUrl
+              ? urlModeMenu
+              : fileModeMenu)
+        ).map((item) => (
           <MenuItem
             key={item.label}
             aria-label={t(item.label)}
@@ -910,13 +984,26 @@ const ProfileItemBase = (props: ProfileItemProps) => {
       {fileOpen && (
         <EditorViewer
           open={true}
+          title={
+            openP2pSubscription ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {t('profiles.modals.openp2pSource.title')}
+                <Chip label={t('shared.labels.readOnly')} size="small" />
+              </Box>
+            ) : undefined
+          }
           value={profileDocument.value}
           language="yaml"
-          path={`profile:${uid}.yaml`}
+          path={
+            openP2pSubscription
+              ? `openp2p-source:${uid}.yaml`
+              : `profile:${uid}.yaml`
+          }
+          readOnly={openP2pSubscription}
           loading={profileDocument.loading}
-          dirty={profileDocument.dirty}
-          onChange={profileDocument.setValue}
-          onSave={handleSaveProfileDocument}
+          dirty={openP2pSubscription ? false : profileDocument.dirty}
+          onChange={openP2pSubscription ? undefined : profileDocument.setValue}
+          onSave={openP2pSubscription ? undefined : handleSaveProfileDocument}
           onClose={() => setFileOpen(false)}
         />
       )}

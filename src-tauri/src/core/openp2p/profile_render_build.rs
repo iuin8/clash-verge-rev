@@ -21,9 +21,8 @@ fn resolve_app<'a>(config: &'a OpenP2PConfig, proxy: &'a ProxySpec) -> Option<&'
 }
 
 /// Builds the nodes/rules/DNS for one account. Routes are included only when
-/// they already belong to that account (or when migrating a single-account
-/// global config).
-#[allow(dead_code)] // wired by profile sync in the next slice
+/// they already belong to that account (or, for a single-account subscription,
+/// when they carry no account owner).
 pub(super) fn build_artifacts_for_account<T, K>(
     config: &OpenP2PConfig,
     account_id: &str,

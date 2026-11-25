@@ -384,7 +384,7 @@ fn reject_secret_fields_inner(value: &Value, path: &str, issues: &mut Vec<OpenP2
                         issues.push(OpenP2PIssue::error(
                             "key_in_config",
                             &child_path,
-                            "x-openp2p must not contain key material; import it with save_openp2p_key",
+                            "x-openp2p must not contain key material; put credentials inline or in x-openp2p-secrets",
                         ));
                     }
                     _ => {}

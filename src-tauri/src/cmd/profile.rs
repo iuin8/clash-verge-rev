@@ -153,7 +153,14 @@ pub async fn update_profile(index: std::string::String, option: Option<PrfOption
 #[specta::specta]
 pub async fn delete_profile(index: std::string::String) -> CmdResult {
     let index: String = index.into();
-    super::bundle_save::ensure_not_managed(&index)?;
+    // FORK: an OpenP2P subscription owns its generated profile item, so its
+    // deletion is allowed here and cleans up the subscription store below.
+    let openp2p_subscription = crate::core::openp2p::subscriptions::SubscriptionStore::app_default()
+        .ok()
+        .and_then(|store| store.find_by_profile_uid(&index).ok().flatten());
+    if openp2p_subscription.is_none() && !crate::core::openp2p::subscriptions::is_subscription_profile_uid(&index) {
+        super::bundle_save::ensure_not_managed(&index)?;
+    }
     // FORK: Profile Bundle members/bundle take the fork-only transactional path.
     if let Some(result) = super::bundle_delete::try_delete(index.clone()).await {
         return result;
@@ -195,6 +202,33 @@ pub async fn delete_profile(index: std::string::String) -> CmdResult {
     }
     drop(config_update_guard);
     drop(profile_write_guard);
+
+    if let Some(subscription) = openp2p_subscription {
+        // The deleted card may have been the current one. profiles.yaml has
+        // already moved to its successor, so reconcile the sidecar before the
+        // account working directories (which hold rendered tokens) are removed.
+        if should_update
+            && let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
+                .reconcile_current()
+                .await
+        {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to reconcile the openp2p sidecar after a profile deletion: {error:#}"
+            );
+        }
+        if let Ok(store) = crate::core::openp2p::subscriptions::SubscriptionStore::app_default()
+            && let Err(error) = store.remove(&subscription.id)
+        {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to remove the openp2p subscription {}: {error:#}",
+                subscription.id
+            );
+        }
+    }
 
     if let Err(e) = Tray::global().update_tooltip().await {
         logging!(warn, Type::Cmd, "异步更新托盘提示失败: {e:#}");
@@ -461,6 +495,13 @@ pub async fn patch_profiles_config(profiles: ProfileSelection) -> CmdResult<Vali
             Type::Cmd,
             "failed to restore bundle artifacts after a failed activation: {error:#}"
         );
+    }
+    if matches!(&outcome, Ok(ValidationOutcome::Valid))
+        && let Err(error) = crate::core::openp2p::manager::OpenP2PManager::global()
+            .reconcile_current()
+            .await
+    {
+        crate::core::openp2p::manager::OpenP2PManager::global().mark_degraded(format!("{error:#}"));
     }
     if matches!(&outcome, Ok(ValidationOutcome::Valid))
         && switching_to_bundle

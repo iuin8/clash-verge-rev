@@ -143,31 +143,21 @@ export const commands = {
   detectOpenp2pSource: (yaml: string | null, url: string | null) =>
     __TAURI_INVOKE<boolean>('detect_openp2p_source', { yaml, url }),
   getOpenp2pVersion: () => __TAURI_INVOKE<string | null>('get_openp2p_version'),
-  previewOpenp2pImport: (yaml: string | null, url: string | null) =>
-    __TAURI_INVOKE<OpenP2PImportPreview_Serialize>('preview_openp2p_import', {
-      yaml,
-      url,
-    }),
-  applyOpenp2pImport: (yaml: string | null, url: string | null) =>
-    __TAURI_INVOKE<OpenP2PApplyOutcome_Serialize>('apply_openp2p_import', {
-      yaml,
-      url,
-    }),
-  startOpenp2pAccount: (accountId: string) =>
-    __TAURI_INVOKE<OpenP2PAccount_Serialize>('start_openp2p_account', {
-      accountId,
-    }),
-  stopOpenp2pAccount: (accountId: string) =>
-    __TAURI_INVOKE<OpenP2PAccount_Serialize>('stop_openp2p_account', {
-      accountId,
-    }),
-  restartOpenp2pAccount: (accountId: string) =>
-    __TAURI_INVOKE<OpenP2PAccount_Serialize>('restart_openp2p_account', {
-      accountId,
-    }),
-  deleteOpenp2pAccount: (accountId: string) =>
-    __TAURI_INVOKE<OpenP2PView_Serialize>('delete_openp2p_account', {
-      accountId,
+  importOpenp2pSubscription: (yaml: string | null, url: string | null) =>
+    __TAURI_INVOKE<OpenP2PSubscription_Serialize>(
+      'import_openp2p_subscription',
+      { yaml, url },
+    ),
+  getOpenp2pSubscriptionContent: (profileUid: string) =>
+    __TAURI_INVOKE<string>('get_openp2p_subscription_content', { profileUid }),
+  updateOpenp2pSubscription: (profileUid: string) =>
+    __TAURI_INVOKE<OpenP2PSubscription_Serialize>(
+      'update_openp2p_subscription',
+      { profileUid },
+    ),
+  activateOpenp2pSubscription: (profileUid: string) =>
+    __TAURI_INVOKE<OpenP2PView_Serialize>('activate_openp2p_subscription', {
+      profileUid,
     }),
   openOpenp2pLogDir: (accountId: string) =>
     __TAURI_INVOKE<null>('open_openp2p_log_dir', { accountId }),
@@ -662,8 +652,6 @@ export type IpAddress = {
   ip: string
 }
 
-export type IssueSeverity = 'error' | 'warning'
-
 export type JsonValue =
   | null
   | boolean
@@ -809,22 +797,6 @@ export type OpenP2PAppCheck_Serialize = {
   banner?: string | null
 }
 
-export type OpenP2PApplyOutcome =
-  | OpenP2PApplyOutcome_Serialize
-  | OpenP2PApplyOutcome_Deserialize
-
-export type OpenP2PApplyOutcome_Deserialize = {
-  applied: boolean
-  state: OpenP2PView_Deserialize
-  validation: ValidationOutcome | null
-}
-
-export type OpenP2PApplyOutcome_Serialize = {
-  applied: boolean
-  state: OpenP2PView_Serialize
-  validation?: ValidationOutcome | null
-}
-
 export type OpenP2PCheck = OpenP2PCheck_Serialize | OpenP2PCheck_Deserialize
 
 export type OpenP2PCheckState = 'unknown' | 'pending' | 'ok' | 'failed'
@@ -856,66 +828,7 @@ export type OpenP2PGateway = {
   port: number
 }
 
-export type OpenP2PImportAccount = {
-  id: string
-  label: string
-  action: OpenP2PPreviewAction
-  token: OpenP2PSecretState
-  key: OpenP2PSecretState
-  nodes: string[]
-  routeCount: number
-  warnings: string[]
-}
-
-export type OpenP2PImportPreview =
-  | OpenP2PImportPreview_Serialize
-  | OpenP2PImportPreview_Deserialize
-
-export type OpenP2PImportPreview_Deserialize = {
-  canApply: boolean
-  issues: OpenP2PIssue[]
-  source: OpenP2PImportSource_Deserialize
-  accounts: OpenP2PImportAccount[]
-}
-
-export type OpenP2PImportPreview_Serialize = {
-  canApply: boolean
-  issues: OpenP2PIssue[]
-  source: OpenP2PImportSource_Serialize
-  accounts: OpenP2PImportAccount[]
-}
-
-export type OpenP2PImportSource =
-  | OpenP2PImportSource_Serialize
-  | OpenP2PImportSource_Deserialize
-
 export type OpenP2PImportSourceKind = 'local' | 'url'
-
-export type OpenP2PImportSource_Deserialize = {
-  kind: OpenP2PImportSourceKind
-  name: string | null
-  version: number | null
-  containsMihomo: boolean
-  /**  Every credential this document needs is carried by the document itself. */
-  selfContained: boolean
-}
-
-export type OpenP2PImportSource_Serialize = {
-  kind: OpenP2PImportSourceKind
-  name?: string | null
-  version?: number | null
-  containsMihomo: boolean
-  /**  Every credential this document needs is carried by the document itself. */
-  selfContained: boolean
-}
-
-export type OpenP2PIssue = {
-  code: string
-  severity: IssueSeverity
-  /**  Dotted path inside x-openp2p (never a value). */
-  path: string
-  message: string
-}
 
 export type OpenP2PPhase =
   | 'stopped'
@@ -930,21 +843,12 @@ export type OpenP2PPhase =
   | 'stopping'
   | 'failed'
 
-export type OpenP2PPreviewAction = 'add' | 'update' | 'unchanged' | 'remove'
-
 export type OpenP2PProfileStatus =
   | 'ready'
   | 'needsToken'
   | 'needsKey'
   | 'error'
   | 'unknown'
-
-export type OpenP2PSecretState =
-  /**  Carried by this import and written on apply. */
-  | 'inline'
-  /**  Not in this import, but a credential file already exists. */
-  | 'present'
-  | 'missing'
 
 export type OpenP2PSource = OpenP2PSource_Serialize | OpenP2PSource_Deserialize
 
@@ -966,6 +870,32 @@ export type OpenP2PSource_Serialize = {
   status?: string | null
   containsMihomo: boolean
   selfContained: boolean
+}
+
+export type OpenP2PSubscription =
+  | OpenP2PSubscription_Serialize
+  | OpenP2PSubscription_Deserialize
+
+export type OpenP2PSubscription_Deserialize = {
+  id: string
+  profileUid: string
+  name: string
+  source: OpenP2PImportSourceKind
+  sourceUrl: string | null
+  importedAt: number
+  accountCount: number
+  active: boolean
+}
+
+export type OpenP2PSubscription_Serialize = {
+  id: string
+  profileUid: string
+  name: string
+  source: OpenP2PImportSourceKind
+  sourceUrl?: string | null
+  importedAt: number
+  accountCount: number
+  active: boolean
 }
 
 export type OpenP2PView = OpenP2PView_Serialize | OpenP2PView_Deserialize

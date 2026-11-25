@@ -38,7 +38,8 @@
         "readFailed": "Profil okunamadı",
         "reorderFailed": "Profiller yeniden sıralanamadı",
         "switchFailed": "Profil değiştirilemedi",
-        "updateFailed": "Profil güncellenemedi"
+        "updateFailed": "Profil güncellenemedi",
+        "openp2pBundleUnsupported": "OpenP2P abonelikleri bir Profil Paketine eklenemez."
       },
       "notifications": {
         "importRetry": "İçe aktarma başarısız oldu, Clash vekil ile yeniden deneniyor...",
@@ -83,7 +84,8 @@
       "extendScript": "Betik Genişletme",
       "openFile": "Dosyayı Aç",
       "update": "Güncelle",
-      "updateViaProxy": "Vekil üzerinden güncelle"
+      "updateViaProxy": "Vekil üzerinden güncelle",
+      "viewSource": "Kaynağı Görüntüle"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "Program yok",
         "unknown": "Bilinmiyor",
         "autoUpdateDisabled": "Otomatik güncelleme devre dışı"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Abonelik QR Kodu"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P Abonelik Kaynağı"
     }
   }
 }

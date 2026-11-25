@@ -7,7 +7,7 @@
     },
     "empty": {
       "title": "No OpenP2P accounts",
-      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically.",
+      "description": "프로필에서 OpenP2P 구독을 가져오면 일반 프로필로 표시되며 활성화할 수 있습니다.",
       "goToProfiles": "Open Profiles to import"
     },
     "error": {
@@ -267,7 +267,11 @@
     "invalid_secret": "The secret value is invalid.",
     "profile_import_required": "Import the mihomo part as a normal profile.",
     "OPENP2P_IMPORT_SOURCE_INVALID": "The OpenP2P import source is invalid.",
-    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied."
+    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied.",
+    "OPENP2P_SUBSCRIPTION_NOT_FOUND": "OpenP2P 구독을 찾을 수 없습니다.",
+    "OPENP2P_SUBSCRIPTION_FAILED": "OpenP2P 구독 작업에 실패했습니다.",
+    "OPENP2P_ACTIVATION_FAILED": "OpenP2P 구독을 활성화할 수 없습니다.",
+    "OPENP2P_PLATFORM_UNSUPPORTED": "이 플랫폼에서는 OpenP2P가 지원되지 않습니다."
   },
   "settings": {
     "title": "OpenP2P settings",

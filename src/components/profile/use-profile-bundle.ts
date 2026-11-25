@@ -22,6 +22,7 @@ import {
   refreshBundleQueries,
   shouldRetryBundleRefresh,
 } from './bundle-queries'
+import { isOpenP2pSubscriptionUid } from './openp2p-subscription'
 
 // Auto member updates materialize the bundle after a debounce plus finalize;
 // revalidate past that, then retry only if the result is still stale.
@@ -150,8 +151,12 @@ export function useProfileBundle({
   )
   // The generated bundle is not a normal batch target: it has its own confirmed
   // delete flow and can never be a bundle member.
+  // OpenP2P subscriptions are not Bundle members in v1.
   const selectableProfiles = useMemo(
-    () => profileItems.filter((item) => !isBundleUid(item.uid)),
+    () =>
+      profileItems.filter(
+        (item) => !isBundleUid(item.uid) && !isOpenP2pSubscriptionUid(item.uid),
+      ),
     [profileItems],
   )
   const selectedMembers = useMemo<BundleDraftMember[]>(
@@ -161,6 +166,7 @@ export function useProfileBundle({
           (item) =>
             item.uid &&
             !isBundleUid(item.uid) &&
+            !isOpenP2pSubscriptionUid(item.uid) &&
             selectedProfiles.has(item.uid),
         )
         .map((item) => ({ uid: item.uid!, name: item.name || item.uid! })),

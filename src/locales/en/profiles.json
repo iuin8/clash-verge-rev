@@ -38,7 +38,8 @@
         "readFailed": "Failed to read profile",
         "reorderFailed": "Failed to reorder profiles",
         "switchFailed": "Failed to switch profile",
-        "updateFailed": "Failed to update profile"
+        "updateFailed": "Failed to update profile",
+        "openp2pBundleUnsupported": "OpenP2P subscriptions cannot be added to a Profile Bundle."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "Extend Script",
       "openFile": "Open File",
       "update": "Update",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "View Source"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "No schedule",
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P Subscription Source"
     }
   }
 }

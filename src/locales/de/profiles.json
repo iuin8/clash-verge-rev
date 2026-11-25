@@ -38,7 +38,8 @@
         "readFailed": "Abonnement konnte nicht gelesen werden",
         "reorderFailed": "Abonnements konnten nicht neu angeordnet werden",
         "switchFailed": "Abonnement konnte nicht gewechselt werden",
-        "updateFailed": "Abonnement konnte nicht aktualisiert werden"
+        "updateFailed": "Abonnement konnte nicht aktualisiert werden",
+        "openp2pBundleUnsupported": "OpenP2P-Abonnements können keinem Profilbündel hinzugefügt werden."
       },
       "notifications": {
         "importRetry": "Import des Abonnements fehlgeschlagen. Versuche es mit dem Clash-Proxy erneut...",
@@ -83,7 +84,8 @@
       "extendScript": "Erweitertes Skript",
       "openFile": "Datei öffnen",
       "update": "Aktualisieren",
-      "updateViaProxy": "Über Proxy aktualisieren"
+      "updateViaProxy": "Über Proxy aktualisieren",
+      "viewSource": "Quelle anzeigen"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "Kein Zeitplan",
         "unknown": "Unbekannt",
         "autoUpdateDisabled": "Automatische Aktualisierung deaktiviert"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Abonnement-QR-Code"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P-Abonnementquelle"
     }
   }
 }

@@ -38,7 +38,8 @@
         "readFailed": "Gagal membaca profil",
         "reorderFailed": "Gagal mengurutkan ulang profil",
         "switchFailed": "Gagal beralih profil",
-        "updateFailed": "Gagal memperbarui profil"
+        "updateFailed": "Gagal memperbarui profil",
+        "openp2pBundleUnsupported": "Langganan OpenP2P tidak dapat ditambahkan ke Paket Profil."
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -83,7 +84,8 @@
       "extendScript": "Perluas Skrip",
       "openFile": "Buka Berkas",
       "update": "Perbarui",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "Lihat Sumber"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "No schedule",
         "unknown": "Unknown",
         "autoUpdateDisabled": "Auto update disabled"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "Sumber Langganan OpenP2P"
     }
   }
 }

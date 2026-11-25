@@ -38,7 +38,8 @@
         "readFailed": "No se pudo leer la suscripción",
         "reorderFailed": "No se pudo reordenar las suscripciones",
         "switchFailed": "No se pudo cambiar de suscripción",
-        "updateFailed": "No se pudo actualizar la suscripción"
+        "updateFailed": "No se pudo actualizar la suscripción",
+        "openp2pBundleUnsupported": "Las suscripciones OpenP2P no se pueden añadir a un paquete de perfiles."
       },
       "notifications": {
         "importRetry": "Error al importar la suscripción. Intentando con el proxy de Clash...",
@@ -83,7 +84,8 @@
       "extendScript": "Script extendido",
       "openFile": "Abrir archivo",
       "update": "Actualizar",
-      "updateViaProxy": "Update via proxy"
+      "updateViaProxy": "Update via proxy",
+      "viewSource": "Ver origen"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "Sin programación",
         "unknown": "Desconocido",
         "autoUpdateDisabled": "La actualización automática está deshabilitada"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "Origen de la suscripción OpenP2P"
     }
   }
 }

@@ -7,7 +7,7 @@
     },
     "empty": {
       "title": "暂无 OpenP2P 账号",
-      "description": "导入一个包含 OpenP2P 账号与路由的 YAML；凭据、节点和端口可写在 YAML 中，也可稍后补充；托管配置会自动生成。",
+      "description": "在「订阅」页导入 OpenP2P 订阅，它会作为普通订阅显示并可激活。",
       "goToProfiles": "前往订阅页导入"
     },
     "error": {
@@ -267,7 +267,11 @@
     "invalid_secret": "凭据值无效。",
     "profile_import_required": "请将 mihomo 部分作为普通配置单独导入。",
     "OPENP2P_IMPORT_SOURCE_INVALID": "OpenP2P 导入来源无效。",
-    "OPENP2P_IMPORT_APPLY_FAILED": "无法应用 OpenP2P 导入。"
+    "OPENP2P_IMPORT_APPLY_FAILED": "无法应用 OpenP2P 导入。",
+    "OPENP2P_SUBSCRIPTION_NOT_FOUND": "未找到 OpenP2P 订阅。",
+    "OPENP2P_SUBSCRIPTION_FAILED": "OpenP2P 订阅操作失败。",
+    "OPENP2P_ACTIVATION_FAILED": "无法激活 OpenP2P 订阅。",
+    "OPENP2P_PLATFORM_UNSUPPORTED": "此平台不支持 OpenP2P。"
   },
   "settings": {
     "title": "OpenP2P 设置",

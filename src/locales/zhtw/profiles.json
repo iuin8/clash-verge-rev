@@ -38,7 +38,8 @@
         "readFailed": "讀取訂閱失敗",
         "reorderFailed": "調整訂閱順序失敗",
         "switchFailed": "切換訂閱失敗",
-        "updateFailed": "更新訂閱失敗"
+        "updateFailed": "更新訂閱失敗",
+        "openp2pBundleUnsupported": "OpenP2P 訂閱不能加入訂閱組合。"
       },
       "notifications": {
         "importRetry": "訂閱匯入失敗，嘗試使用 Clash 代理匯入",
@@ -83,7 +84,8 @@
       "extendScript": "擴充指令碼",
       "openFile": "開啟檔案",
       "update": "更新",
-      "updateViaProxy": "更新（代理）"
+      "updateViaProxy": "更新（代理）",
+      "viewSource": "檢視來源檔案"
     },
     "more": {
       "global": {
@@ -106,7 +108,8 @@
         "noSchedule": "沒有排程",
         "unknown": "未知",
         "autoUpdateDisabled": "自動更新已停用"
-      }
+      },
+      "openp2p": "OpenP2P"
     }
   },
   "modals": {
@@ -217,6 +220,9 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
+    },
+    "openp2pSource": {
+      "title": "OpenP2P 訂閱來源"
     }
   }
 }

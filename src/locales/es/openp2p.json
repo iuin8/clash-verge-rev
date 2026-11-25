@@ -7,7 +7,7 @@
     },
     "empty": {
       "title": "No OpenP2P accounts",
-      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically.",
+      "description": "Importa una suscripción OpenP2P desde Perfiles; aparecerá allí como un perfil normal que puedes activar.",
       "goToProfiles": "Open Profiles to import"
     },
     "error": {
@@ -267,7 +267,11 @@
     "invalid_secret": "The secret value is invalid.",
     "profile_import_required": "Import the mihomo part as a normal profile.",
     "OPENP2P_IMPORT_SOURCE_INVALID": "The OpenP2P import source is invalid.",
-    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied."
+    "OPENP2P_IMPORT_APPLY_FAILED": "The OpenP2P import could not be applied.",
+    "OPENP2P_SUBSCRIPTION_NOT_FOUND": "No se encontró la suscripción OpenP2P.",
+    "OPENP2P_SUBSCRIPTION_FAILED": "La operación de la suscripción OpenP2P falló.",
+    "OPENP2P_ACTIVATION_FAILED": "No se pudo activar la suscripción OpenP2P.",
+    "OPENP2P_PLATFORM_UNSUPPORTED": "OpenP2P no es compatible con esta plataforma."
   },
   "settings": {
     "title": "OpenP2P settings",
