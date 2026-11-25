@@ -572,9 +572,9 @@ export interface OpenP2pImportPreview {
 
 type OpenP2pSourceKind = 'local' | 'url' | 'none'
 
-export type OpenP2pSourceStatus = 'applied' | 'stale' | 'error'
+type OpenP2pSourceStatus = 'applied' | 'stale' | 'error'
 
-export interface OpenP2pSource {
+interface OpenP2pSource {
   kind: OpenP2pSourceKind
   name?: string
   version?: string

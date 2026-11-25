@@ -51,7 +51,7 @@ export const OpenP2PViewer = ({
           </IconButton>
         </Stack>
       </DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
+      <DialogContent dividers sx={{ p: 0, scrollbarGutter: 'stable' }}>
         <OpenP2PPanel />
       </DialogContent>
     </Dialog>

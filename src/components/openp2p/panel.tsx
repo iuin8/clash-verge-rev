@@ -3,13 +3,13 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
   IconButton,
   Skeleton,
   Stack,
   Tooltip,
   Typography,
 } from '@mui/material'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 
@@ -21,7 +21,6 @@ import { revalidateQuery, useQuery } from '@/services/query-client'
 
 import { OpenP2PAccountCard } from './account-card'
 import { translateOpenP2pErrorText } from './errors'
-import { OpenP2PSourceCard } from './source-card'
 
 const TRANSITION_PHASES = new Set([
   'starting',
@@ -42,15 +41,24 @@ export const OpenP2PPanel = () => {
     retry: 2,
     refetchInterval: (data) =>
       data?.accounts.some((account) => TRANSITION_PHASES.has(account.phase))
-        ? 3000
+        ? 5000
         : 30000,
     refetchOnWindowFocus: true,
   })
 
   const view = stateQuery.data
+  const [refreshing, setRefreshing] = useState(false)
 
   const refresh = async () => {
-    await Promise.all([stateQuery.refetch(), revalidateQuery(['getProfiles'])])
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        stateQuery.refetch(),
+        revalidateQuery(['getProfiles']),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   return (
@@ -65,15 +73,11 @@ export const OpenP2PPanel = () => {
             <IconButton
               size="small"
               color="inherit"
-              disabled={stateQuery.isFetching}
+              disabled={refreshing}
               onClick={() => void refresh()}
               aria-label={t('openp2p.page.actions.refresh')}
             >
-              {stateQuery.isFetching ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <RefreshRounded />
-              )}
+              <RefreshRounded />
             </IconButton>
           </span>
         </Tooltip>
@@ -126,13 +130,6 @@ export const OpenP2PPanel = () => {
         </Alert>
       )}
 
-      {view && (
-        <OpenP2PSourceCard
-          source={view.source}
-          accountCount={view.accounts.length}
-        />
-      )}
-
       {view && view.accounts.length === 0 && (
         <Box sx={{ display: 'flex', minHeight: 340 }}>
           <BaseEmpty
@@ -167,7 +164,6 @@ export const OpenP2PPanel = () => {
             <OpenP2PAccountCard
               key={account.id}
               account={account}
-              source={view.source}
               onImport={() => navigate('/profile?openp2p=1')}
             />
           ))}

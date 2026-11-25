@@ -1,5 +1,4 @@
 import {
-  DnsOutlined,
   FolderOpenOutlined,
   PlayArrowRounded,
   RefreshRounded,
@@ -16,9 +15,8 @@ import {
 } from '@mui/material'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 
-import type { OpenP2pAccount, OpenP2pSource } from '@/services/cmds'
+import type { OpenP2pAccount } from '@/services/cmds'
 import {
   openOpenP2pLogDir,
   restartOpenP2pAccount,
@@ -27,7 +25,6 @@ import {
 } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { revalidateQuery } from '@/services/query-client'
-import type { TranslationKey } from '@/types/generated/i18n-keys'
 
 import { OpenP2PDetail } from './detail'
 import { translateOpenP2pErrorText } from './errors'
@@ -54,26 +51,18 @@ const WARNING_PHASES = new Set(['degraded', 'backoff', 'tokenMissing'])
 
 export const OpenP2PAccountCard = ({
   account,
-  source,
   onImport,
 }: {
   account: OpenP2pAccount
-  source: OpenP2pSource | null
   onImport: () => void
 }) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
 
   const running = RUNNING_PHASES.has(account.phase)
   const hasKeyNode = account.keyRefs.length > 0
   const profileStatus = account.profileStatus ?? 'unknown'
-  const sourceLabel = source
-    ? (source.name ??
-      t(`openp2p.page.source.kind.${source.kind}` as TranslationKey))
-    : t('openp2p.account.managedLocally')
-
   const runAction = async (
     name: string,
     action: () => Promise<unknown>,
@@ -159,10 +148,6 @@ export const OpenP2PAccountCard = ({
               )}
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              {source
-                ? t('openp2p.account.managedBy', { source: sourceLabel })
-                : t('openp2p.account.managedLocally')}{' '}
-              ·{' '}
               {account.gateway.host
                 ? `${account.gateway.host}:${account.gateway.port}`
                 : '—'}{' '}
@@ -331,17 +316,19 @@ export const OpenP2PAccountCard = ({
                     <OpenP2PTcpBadge reachable={app.tcpReachable} />
                   )}
                 </Stack>
-                {app.banner && (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    noWrap
-                    title={app.banner}
-                    sx={{ fontFamily: 'monospace', display: 'block' }}
-                  >
-                    {app.banner}
-                  </Typography>
-                )}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  title={app.banner || undefined}
+                  sx={{
+                    fontFamily: 'monospace',
+                    display: 'block',
+                    minHeight: '1.2em',
+                  }}
+                >
+                  {app.banner || ' '}
+                </Typography>
               </Box>
             ))
           )}
@@ -386,15 +373,6 @@ export const OpenP2PAccountCard = ({
             }
           >
             {t('openp2p.account.actions.restart')}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<DnsOutlined />}
-            disabled={busy}
-            onClick={() => navigate('/profile')}
-          >
-            {t('openp2p.account.openInProfiles')}
           </Button>
           <Button
             size="small"
