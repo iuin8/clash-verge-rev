@@ -1,4 +1,4 @@
-import { AddRounded, RefreshRounded } from '@mui/icons-material'
+import { RefreshRounded } from '@mui/icons-material'
 import {
   Alert,
   Box,
@@ -10,8 +10,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 
 import { BaseEmpty } from '@/components/base'
 import type { OpenP2pState } from '@/services/cmds'
@@ -21,7 +21,6 @@ import { revalidateQuery, useQuery } from '@/services/query-client'
 
 import { OpenP2PAccountCard } from './account-card'
 import { translateOpenP2pErrorText } from './errors'
-import { OpenP2PImportDialog } from './import-dialog'
 import { OpenP2PSourceCard } from './source-card'
 
 const TRANSITION_PHASES = new Set([
@@ -34,7 +33,7 @@ const TRANSITION_PHASES = new Set([
 
 export const OpenP2PPanel = () => {
   const { t } = useTranslation()
-  const [importOpen, setImportOpen] = useState(false)
+  const navigate = useNavigate()
 
   const stateQuery = useQuery<OpenP2pState>({
     queryKey: ['getOpenP2pState'],
@@ -54,11 +53,6 @@ export const OpenP2PPanel = () => {
     await Promise.all([stateQuery.refetch(), revalidateQuery(['getProfiles'])])
   }
 
-  const handleImported = () => {
-    setImportOpen(false)
-    void refresh()
-  }
-
   return (
     <Stack spacing={1.5} sx={{ p: 2 }}>
       <Stack
@@ -66,14 +60,6 @@ export const OpenP2PPanel = () => {
         spacing={1}
         sx={{ alignItems: 'center', justifyContent: 'flex-end' }}
       >
-        <Button
-          size="small"
-          variant="contained"
-          startIcon={<AddRounded />}
-          onClick={() => setImportOpen(true)}
-        >
-          {t('openp2p.page.actions.import')}
-        </Button>
         <Tooltip title={t('openp2p.page.actions.refresh')}>
           <span>
             <IconButton
@@ -165,10 +151,9 @@ export const OpenP2PPanel = () => {
                 </Typography>
                 <Button
                   variant="contained"
-                  startIcon={<AddRounded />}
-                  onClick={() => setImportOpen(true)}
+                  onClick={() => navigate('/profile?openp2p=1')}
                 >
-                  {t('openp2p.page.actions.import')}
+                  {t('openp2p.page.empty.goToProfiles')}
                 </Button>
               </Stack>
             }
@@ -183,17 +168,10 @@ export const OpenP2PPanel = () => {
               key={account.id}
               account={account}
               source={view.source}
-              onImport={() => setImportOpen(true)}
+              onImport={() => navigate('/profile?openp2p=1')}
             />
           ))}
         </Stack>
-      )}
-
-      {importOpen && (
-        <OpenP2PImportDialog
-          onClose={() => setImportOpen(false)}
-          onApplied={handleImported}
-        />
       )}
     </Stack>
   )

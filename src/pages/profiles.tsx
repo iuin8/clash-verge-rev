@@ -11,6 +11,7 @@ import {
   ClearRounded,
   ContentPasteRounded,
   DeleteRounded,
+  HubOutlined,
   IndeterminateCheckBoxRounded,
   LayersRounded,
   LocalFireDepartmentRounded,
@@ -34,7 +35,7 @@ import { useLockFn } from 'ahooks'
 import { throttle } from 'lodash-es'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import {
@@ -43,6 +44,7 @@ import {
   BaseStyledTextField,
   type DialogRef,
 } from '@/components/base'
+import { OpenP2PImportDialog } from '@/components/openp2p/import-dialog'
 import {
   BundleConfirmDialog,
   BundleDetailsDialog,
@@ -100,6 +102,7 @@ const debugProfileSwitch = (action: string, profile: string, extra?: any) => {
 const ProfilePage = () => {
   const { t } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const [url, setUrl] = useState('')
   const [disabled, setDisabled] = useState(false)
   const [profileDndRevision, setProfileDndRevision] = useState(0)
@@ -109,6 +112,9 @@ const ProfilePage = () => {
     string | null
   >(null)
   const [loading, setLoading] = useState(false)
+  const [openP2PImportOpen, setOpenP2PImportOpen] = useState(
+    () => new URLSearchParams(location.search).get('openp2p') === '1',
+  )
 
   const [batchMode, setBatchMode] = useState(false)
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
@@ -220,6 +226,19 @@ const ProfilePage = () => {
 
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
+  }
+
+  const closeOpenP2PImport = () => {
+    setOpenP2PImportOpen(false)
+    if (location.search) {
+      navigate({ pathname: '/profile' }, { replace: true })
+    }
+  }
+
+  const handleOpenP2PApplied = () => {
+    closeOpenP2PImport()
+    void revalidateQuery(['getProfiles'])
+    void revalidateQuery(['getOpenP2pState'])
   }
 
   const onImport = async () => {
@@ -939,6 +958,15 @@ const ProfilePage = () => {
           {t('profiles.page.actions.import')}
         </Button>
         <Button
+          variant="outlined"
+          size="small"
+          startIcon={<HubOutlined />}
+          sx={{ borderRadius: '6px' }}
+          onClick={() => setOpenP2PImportOpen(true)}
+        >
+          {t('profiles.page.actions.importOpenP2P')}
+        </Button>
+        <Button
           variant="contained"
           size="small"
           sx={{ borderRadius: '6px' }}
@@ -1130,6 +1158,12 @@ const ProfilePage = () => {
           {t('bundle.page.confirm.delete.message')}
         </Typography>
       </BaseDialog>
+      {openP2PImportOpen && (
+        <OpenP2PImportDialog
+          onClose={closeOpenP2PImport}
+          onApplied={handleOpenP2PApplied}
+        />
+      )}
     </BasePage>
   )
 }

@@ -7,7 +7,8 @@
     },
     "empty": {
       "title": "暂无 OpenP2P 账号",
-      "description": "导入一个包含 OpenP2P 账号与路由的 YAML；凭据、节点和端口可写在 YAML 中，也可稍后补充；托管配置会自动生成。"
+      "description": "导入一个包含 OpenP2P 账号与路由的 YAML；凭据、节点和端口可写在 YAML 中，也可稍后补充；托管配置会自动生成。",
+      "goToProfiles": "前往订阅页导入"
     },
     "error": {
       "title": "无法加载 OpenP2P 状态"

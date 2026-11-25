@@ -4,7 +4,8 @@
       "updateAll": "更新所有訂閱",
       "viewRuntimeConfig": "查看執行時訂閱",
       "reactivate": "重新啟用訂閱",
-      "import": "匯入"
+      "import": "匯入",
+      "importOpenP2P": "匯入 OpenP2P YAML"
     },
     "batch": {
       "actions": {

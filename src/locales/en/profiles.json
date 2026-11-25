@@ -4,7 +4,8 @@
       "updateAll": "Update All Profiles",
       "viewRuntimeConfig": "View Runtime Config",
       "reactivate": "Reactivate Profiles",
-      "import": "Import"
+      "import": "Import",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

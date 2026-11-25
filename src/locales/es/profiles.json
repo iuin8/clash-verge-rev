@@ -4,7 +4,8 @@
       "updateAll": "Actualizar todas las suscripciones",
       "viewRuntimeConfig": "Ver configuración en tiempo de ejecución",
       "reactivate": "Reactivar suscripciones",
-      "import": "Importar"
+      "import": "Importar",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

@@ -567,6 +567,7 @@ export interface TranslationResources {
         configError: string
         empty: {
           description: string
+          goToProfiles: string
           title: string
         }
         error: {
@@ -773,6 +774,7 @@ export interface TranslationResources {
       page: {
         actions: {
           import: string
+          importOpenP2P: string
           reactivate: string
           updateAll: string
           viewRuntimeConfig: string

@@ -7,7 +7,8 @@
     },
     "empty": {
       "title": "No OpenP2P accounts",
-      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically."
+      "description": "Import one YAML file with OpenP2P accounts and routes. Include credentials, node, and ports in the YAML or add them later; managed profiles are generated automatically.",
+      "goToProfiles": "前往訂閱頁匯入"
     },
     "error": {
       "title": "Could not load OpenP2P state"

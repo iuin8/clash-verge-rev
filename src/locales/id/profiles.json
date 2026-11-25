@@ -4,7 +4,8 @@
       "updateAll": "Perbarui Semua Profil",
       "viewRuntimeConfig": "Lihat Konfigurasi Runtime",
       "reactivate": "Reaktivasi Profil",
-      "import": "Impor"
+      "import": "Impor",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

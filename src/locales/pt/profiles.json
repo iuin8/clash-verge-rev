@@ -4,7 +4,8 @@
       "updateAll": "Atualizar todos os perfis",
       "viewRuntimeConfig": "Ver configuração em execução",
       "reactivate": "Reativar perfis",
-      "import": "Importar"
+      "import": "Importar",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

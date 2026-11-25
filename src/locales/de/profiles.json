@@ -4,7 +4,8 @@
       "updateAll": "Alle Abonnements aktualisieren",
       "viewRuntimeConfig": "Laufzeit-Abonnement anzeigen",
       "reactivate": "Abonnement erneut aktivieren",
-      "import": "Importieren"
+      "import": "Importieren",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

@@ -4,7 +4,8 @@
       "updateAll": "Обновить все профили",
       "viewRuntimeConfig": "Просмотреть текущую конфигурацию",
       "reactivate": "Перезапустить профиль",
-      "import": "Импортировать"
+      "import": "Импортировать",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {

@@ -4,7 +4,8 @@
       "updateAll": "Tüm Profilleri Güncelle",
       "viewRuntimeConfig": "Çalışma Zamanı Yapılandırmasını Görüntüle",
       "reactivate": "Profilleri Yeniden Etkinleştir",
-      "import": "İçe Aktar"
+      "import": "İçe Aktar",
+      "importOpenP2P": "Import OpenP2P YAML"
     },
     "batch": {
       "actions": {
