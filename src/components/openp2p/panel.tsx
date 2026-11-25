@@ -148,7 +148,7 @@ export const OpenP2PPanel = () => {
                 </Typography>
                 <Button
                   variant="contained"
-                  onClick={() => navigate('/profile?openp2p=1')}
+                  onClick={() => navigate('/profile')}
                 >
                   {t('openp2p.page.empty.goToProfiles')}
                 </Button>
@@ -164,7 +164,7 @@ export const OpenP2PPanel = () => {
             <OpenP2PAccountCard
               key={account.id}
               account={account}
-              onImport={() => navigate('/profile?openp2p=1')}
+              onImport={() => navigate('/profile')}
             />
           ))}
         </Stack>

@@ -526,48 +526,10 @@ export async function checkMediaUnlockItem(name: string) {
 }
 
 // FORK: OpenP2P account manager
-type OpenP2pImportSourceKind = 'local' | 'url'
 
 export interface OpenP2pImportRequest {
   yaml?: string
   url?: string
-}
-
-interface OpenP2pImportSource {
-  kind: OpenP2pImportSourceKind
-  name?: string
-  version?: string
-  containsMihomo: boolean
-  selfContained: boolean
-}
-
-export type OpenP2pCredentialState = 'inline' | 'present' | 'missing'
-
-export type OpenP2pImportAction = 'add' | 'update' | 'unchanged' | 'remove'
-
-export interface OpenP2pImportAccount {
-  id: string
-  label: string
-  action: OpenP2pImportAction
-  token: OpenP2pCredentialState
-  key: OpenP2pCredentialState
-  nodes: string[]
-  routeCount: number
-  warnings: string[]
-}
-
-interface OpenP2pImportIssue {
-  code: string
-  path?: string
-  message: string
-  severity: 'error' | 'warning' | 'info'
-}
-
-export interface OpenP2pImportPreview {
-  canApply: boolean
-  issues: OpenP2pImportIssue[]
-  source: OpenP2pImportSource
-  accounts: OpenP2pImportAccount[]
 }
 
 type OpenP2pSourceKind = 'local' | 'url' | 'none'
@@ -695,71 +657,12 @@ const normalizeState = (raw: unknown): OpenP2pState => {
   }
 }
 
-const normalizeCredentialState = (value: unknown): OpenP2pCredentialState =>
-  value === 'inline' || value === 'present' || value === 'missing'
-    ? value
-    : 'missing'
-
-const normalizeImportAction = (value: unknown): OpenP2pImportAction =>
-  value === 'add' ||
-  value === 'update' ||
-  value === 'unchanged' ||
-  value === 'remove'
-    ? value
-    : 'unchanged'
-
-const normalizeImportIssueSeverity = (
-  value: unknown,
-): OpenP2pImportIssue['severity'] =>
-  value === 'warning' || value === 'info' ? value : 'error'
-
-const normalizeImportPreview = (raw: unknown): OpenP2pImportPreview => {
-  const record = isRecord(raw) ? raw : {}
-  const source = isRecord(record.source) ? record.source : {}
-  const accounts = Array.isArray(record.accounts) ? record.accounts : []
-  const issues = Array.isArray(record.issues) ? record.issues : []
-  return {
-    canApply: record.canApply === true,
-    source: {
-      kind: source.kind === 'url' ? 'url' : 'local',
-      name: stringOrUndefined(source.name),
-      version: textOrUndefined(source.version),
-      containsMihomo: source.containsMihomo === true,
-      selfContained: source.selfContained === true,
-    },
-    accounts: accounts.filter(isRecord).map((account) => {
-      const id = stringOrUndefined(account.id) ?? ''
-      const nodes = Array.isArray(account.nodes) ? account.nodes : []
-      const warnings = Array.isArray(account.warnings) ? account.warnings : []
-      return {
-        id,
-        label: stringOrUndefined(account.label) ?? id,
-        action: normalizeImportAction(account.action),
-        token: normalizeCredentialState(account.token),
-        key: normalizeCredentialState(account.key),
-        nodes: nodes.filter((node): node is string => typeof node === 'string'),
-        routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
-        warnings: warnings.filter(
-          (warning): warning is string => typeof warning === 'string',
-        ),
-      }
-    }),
-    issues: issues.filter(isRecord).map((issue) => ({
-      code: stringOrUndefined(issue.code) ?? 'unknown',
-      path: stringOrUndefined(issue.path),
-      message: stringOrUndefined(issue.message) ?? '',
-      severity: normalizeImportIssueSeverity(issue.severity),
-    })),
-  }
-}
-
 type OpenP2pImportCommand = (
   yaml: string | null,
   url: string | null,
 ) => Promise<unknown>
 
 interface OpenP2pImportCommands {
-  previewOpenp2pImport: OpenP2pImportCommand
   applyOpenp2pImport: OpenP2pImportCommand
 }
 
@@ -783,15 +686,6 @@ export async function detectOpenP2pSource(
 ): Promise<boolean> {
   const [yaml, url] = importArgs(request)
   return commands.detectOpenp2pSource(yaml, url)
-}
-
-export async function previewOpenP2pImport(
-  request: OpenP2pImportRequest,
-): Promise<OpenP2pImportPreview> {
-  const [yaml, url] = importArgs(request)
-  return normalizeImportPreview(
-    await openP2pImportCommands.previewOpenp2pImport(yaml, url),
-  )
 }
 
 export async function applyOpenP2pImport(

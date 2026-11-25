@@ -34,7 +34,7 @@ import { useLockFn } from 'ahooks'
 import { throttle } from 'lodash-es'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation } from 'react-router'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import {
@@ -43,7 +43,6 @@ import {
   BaseStyledTextField,
   type DialogRef,
 } from '@/components/base'
-import { OpenP2PImportDialog } from '@/components/openp2p/import-dialog'
 import {
   BundleConfirmDialog,
   BundleDetailsDialog,
@@ -60,6 +59,7 @@ import { useProfileBundle } from '@/components/profile/use-profile-bundle'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
+  applyOpenP2pImport,
   createProfile,
   deleteProfile,
   detectOpenP2pSource,
@@ -102,7 +102,6 @@ const debugProfileSwitch = (action: string, profile: string, extra?: any) => {
 const ProfilePage = () => {
   const { t } = useTranslation()
   const location = useLocation()
-  const navigate = useNavigate()
   const [url, setUrl] = useState('')
   const [disabled, setDisabled] = useState(false)
   const [profileDndRevision, setProfileDndRevision] = useState(0)
@@ -112,13 +111,6 @@ const ProfilePage = () => {
     string | null
   >(null)
   const [loading, setLoading] = useState(false)
-  const [openP2PImportOpen, setOpenP2PImportOpen] = useState(
-    () => new URLSearchParams(location.search).get('openp2p') === '1',
-  )
-  const [openP2PImportSeed, setOpenP2PImportSeed] = useState<{
-    yaml?: string
-    url?: string
-  } | null>(null)
 
   const [batchMode, setBatchMode] = useState(false)
   const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
@@ -173,8 +165,7 @@ const ProfilePage = () => {
           () => false,
         )
         if (isOpenP2P) {
-          setOpenP2PImportSeed({ yaml: data })
-          setOpenP2PImportOpen(true)
+          await importOpenP2P({ yaml: data })
           continue
         }
         await mutate(() => createProfile(item, data), {
@@ -240,23 +231,20 @@ const ProfilePage = () => {
     return [...new Set([profiles.current ?? ''])].filter(Boolean)
   }
 
-  const closeOpenP2PImport = () => {
-    setOpenP2PImportOpen(false)
-    setOpenP2PImportSeed(null)
-    if (location.search) {
-      navigate({ pathname: '/profile' }, { replace: true })
+  const importOpenP2P = async (seed: { yaml?: string; url?: string }) => {
+    try {
+      await mutate(() => applyOpenP2pImport(seed), {
+        id: 'import-openp2p',
+        errorNotice: false,
+      })
+      showNotice.success('shared.feedback.notifications.importSuccess')
+      await Promise.all([
+        revalidateQuery(['getProfiles']),
+        revalidateQuery(['getOpenP2pState']),
+      ])
+    } catch (error) {
+      showNotice.error(error)
     }
-  }
-
-  const openOpenP2PImport = (seed: { yaml?: string; url?: string } = {}) => {
-    setOpenP2PImportSeed(seed)
-    setOpenP2PImportOpen(true)
-  }
-
-  const handleOpenP2PApplied = () => {
-    closeOpenP2PImport()
-    void revalidateQuery(['getProfiles'])
-    void revalidateQuery(['getOpenP2pState'])
   }
 
   const onImport = async () => {
@@ -269,8 +257,13 @@ const ProfilePage = () => {
 
     const isOpenP2P = await detectOpenP2pSource({ url }).catch(() => false)
     if (isOpenP2P) {
-      setLoading(false)
-      openOpenP2PImport({ url })
+      try {
+        await importOpenP2P({ url })
+        setUrl('')
+      } finally {
+        setLoading(false)
+        setDisabled(false)
+      }
       return
     }
 
@@ -1132,7 +1125,7 @@ const ProfilePage = () => {
       <ProfileViewer
         ref={viewerRef}
         onOpenP2PImport={(seed) => {
-          openOpenP2PImport(seed)
+          void importOpenP2P(seed)
         }}
         onChange={async (isActivating) => {
           mutateProfiles()
@@ -1177,14 +1170,6 @@ const ProfilePage = () => {
           {t('bundle.page.confirm.delete.message')}
         </Typography>
       </BaseDialog>
-      {openP2PImportOpen && (
-        <OpenP2PImportDialog
-          initialYaml={openP2PImportSeed?.yaml}
-          initialUrl={openP2PImportSeed?.url}
-          onClose={closeOpenP2PImport}
-          onApplied={handleOpenP2PApplied}
-        />
-      )}
     </BasePage>
   )
 }
