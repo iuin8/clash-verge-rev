@@ -742,7 +742,6 @@ export type OpenP2PAccount_Deserialize = {
   lastError: string | null
   logDir: string
   restartCount: number
-  routeCount?: number
   profileUid?: string | null
   profileStatus?: OpenP2PProfileStatus
 }
@@ -762,7 +761,6 @@ export type OpenP2PAccount_Serialize = {
   lastError?: string | null
   logDir: string
   restartCount: number
-  routeCount: number
   profileUid: string | null
   profileStatus: OpenP2PProfileStatus
 }

@@ -184,7 +184,6 @@ impl AccountSlot {
             last_error: snapshot.last_error.clone(),
             log_dir: snapshot.log_dir.clone(),
             restart_count: snapshot.restart_count,
-            route_count: 0,
             profile_uid: None,
             profile_status: crate::core::openp2p::state::OpenP2PProfileStatus::Unknown,
         }
@@ -249,17 +248,6 @@ impl OpenP2PManager {
             .iter()
             .filter_map(|account| data.accounts.get(&account.id).map(|slot| slot.to_view()))
             .map(|mut account| {
-                let id = account.id.clone();
-                account.route_count = data
-                    .config
-                    .networks
-                    .iter()
-                    .filter(|network| {
-                        network.account.as_deref() == Some(id.as_str())
-                            || (network.account.is_none() && data.config.accounts.len() == 1)
-                    })
-                    .map(|network| (network.domains.len() + network.cidrs.len()) as u32)
-                    .sum();
                 if let Some(active) = data.active.as_ref() {
                     account.profile_uid = Some(active.profile_uid.clone());
                     account.profile_status = if account.token_present {

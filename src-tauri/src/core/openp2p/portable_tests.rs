@@ -55,11 +55,6 @@ x-openp2p:
           peer_node: home-exit-01
           dst_host: 127.0.0.1
           dst_port: 22
-  networks:
-    - name: corp
-      account: home
-      domains: ["+.corp.example"]
-      cidrs: ["10.0.0.0/8"]
 "#,
         key = indent(KEY),
     )
@@ -145,7 +140,7 @@ fn legacy_document_shapes_fail_explicitly() {
 }
 
 #[test]
-fn removed_root_and_network_fields_are_rejected() {
+fn removed_root_fields_are_rejected() {
     let enabled = document().replace("  version: 1\n", "  version: 1\n  enabled: false\n");
     let parsed = parse_import(&enabled, None, SUBSCRIPTION_ID);
     assert!(!parsed.can_apply());
@@ -155,13 +150,21 @@ fn removed_root_and_network_fields_are_rejected() {
             .iter()
             .any(|issue| issue.code == "unknown_field" || issue.code == "schema_invalid")
     );
+}
 
-    let network_dns = document().replace(
-        "      cidrs: [\"10.0.0.0/8\"]\n",
-        "      cidrs: [\"10.0.0.0/8\"]\n      dns: [\"10.0.0.53\"]\n",
+#[test]
+fn x_openp2p_networks_are_rejected() {
+    let with_networks = document().replace(
+        "  name: Home\n",
+        "  name: Home\n  networks:\n    - name: corp\n      account: home\n      domains: [\"+.corp.example\"]\n      cidrs: [\"10.0.0.0/8\"]\n",
     );
-    let parsed = parse_import(&network_dns, None, SUBSCRIPTION_ID);
+    let parsed = parse_import(&with_networks, None, SUBSCRIPTION_ID);
     assert!(!parsed.can_apply());
+    assert!(
+        parsed.issues.iter().any(|issue| issue.code == "unknown_field"),
+        "{:?}",
+        parsed.issues
+    );
 }
 
 #[test]

@@ -108,11 +108,6 @@ x-openp2p:
           peer_node: home-exit-01
           dst_host: 127.0.0.1
           dst_port: 22
-  networks:
-    - name: corp
-      account: home
-      domains: ["+.corp.example"]
-      cidrs: ["10.0.0.0/8"]
 "#,
         key = indent_by(KEY, 6),
         host_key = sample_host_key(),

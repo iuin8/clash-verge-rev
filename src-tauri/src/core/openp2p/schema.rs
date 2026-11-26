@@ -206,16 +206,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct NetworkSpec {
-    pub name: Option<std::string::String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub account: Option<std::string::String>,
-    pub domains: Vec<std::string::String>,
-    pub cidrs: Vec<std::string::String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct OpenP2PConfig {
@@ -224,7 +214,6 @@ pub struct OpenP2PConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<std::string::String>,
     pub accounts: Vec<AccountSpec>,
-    pub networks: Vec<NetworkSpec>,
 }
 
 impl Default for OpenP2PConfig {
@@ -233,7 +222,6 @@ impl Default for OpenP2PConfig {
             version: 1,
             name: None,
             accounts: Vec::new(),
-            networks: Vec::new(),
         }
     }
 }

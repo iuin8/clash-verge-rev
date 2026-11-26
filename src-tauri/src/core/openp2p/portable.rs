@@ -1,8 +1,8 @@
 //! Single-document OpenP2P import.
 //!
 //! A document is OpenP2P only when the top-level mapping has `x-openp2p`. The
-//! block carries accounts (with inline tokens), apps and advisory networks;
-//! every proxy, group, rule and DNS entry is ordinary mihomo config. Import
+//! block carries accounts (with inline tokens) and apps; every proxy, group,
+//! rule and DNS entry is ordinary mihomo config. Import
 //! stages credentials into the subscription directory, strips them from the
 //! normalized config and projects the runtime profile.
 

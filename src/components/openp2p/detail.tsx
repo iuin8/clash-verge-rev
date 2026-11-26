@@ -6,11 +6,9 @@ import type { TranslationKey } from '@/types/generated/i18n-keys'
 export const OpenP2PDetail = ({
   label,
   value,
-  mono = true,
 }: {
   label: TranslationKey
   value: string | number | null | undefined
-  mono?: boolean
 }) => {
   const { t } = useTranslation()
   const text = value === null || value === undefined ? '' : String(value)
@@ -22,7 +20,7 @@ export const OpenP2PDetail = ({
       <Typography
         variant="body2"
         sx={{
-          ...(mono ? { fontFamily: 'monospace' } : {}),
+          fontFamily: 'monospace',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',

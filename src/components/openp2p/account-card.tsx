@@ -103,7 +103,7 @@ export const OpenP2PAccountCard = ({
             display: 'grid',
             gridTemplateColumns: {
               xs: 'repeat(2, minmax(0, 1fr))',
-              md: 'repeat(5, minmax(0, 1fr))',
+              md: 'repeat(4, minmax(0, 1fr))',
             },
             gap: 1,
           }}
@@ -124,11 +124,6 @@ export const OpenP2PAccountCard = ({
           <OpenP2PDetail
             label="openp2p.account.interface"
             value={account.interface}
-          />
-          <OpenP2PDetail
-            label="openp2p.account.routes"
-            value={account.routeCount ?? ''}
-            mono={false}
           />
         </Box>
 

@@ -390,13 +390,11 @@ export interface TranslationResources {
         }
         publicPort: string
         restarts: string
-        routes: string
         tokenMissing: string
         tokenSaved: string
       }
       errors: {
         accounts: string
-        accounts_missing: string
         config_too_large: string
         device_generation_failed: string
         duplicate_account: string
@@ -407,9 +405,7 @@ export interface TranslationResources {
         host_key_invalid: string
         host_key_missing: string
         invalid_app_name: string
-        invalid_cidr: string
         invalid_dns: string
-        invalid_domain: string
         invalid_dst_host: string
         invalid_id: string
         invalid_interface: string
@@ -423,8 +419,6 @@ export interface TranslationResources {
         invalid_whitelist: string
         legacy_reference: string
         mihomo_section_at_top_level: string
-        network_account_missing: string
-        networks: string
         OPENP2P_ACCOUNT_NOT_FOUND: string
         OPENP2P_ACTIVATION_FAILED: string
         OPENP2P_IMPORT_FAILED: string
@@ -452,7 +446,6 @@ export interface TranslationResources {
         source_too_large: string
         src_port_required: string
         too_many_accounts: string
-        too_many_networks: string
         unknown_field: string
         unsupported_version: string
         url_insecure: string

@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn a_url_document_uses_its_openp2p_name() {
-        let text = "x-openp2p:\n  version: 1\n  name: Home Lab\n  accounts: []\n  networks: []\n";
+        let text = "x-openp2p:\n  version: 1\n  name: Home Lab\n  accounts: []\n";
         assert_eq!(
             derive_name(
                 OpenP2PImportSourceKind::Url,
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn a_url_without_a_name_uses_only_the_host() {
-        let text = "x-openp2p:\n  version: 1\n  accounts: []\n  networks: []\n";
+        let text = "x-openp2p:\n  version: 1\n  accounts: []\n";
         assert_eq!(
             derive_name(
                 OpenP2PImportSourceKind::Url,

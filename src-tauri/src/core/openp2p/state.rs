@@ -91,8 +91,6 @@ pub struct OpenP2PAccount {
     pub log_dir: std::string::String,
     pub restart_count: u32,
     #[serde(default)]
-    pub route_count: u32,
-    #[serde(default)]
     pub profile_uid: Option<std::string::String>,
     #[serde(default)]
     pub profile_status: OpenP2PProfileStatus,

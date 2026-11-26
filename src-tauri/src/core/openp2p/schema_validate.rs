@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::schema::{
-    AccountSpec, AppSpec, OpenP2PConfig, OpenP2PIssue, normalize_cidr, normalize_dns_server, normalize_domain,
-    valid_host, valid_interface, valid_node_name, valid_slug, valid_whitelist,
+    AppSpec, OpenP2PConfig, OpenP2PIssue, normalize_dns_server, valid_host, valid_interface, valid_node_name,
+    valid_slug, valid_whitelist,
 };
 use super::secrets::parse_token;
 
@@ -25,20 +25,6 @@ pub fn normalize_and_validate(config: &mut OpenP2PConfig) -> Vec<OpenP2PIssue> {
             "too_many_accounts",
             "accounts",
             "at most 32 accounts are supported",
-        ));
-    }
-    if config.networks.len() > 64 {
-        issues.push(OpenP2PIssue::error(
-            "too_many_networks",
-            "networks",
-            "at most 64 networks are supported",
-        ));
-    }
-    if config.accounts.is_empty() && !config.networks.is_empty() {
-        issues.push(OpenP2PIssue::error(
-            "accounts_missing",
-            "accounts",
-            "at least one account is required when networks are listed",
         ));
     }
 
@@ -177,44 +163,6 @@ pub fn normalize_and_validate(config: &mut OpenP2PConfig) -> Vec<OpenP2PIssue> {
                     src_ports.insert(app.src_port, account.id.clone());
                 }
             }
-        }
-    }
-
-    let accounts_by_id: BTreeMap<&str, &AccountSpec> = config
-        .accounts
-        .iter()
-        .map(|account| (account.id.as_str(), account))
-        .collect();
-    for (index, network) in config.networks.iter_mut().enumerate() {
-        let base = format!("networks[{index}]");
-        for (domain_index, domain) in network.domains.iter_mut().enumerate() {
-            match normalize_domain(domain) {
-                Some(normalized) => *domain = normalized,
-                None => issues.push(OpenP2PIssue::error(
-                    "invalid_domain",
-                    format!("{base}.domains[{domain_index}]"),
-                    "domain must be a hostname (a leading +. or . is allowed)",
-                )),
-            }
-        }
-        for (cidr_index, cidr) in network.cidrs.iter_mut().enumerate() {
-            match normalize_cidr(cidr) {
-                Some(normalized) => *cidr = normalized,
-                None => issues.push(OpenP2PIssue::error(
-                    "invalid_cidr",
-                    format!("{base}.cidrs[{cidr_index}]"),
-                    "cidr must be IP/prefix",
-                )),
-            }
-        }
-        if let Some(account) = network.account.as_deref()
-            && !accounts_by_id.contains_key(account)
-        {
-            issues.push(OpenP2PIssue::error(
-                "network_account_missing",
-                format!("{base}.account"),
-                "network references an unknown account",
-            ));
         }
     }
 

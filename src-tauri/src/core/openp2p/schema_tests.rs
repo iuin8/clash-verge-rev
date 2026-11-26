@@ -72,11 +72,13 @@ fn a_missing_src_port_is_an_error() {
 }
 
 #[test]
-fn a_network_must_reference_a_known_account() {
-    let mut config = sample_config();
-    config.networks[0].account = Some("missing".into());
-    let issues = crate::core::openp2p::schema_validate::normalize_and_validate(&mut config);
-    assert!(issues.iter().any(|issue| issue.code == "network_account_missing"));
+fn x_openp2p_networks_are_rejected() {
+    let parsed = parse_store("x-openp2p:\n  version: 1\n  networks: []\n");
+    assert!(
+        parsed.issues.iter().any(|issue| issue.code == "unknown_field"),
+        "{:?}",
+        parsed.issues
+    );
 }
 
 #[test]
