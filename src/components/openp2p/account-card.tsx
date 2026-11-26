@@ -17,7 +17,6 @@ import { showNotice } from '@/services/notice-service'
 import { OpenP2PDetail } from './detail'
 import { translateOpenP2pErrorText } from './errors'
 import {
-  OpenP2PKeyBadge,
   OpenP2PListenBadge,
   OpenP2PLoginBadge,
   OpenP2PPhaseBadge,
@@ -33,7 +32,6 @@ export const OpenP2PAccountCard = ({
   account: OpenP2pAccount
 }) => {
   const { t } = useTranslation()
-  const hasKeyNode = account.keyRefs.length > 0
 
   const lastError = account.lastError
     ? translateOpenP2pErrorText(account.lastError, t)
@@ -144,7 +142,6 @@ export const OpenP2PAccountCard = ({
             detail={account.checks.login.detail}
           />
           <OpenP2PTokenBadge present={account.tokenPresent} />
-          <OpenP2PKeyBadge present={account.keyPresent} hasNode={hasKeyNode} />
           {account.restartCount > 0 && (
             <Chip
               size="small"

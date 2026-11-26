@@ -1,10 +1,9 @@
 //! Normalized OpenP2P source document store.
 //!
 //! A `ProfileStore` reads and writes exactly one normalized, secret-free
-//! `OpenP2PConfig` document. The subscription store owns one file per
-//! subscription (`openp2p/subscriptions/<id>/config.yaml`); the default layout
-//! (`<app home>/openp2p/config.yaml`) is what the credential transaction tests
-//! exercise.
+//! `OpenP2PConfig` document wrapped as `x-openp2p: {...}` so it stays
+//! re-parseable. The subscription store owns one file per subscription
+//! (`openp2p/subscriptions/<id>/config.yaml`).
 
 use std::path::PathBuf;
 
@@ -26,11 +25,6 @@ impl ProfileStore {
             root: dirs::app_home_dir()?,
             config: None,
         })
-    }
-
-    #[cfg(test)]
-    pub const fn at(root: PathBuf) -> Self {
-        Self { root, config: None }
     }
 
     /// Points the store at a normalized config outside the default layout.
@@ -58,7 +52,7 @@ impl ProfileStore {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error).with_context(|| format!("read {}", path.display())),
         };
-        let parsed = schema::parse_seed(&raw);
+        let parsed = schema::parse_store(&raw);
         if schema::has_errors(&parsed.issues) {
             bail!("openp2p config is invalid: {:?}", parsed.issues);
         }
@@ -66,7 +60,7 @@ impl ProfileStore {
     }
 
     pub fn save_config(&self, config: &OpenP2PConfig) -> Result<()> {
-        let yaml = serde_yaml_ng::to_string(config)?;
+        let yaml = schema::store_document(config)?;
         account::atomic_write(&self.config_path(), yaml.as_bytes(), 0o600)
     }
 

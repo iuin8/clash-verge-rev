@@ -1,347 +1,295 @@
 #![allow(clippy::needless_raw_string_hashes)] // fixtures intentionally use r#"..."#
 use super::*;
 use crate::cmd::openp2p::read_import;
-use crate::core::openp2p::profile_render;
 use crate::core::openp2p::schema::fixtures::sample_host_key;
 
 const KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----";
+const OTHER_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nxyz\n-----END OPENSSH PRIVATE KEY-----";
 const TOKEN: &str = "1234567890123";
+const SUBSCRIPTION_ID: &str = "0123456789abcdef";
 
-struct Scratch {
-    root: PathBuf,
-}
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "cvr-openp2p-portable-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).expect("scratch");
-        Self { root }
-    }
-
-    fn store(&self) -> ProfileStore {
-        ProfileStore::at(self.root.clone())
-    }
-
-    fn vault(&self) -> SecretVault {
-        SecretVault::at(self.root.join("openp2p"))
-    }
-
-    fn token_file(&self, reference: &str) -> PathBuf {
-        self.root.join("openp2p/tokens").join(reference)
-    }
-
-    fn key_file(&self, reference: &str) -> PathBuf {
-        self.root.join("openp2p/keys").join(reference)
-    }
-
-    fn read(&self, path: &std::path::Path) -> std::string::String {
-        std::fs::read_to_string(path).expect("read")
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-#[cfg(unix)]
-fn mode(path: &std::path::Path) -> u32 {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(path).expect("metadata").permissions().mode() & 0o777
-}
-
-fn policy_document(extra_account: &str, extra_app: &str, extra_proxy: &str) -> std::string::String {
-    let host_key = sample_host_key();
-    format!(
-        r#"version: 1
-accounts:
-  - id: home
-    label: Home
-    gateway: {{ host: api.openp2p.cn, port: 27183 }}
-    {extra_account}
-    apps:
-      - name: ssh-home
-        protocol: tcp
-        peer_node: home-exit-01
-        dst_host: 127.0.0.1
-        dst_port: 22
-        {extra_app}
-proxies:
-  - name: op2p-home
-    account: home
-    ssh_user: tunnel
-    host_key: "{host_key}"
-    {extra_proxy}
-networks:
-  - name: corp
-    account: home
-    domains: ["+.corp.example"]
-    cidrs: ["10.0.0.0/8"]
-    dns: ["10.0.0.53"]
-"#
-    )
-}
-
-fn self_contained_document(token: &str, key: &str) -> std::string::String {
-    let host_key = sample_host_key();
-    format!(
-        r#"accounts:
-  - id: home
-    gateway: {{ host: api.openp2p.cn, port: 27183 }}
-    token: {token}
-    apps:
-      - name: ssh-home
-        protocol: tcp
-        peer_node: home-exit-01
-        dst_host: 127.0.0.1
-        dst_port: 22
-proxies:
-  - name: op2p-home
-    account: home
-    ssh_user: tunnel
-    private_key: |-
-{key}
-    host_key: "{host_key}"
-networks:
-  - account: home
-    domains: ["+.corp.example"]
-"#
-    )
-}
-
-fn indent(block: &str) -> std::string::String {
+fn indent_by(block: &str, width: usize) -> std::string::String {
     block
         .lines()
-        .map(|line| format!("      {line}"))
+        .map(|line| format!("{}{line}", " ".repeat(width)))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-#[test]
-fn a_policy_only_document_generates_stable_device_fields() {
-    let parsed = parse_import(&policy_document("", "", ""), None);
-    assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
-    let config = &parsed.config;
-    let account = &config.accounts[0];
-    assert!(valid_node_name(&account.node));
-    assert!((PUBLIC_PORT_MIN..=PUBLIC_PORT_MAX).contains(&account.public_ip_port));
-    assert_eq!(account.token_ref, "o2p/home/token");
-    assert!((SRC_PORT_MIN..=SRC_PORT_MAX).contains(&account.apps[0].src_port));
-    assert_eq!(config.proxies[0].private_key_ref, "o2p/home/op2p-home");
-    assert!(!parsed.has_mihomo);
+fn indent(block: &str) -> std::string::String {
+    indent_by(block, 6)
 }
 
-#[test]
-fn a_mihomo_profile_keeps_its_own_proxies_out_of_the_openp2p_store() {
-    let scratch = Scratch::new("mihomo");
-    let store = scratch.store();
-    let vault = scratch.vault();
-    let key = indent(KEY);
-    let document = format!(
+fn document() -> std::string::String {
+    let host_key = sample_host_key();
+    format!(
         r#"mixed-port: 7890
 proxies:
+  - name: op2p-home
+    type: ssh
+    server: 127.0.0.1
+    port: 21001
+    username: tunnel
+    private-key: |-
+{key}
+    host-key: "{host_key}"
   - {{ name: airport-node, type: ss, server: 192.0.2.10, port: 8388, cipher: aes-128-gcm, password: redacted }}
 proxy-groups:
   - {{ name: PROXY, type: select, proxies: [airport-node] }}
 rules:
   - MATCH,PROXY
+dns:
+  nameserver: [119.29.29.29]
 x-openp2p:
+  version: 1
+  name: Home
   accounts:
     - id: home
+      label: Home
+      token: {TOKEN}
       gateway: {{ host: api.openp2p.cn, port: 27183 }}
-      token_ref: o2p/home/token
       apps:
-        - {{ name: ssh-home, protocol: tcp, peer_node: home-exit-01, dst_host: 127.0.0.1, dst_port: 22 }}
-  proxies:
-    - name: op2p-home
+        - name: ssh-home
+          protocol: tcp
+          src_port: 21001
+          peer_node: home-exit-01
+          dst_host: 127.0.0.1
+          dst_port: 22
+  networks:
+    - name: corp
       account: home
-      ssh_user: tunnel
-      private_key_ref: o2p/home/id_ed25519
-      host_key: "{host_key}"
-x-openp2p-secrets:
-  tokens:
-    o2p/home/token: "{TOKEN}"
-  private_keys:
-    o2p/home/id_ed25519: |-
-{key}
+      domains: ["+.corp.example"]
+      cidrs: ["10.0.0.0/8"]
 "#,
-        host_key = sample_host_key()
-    );
-    let parsed = parse_import(&document, None);
-    assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
-    assert!(parsed.has_mihomo);
-    let mihomo = parsed.mihomo.as_deref().expect("mihomo part");
-    assert!(mihomo.contains("mixed-port"));
-    assert!(!mihomo.contains("x-openp2p"));
-    assert!(!mihomo.contains(TOKEN));
-    assert!(!mihomo.contains("PRIVATE KEY"));
-    assert_eq!(parsed.config.accounts.len(), 1);
-    assert_eq!(parsed.config.proxies.len(), 1);
-    assert_eq!(parsed.config.proxies[0].name, "op2p-home");
-    assert!(parsed.self_contained());
-
-    ImportTransaction::begin(&store, &vault, &parsed)
-        .expect("commit")
-        .finish();
-    let stored = scratch.read(&store.config_path());
-    assert!(!stored.contains("airport-node"));
-    assert!(!stored.contains("mixed-port"));
-    assert!(!stored.contains(TOKEN));
-    assert!(!stored.contains("PRIVATE KEY"));
-    assert!(stored.contains("token_ref: o2p/home/token"));
+        key = indent(KEY),
+    )
 }
 
 #[test]
-fn inline_credentials_are_written_0600_and_never_enter_the_source_or_profiles() {
-    let scratch = Scratch::new("inline");
-    let store = scratch.store();
-    let vault = scratch.vault();
-    let document = self_contained_document(TOKEN, &indent(KEY));
-    let parsed = parse_import(&document, None);
-    assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
-    assert!(parsed.config.accounts[0].node.len() >= 8);
+fn canonical_detection_requires_top_level_x_openp2p() {
+    assert!(is_openp2p_document(&document()));
+    assert!(is_openp2p_document("x-openp2p:\n  version: 1\n"));
+    assert!(!is_openp2p_document(
+        "accounts:\n  - id: home\nproxies:\n  - {name: home, account: home, ssh_user: tunnel}\n"
+    ));
+    assert!(!is_openp2p_document(
+        "mixed-port: 7890\nproxies:\n  - {name: airport, type: ss, server: 192.0.2.1, port: 8388}\nrules:\n  - MATCH,airport\n"
+    ));
+    assert!(!is_openp2p_document("not: yaml"));
+}
 
-    ImportTransaction::begin(&store, &vault, &parsed)
-        .expect("commit")
-        .finish();
-    let token_file = scratch.token_file("o2p/home/token");
-    assert_eq!(scratch.read(&token_file), format!("{TOKEN}\n"));
-    let key_file = scratch.key_file("o2p/home/op2p-home");
-    assert_eq!(scratch.read(&key_file), KEY);
-    #[cfg(unix)]
-    {
-        assert_eq!(mode(&token_file), 0o600);
-        assert_eq!(mode(&key_file), 0o600);
-        assert_eq!(mode(token_file.parent().expect("parent")), 0o700);
-    }
+#[test]
+fn an_import_stages_credentials_and_projects_the_mihomo_document() {
+    let parsed = parse_import(&document(), None, SUBSCRIPTION_ID);
+    assert!(parsed.can_apply(), "{:?}", parsed.issues);
+    assert!(parsed.has_mihomo);
+    assert!(parsed.tokens().any(|(id, _)| id == "home"));
+    assert_eq!(parsed.config.accounts[0].token, None);
+    assert_eq!(parsed.config.accounts[0].apps[0].src_port, 21001);
+    assert_eq!(parsed.config.name.as_deref(), Some("Home"));
 
-    let source = scratch.read(&store.config_path());
-    assert!(!source.contains(TOKEN));
-    assert!(!source.contains("PRIVATE KEY"));
-    assert!(source.contains("token_ref"));
+    let keys: Vec<(&str, &str)> = parsed.keys().collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].1, KEY);
 
-    let profile = profile_render::render_subscription_profile_with(
-        &parsed.config,
-        parsed.mihomo.as_deref(),
-        "",
-        |_| true,
-        |_| true,
-    )
-    .expect("render")
-    .yaml;
+    let profile = parsed.profile_yaml().expect("projection");
+    assert!(profile.contains("mixed-port: 7890"));
+    assert!(profile.contains("airport-node"));
+    assert!(profile.contains(&format!("private-key: openp2p/subscriptions/{SUBSCRIPTION_ID}/keys/")));
+    assert!(!profile.contains("x-openp2p"));
     assert!(!profile.contains(TOKEN));
     assert!(!profile.contains("PRIVATE KEY"));
-    assert!(profile.contains("private-key: openp2p/keys/o2p/home/op2p-home"));
+    assert!(!profile.contains("OP2P-home"));
+    assert!(!profile.contains("DOMAIN-SUFFIX"));
+    assert_eq!(profile.matches("MATCH,PROXY").count(), 1);
+    let projected: Value = serde_yaml_ng::from_str(profile).expect("projected profile is yaml");
+    assert!(
+        projected["proxies"][0]["host-key"].is_sequence(),
+        "the managed host-key is normalized to mihomo's list form"
+    );
 }
 
 #[test]
-fn secrets_block_conflicts_and_invalid_secrets_are_reported_without_writes() {
-    let scratch = Scratch::new("bad-secret");
-    let store = scratch.store();
-    let vault = scratch.vault();
-    let conflict = r#"accounts:
-  - id: home
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    token: "111111"
-    token_ref: o2p/home/token
-    apps: []
-x-openp2p-secrets:
-  tokens:
-    o2p/home/token: "222222"
-"#;
-    let parsed = parse_import(conflict, None);
+fn legacy_document_shapes_fail_explicitly() {
+    let parsed = parse_import("accounts:\n  - id: home\n", None, SUBSCRIPTION_ID);
+    assert!(parsed.issues.iter().any(|issue| issue.code == "x_openp2p_missing"));
+
+    let parsed = parse_import(
+        "x-openp2p:\n  version: 1\n  accounts:\n    - id: home\n      token_ref: o2p/home\n      gateway: {host: api.openp2p.cn, port: 27183}\n      node: mbp-fa-home\n      public_ip_port: 2065\n      apps: []\n",
+        None,
+        SUBSCRIPTION_ID,
+    );
+    assert!(parsed.issues.iter().any(|issue| issue.code == "legacy_reference"));
+
+    let parsed = parse_import(
+        "x-openp2p:\n  version: 1\nx-openp2p-secrets:\n  tokens: {}\n",
+        None,
+        SUBSCRIPTION_ID,
+    );
+    assert!(parsed.issues.iter().any(|issue| issue.code == "secrets_block_removed"));
+
+    let parsed = parse_import("x-openp2p:\n  version: 1\n  proxies: []\n", None, SUBSCRIPTION_ID);
+    assert!(
+        parsed
+            .issues
+            .iter()
+            .any(|issue| issue.code == "mihomo_section_at_top_level")
+    );
+
+    let parsed = parse_import(
+        "proxies:\n  - {name: op2p-home, account: home, ssh_user: tunnel, private_key: x}\nx-openp2p:\n  version: 1\n",
+        None,
+        SUBSCRIPTION_ID,
+    );
+    assert!(parsed.issues.iter().any(|issue| issue.code == "legacy_reference"));
+}
+
+#[test]
+fn removed_root_and_network_fields_are_rejected() {
+    let enabled = document().replace("  version: 1\n", "  version: 1\n  enabled: false\n");
+    let parsed = parse_import(&enabled, None, SUBSCRIPTION_ID);
     assert!(!parsed.can_apply());
-    assert!(parsed.issues.iter().any(|issue| issue.code == "secret_conflict"));
-    assert!(ImportTransaction::begin(&store, &vault, &parsed).is_err());
-    assert!(!scratch.token_file("o2p/home/token").exists());
+    assert!(
+        parsed
+            .issues
+            .iter()
+            .any(|issue| issue.code == "unknown_field" || issue.code == "schema_invalid")
+    );
 
-    let bad_key = r#"accounts:
-  - id: home
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    apps: []
-proxies:
-  - name: op2p-home
-    account: home
-    ssh_user: tunnel
-    private_key: "garbage"
-    host_key: "ssh-ed25519 AAAA"
-"#;
-    let parsed = parse_import(bad_key, None);
-    assert!(parsed.issues.iter().any(|issue| issue.code == "invalid_secret"));
-
-    let bad_token = r#"accounts:
-  - id: home
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    token: "not-a-number"
-    apps: []
-"#;
-    let parsed = parse_import(bad_token, None);
-    assert!(parsed.issues.iter().any(|issue| issue.code == "invalid_secret"));
-}
-
-#[test]
-fn explicit_device_values_are_respected_and_auto_values_are_unique() {
-    let document = r#"accounts:
-  - id: alpha
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    node: auto
-    public_ip_port: auto
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-01, src_port: auto }
-  - id: beta
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    node: explicit-node
-    public_ip_port: 2050
-    apps:
-      - { name: ssh, protocol: tcp, peer_node: peer-node-02, src_port: 21001 }
-"#;
-    let parsed = parse_import(document, None);
-    assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
-    let alpha = &parsed.config.accounts[0];
-    let beta = &parsed.config.accounts[1];
-    assert!(valid_node_name(&alpha.node));
-    assert_ne!(alpha.node, beta.node);
-    assert!((PUBLIC_PORT_MIN..=PUBLIC_PORT_MAX).contains(&alpha.public_ip_port));
-    assert_ne!(alpha.public_ip_port, beta.public_ip_port);
-    assert_eq!(beta.node, "explicit-node");
-    assert_eq!(beta.public_ip_port, 2050);
-    assert!((SRC_PORT_MIN..=SRC_PORT_MAX).contains(&alpha.apps[0].src_port));
-    assert_eq!(beta.apps[0].src_port, 21001);
-    assert_ne!(alpha.apps[0].src_port, beta.apps[0].src_port);
-    assert_ne!(alpha.apps[0].src_port, alpha.public_ip_port);
-
-    let again = parse_import(document, Some(&parsed.config));
-    assert_eq!(again.config, parsed.config);
-}
-
-#[test]
-fn invalid_documents_and_unknown_fields_are_rejected() {
-    let parsed = parse_import(":\n  - [", None);
-    assert!(parsed.issues.iter().any(|issue| issue.code == "yaml_syntax"));
-
-    let parsed = parse_import("foo: bar", None);
-    assert!(parsed.issues.iter().any(|issue| issue.code == "openp2p_missing"));
-
-    let unknown = r#"accounts:
-  - id: home
-    gateway: { host: api.openp2p.cn, port: 27183 }
-    password: hunter2
-    apps: []
-"#;
-    let parsed = parse_import(unknown, None);
+    let network_dns = document().replace(
+        "      cidrs: [\"10.0.0.0/8\"]\n",
+        "      cidrs: [\"10.0.0.0/8\"]\n      dns: [\"10.0.0.53\"]\n",
+    );
+    let parsed = parse_import(&network_dns, None, SUBSCRIPTION_ID);
     assert!(!parsed.can_apply());
-    assert!(parsed.issues.iter().any(|issue| issue.code == "unknown_field"));
-    let serialized = serde_yaml_ng::to_string(&parsed.config).expect("yaml");
-    assert!(!serialized.contains("hunter2"));
+}
+
+#[test]
+fn a_managed_proxy_requires_username_host_key_and_inline_key() {
+    let missing_username = document().replace("    username: tunnel\n", "");
+    let parsed = parse_import(&missing_username, None, SUBSCRIPTION_ID);
+    assert!(parsed.issues.iter().any(|issue| issue.code == "invalid_ssh_user"));
+
+    let missing_host_key = document().replace(&format!("    host-key: \"{}\"\n", sample_host_key()), "");
+    let parsed = parse_import(&missing_host_key, None, SUBSCRIPTION_ID);
+    assert!(parsed.issues.iter().any(|issue| issue.code == "host_key_missing"));
+
+    let bad_host_key = document().replace(
+        &format!("    host-key: \"{}\"", sample_host_key()),
+        "    host-key: \"ssh-ed25519 not-base64\"",
+    );
+    let parsed = parse_import(&bad_host_key, None, SUBSCRIPTION_ID);
+    assert!(parsed.issues.iter().any(|issue| issue.code == "host_key_invalid"));
+
+    let with_password = document().replace(
+        "    username: tunnel\n",
+        "    username: tunnel\n    password: hunter2\n",
+    );
+    let parsed = parse_import(&with_password, None, SUBSCRIPTION_ID);
+    assert!(
+        parsed
+            .issues
+            .iter()
+            .any(|issue| issue.code == "proxy_password_not_allowed")
+    );
+
+    let without_key = document().replace(&format!("    private-key: |-\n{}\n", indent(KEY)), "");
+    let parsed = parse_import(&without_key, None, SUBSCRIPTION_ID);
+    assert!(parsed.issues.iter().any(|issue| issue.code == "private_key_missing"));
+}
+
+#[test]
+fn an_unmatched_loopback_ssh_proxy_is_only_a_warning() {
+    let unmatched = document().replace("    port: 21001\n", "    port: 21999\n");
+    let parsed = parse_import(&unmatched, None, SUBSCRIPTION_ID);
+    assert!(parsed.can_apply(), "{:?}", parsed.issues);
+    assert!(
+        parsed
+            .issues
+            .iter()
+            .any(|issue| issue.code == "proxy_app_unmatched" && !issue.is_error())
+    );
+}
+
+#[test]
+fn device_fields_are_generated_and_stable_across_reimports() {
+    let generated = document().replace(
+        "      label: Home\n",
+        "      label: Home\n      node: auto\n      public_ip_port: auto\n",
+    );
+    let first = parse_import(&generated, None, SUBSCRIPTION_ID);
+    assert!(first.can_apply(), "{:?}", first.issues);
+    assert!(valid_node_name(&first.config.accounts[0].node));
+    assert!((PUBLIC_PORT_MIN..=PUBLIC_PORT_MAX).contains(&first.config.accounts[0].public_ip_port));
+
+    let again = parse_import(&generated, Some(&first.config), SUBSCRIPTION_ID);
+    assert_eq!(again.config.accounts[0].node, first.config.accounts[0].node);
+    assert_eq!(
+        again.config.accounts[0].public_ip_port,
+        first.config.accounts[0].public_ip_port
+    );
+}
+
+#[test]
+fn src_port_is_required_and_never_allocated() {
+    let without_port = document().replace("          src_port: 21001\n", "");
+    let parsed = parse_import(&without_port, None, SUBSCRIPTION_ID);
+    assert!(!parsed.can_apply());
+    assert!(parsed.issues.iter().any(|issue| issue.code == "src_port_required"));
+}
+
+#[test]
+fn inline_keys_in_proxy_provider_payloads_are_staged_too() {
+    let host_key = sample_host_key();
+    let provider = format!(
+        r#"proxy-providers:
+  inline:
+    type: inline
+    payload:
+      - name: provider-ssh
+        type: ssh
+        server: 192.0.2.6
+        port: 22
+        username: root
+        private-key: |-
+{key}
+        host-key: "{host_key}"
+"#,
+        key = indent_by(OTHER_KEY, 10)
+    );
+    let document = format!("{}{}", provider, document().replace("mixed-port: 7890\n", ""));
+    let parsed = parse_import(&document, None, SUBSCRIPTION_ID);
+    assert!(parsed.can_apply(), "{:?}", parsed.issues);
+    assert_eq!(
+        parsed.keys().count(),
+        2,
+        "the proxy and the provider payload stage different keys"
+    );
+    let profile = parsed.profile_yaml().expect("projection");
+    assert!(!profile.contains("PRIVATE KEY"));
+    assert_eq!(
+        profile
+            .matches(&format!("openp2p/subscriptions/{SUBSCRIPTION_ID}/keys/"))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn a_private_key_body_that_cannot_be_staged_is_caught_by_the_positive_scan() {
+    let block = format!("    private-key: |-\n{}\n", indent(KEY));
+    let replaced = document().replace(&block, "    private-key: [\"-----BEGIN PRIVATE KEY-----\"]\n");
+    let parsed = parse_import(&replaced, None, SUBSCRIPTION_ID);
+    assert!(!parsed.can_apply());
+    assert!(parsed.issues.iter().any(|issue| issue.code == "invalid_secret"));
+}
+
+#[test]
+fn a_key_body_that_is_not_pem_is_rejected() {
+    let broken = document().replace(&indent(KEY), "      PRIVATE KEY without a BEGIN marker");
+    let parsed = parse_import(&broken, None, SUBSCRIPTION_ID);
+    assert!(!parsed.can_apply());
+    assert!(parsed.issues.iter().any(|issue| issue.code == "invalid_secret"));
 }
 
 #[tokio::test]
@@ -372,82 +320,4 @@ async fn urls_must_be_unambiguous_https_and_reachable() {
             .code,
         "fetch_failed"
     );
-}
-
-#[test]
-fn repeated_apply_is_idempotent_and_policy_only_reimport_keeps_the_device_binding() {
-    let scratch = Scratch::new("idempotent");
-    let store = scratch.store();
-    let vault = scratch.vault();
-    let document = self_contained_document(TOKEN, &indent(KEY));
-    let first = parse_import(&document, None);
-    assert!(first.can_apply(), "{:?}", first.issues);
-    ImportTransaction::begin(&store, &vault, &first)
-        .expect("first apply")
-        .finish();
-    let stored = store.load_config().expect("load").expect("config");
-    let source_after_first = scratch.read(&store.config_path());
-    let token_after_first = scratch.read(&scratch.token_file("o2p/home/token"));
-
-    let second = parse_import(&document, Some(&stored));
-    assert_eq!(second.config, stored);
-    ImportTransaction::begin(&store, &vault, &second)
-        .expect("second apply")
-        .finish();
-    assert_eq!(store.load_config().expect("load").expect("config"), stored);
-    assert_eq!(scratch.read(&store.config_path()), source_after_first);
-    assert_eq!(scratch.read(&scratch.token_file("o2p/home/token")), token_after_first);
-
-    let policy = policy_document("", "", "");
-    let third = parse_import(&policy, Some(&stored));
-    assert!(third.can_apply(), "{:?}", third.issues);
-    assert_eq!(third.config.accounts[0].node, stored.accounts[0].node);
-    assert_eq!(
-        third.config.accounts[0].public_ip_port,
-        stored.accounts[0].public_ip_port
-    );
-    assert_eq!(
-        third.config.accounts[0].apps[0].src_port,
-        stored.accounts[0].apps[0].src_port
-    );
-    assert_eq!(third.config.accounts[0].token_ref, stored.accounts[0].token_ref);
-    assert_eq!(
-        third.config.proxies[0].private_key_ref,
-        stored.proxies[0].private_key_ref
-    );
-    assert_eq!(third.config.networks[0].domains, vec!["corp.example".to_owned()]);
-    ImportTransaction::begin(&store, &vault, &third)
-        .expect("policy apply")
-        .finish();
-    assert_eq!(scratch.read(&scratch.token_file("o2p/home/token")), token_after_first);
-    assert!(!scratch.read(&store.config_path()).contains(TOKEN));
-}
-
-#[test]
-fn a_failed_credential_write_rolls_back_earlier_files_and_the_source() {
-    let scratch = Scratch::new("rollback");
-    let store = scratch.store();
-    let vault = scratch.vault();
-    let document = self_contained_document(TOKEN, &indent(KEY));
-    let parsed = parse_import(&document, None);
-    std::fs::create_dir_all(scratch.key_file("o2p/home/op2p-home")).expect("blocking key path");
-    let error = ImportTransaction::begin(&store, &vault, &parsed).expect_err("must fail");
-    assert!(format!("{error:#}").contains("credential"), "{error:#}");
-    assert!(!scratch.token_file("o2p/home/token").exists());
-    assert!(store.load_config().expect("load").is_none());
-}
-
-#[test]
-fn openp2p_detection_requires_a_schema_marker_not_just_proxies() {
-    assert!(is_openp2p_document(
-        "mixed-port: 7890\nproxies: []\nx-openp2p:\n  accounts: []\n"
-    ));
-    assert!(is_openp2p_document("version: 1\naccounts:\n  - id: home\n"));
-    assert!(is_openp2p_document(
-        "version: 1\nnetworks: []\nproxies:\n  - name: home\n    account: home\n    private_key_ref: o2p/home\n"
-    ));
-    assert!(!is_openp2p_document(
-        "mixed-port: 7890\nproxies:\n  - {name: airport, type: ss, server: 192.0.2.1, port: 8388}\nrules:\n  - MATCH,airport\n"
-    ));
-    assert!(!is_openp2p_document("not: yaml"));
 }

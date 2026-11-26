@@ -534,91 +534,9 @@ export interface OpenP2pImportRequest {
   url?: string
 }
 
-type OpenP2pSourceKind = 'local' | 'url' | 'none'
+export type OpenP2pAccount = OpenP2PAccount
 
-type OpenP2pSourceStatus = 'applied' | 'stale' | 'error'
-
-interface OpenP2pSource {
-  kind: OpenP2pSourceKind
-  name?: string
-  version?: string
-  appliedAt?: string
-  status?: OpenP2pSourceStatus
-  containsMihomo?: boolean
-  selfContained?: boolean
-}
-
-export type OpenP2pAccount = Omit<OpenP2PAccount, 'routeCount'> & {
-  routeCount: number
-}
-
-export type OpenP2pState = Omit<OpenP2PViewBase, 'accounts' | 'source'> & {
-  accounts: OpenP2pAccount[]
-  source: OpenP2pSource | null
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const stringOrUndefined = (value: unknown) =>
-  typeof value === 'string' && value.trim() ? value : undefined
-
-const textOrUndefined = (value: unknown) =>
-  typeof value === 'string' && value.trim()
-    ? value
-    : typeof value === 'number' && Number.isFinite(value)
-      ? String(value)
-      : undefined
-
-const finiteNumberOrUndefined = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
-
-const normalizeSourceStatus = (
-  value: unknown,
-): OpenP2pSourceStatus | undefined =>
-  value === 'applied' || value === 'stale' || value === 'error'
-    ? value
-    : undefined
-
-const normalizeSource = (value: unknown): OpenP2pSource | null => {
-  if (!isRecord(value)) return null
-  if (value.kind !== 'local' && value.kind !== 'url') return null
-  return {
-    kind: value.kind,
-    name: stringOrUndefined(value.name),
-    version: textOrUndefined(value.version),
-    appliedAt: textOrUndefined(value.appliedAt),
-    status: normalizeSourceStatus(value.status),
-    containsMihomo:
-      typeof value.containsMihomo === 'boolean'
-        ? value.containsMihomo
-        : undefined,
-    selfContained:
-      typeof value.selfContained === 'boolean'
-        ? value.selfContained
-        : undefined,
-  }
-}
-
-const normalizeState = (raw: unknown): OpenP2pState => {
-  if (!isRecord(raw)) {
-    return {
-      accounts: [],
-      configError: null,
-      configRevision: 0,
-      source: null,
-    } as OpenP2pState
-  }
-  const accounts = Array.isArray(raw.accounts) ? raw.accounts : []
-  return {
-    ...(raw as Omit<OpenP2pState, 'accounts' | 'source'>),
-    source: normalizeSource(raw.source),
-    accounts: accounts.filter(isRecord).map((account) => ({
-      ...(account as unknown as OpenP2PAccount),
-      routeCount: finiteNumberOrUndefined(account.routeCount) ?? 0,
-    })),
-  }
-}
+export type OpenP2pState = OpenP2PViewBase
 
 type OpenP2pActivationOutcome = {
   status: 'valid' | 'busy' | 'invalid'
@@ -628,20 +546,6 @@ type OpenP2pActivationOutcome = {
   /** Activation generation: the reconciled view's configRevision. */
   generation?: number
 }
-
-const OPENP2P_PHASES = new Set<OpenP2PPhase>([
-  'stopped',
-  'starting',
-  'loginPending',
-  'online',
-  'degraded',
-  'backoff',
-  'authFailed',
-  'configFailed',
-  'tokenMissing',
-  'stopping',
-  'failed',
-])
 
 const SIDECAR_PHASE_PRIORITY: OpenP2PPhase[] = [
   'failed',
@@ -657,44 +561,31 @@ const SIDECAR_PHASE_PRIORITY: OpenP2PPhase[] = [
   'stopped',
 ]
 
-const isOpenP2PPhase = (value: unknown): value is OpenP2PPhase =>
-  typeof value === 'string' && OPENP2P_PHASES.has(value as OpenP2PPhase)
-
 const readSidecarPhase = (
-  value: Record<string, unknown>,
+  accounts: OpenP2pAccount[],
 ): OpenP2PPhase | undefined => {
-  if (isOpenP2PPhase(value.sidecarPhase)) return value.sidecarPhase
-  const accounts = Array.isArray(value.accounts) ? value.accounts : []
-  const phases = accounts
-    .filter(isRecord)
-    .map((account) => account.phase)
-    .filter(isOpenP2PPhase)
+  const phases = accounts.map((account) => account.phase)
   return (
     SIDECAR_PHASE_PRIORITY.find((phase) => phases.includes(phase)) ?? phases[0]
   )
 }
 
-const readGeneration = (value: Record<string, unknown>) =>
-  finiteNumberOrUndefined(value.generation) ??
-  finiteNumberOrUndefined(value.configRevision)
-
 // Command failures reject; a fulfilled activation returns the reconciled view.
 // Sidecar failures are reported through sidecarPhase/configError, not as a
 // failed switch.
-const normalizeActivationOutcome = (raw: unknown): OpenP2pActivationOutcome => {
-  if (!isRecord(raw)) return { status: 'valid' }
-  return {
-    status: 'valid',
-    sidecarPhase: readSidecarPhase(raw),
-    generation: readGeneration(raw),
-  }
-}
+const normalizeActivationOutcome = (
+  view: OpenP2pState,
+): OpenP2pActivationOutcome => ({
+  status: 'valid',
+  sidecarPhase: readSidecarPhase(view.accounts),
+  generation: view.configRevision,
+})
 
 const importArgs = (request: OpenP2pImportRequest) =>
   [request.yaml ?? null, request.url ?? null] as const
 
 export async function getOpenP2pState(): Promise<OpenP2pState> {
-  return normalizeState(await commands.getOpenp2pState())
+  return commands.getOpenp2pState()
 }
 
 export async function getOpenP2pVersion(): Promise<string | null> {
@@ -732,9 +623,8 @@ export async function activateOpenP2pSubscription(
 export async function updateOpenP2pSubscription(
   profileUid: string,
 ): Promise<OpenP2pActivationOutcome> {
-  return normalizeActivationOutcome(
-    await commands.updateOpenp2pSubscription(profileUid),
-  )
+  await commands.updateOpenp2pSubscription(profileUid)
+  return { status: 'valid' }
 }
 
 export async function openOpenP2pLogDir(accountId: string) {

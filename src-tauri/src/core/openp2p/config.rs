@@ -1,24 +1,9 @@
-use anyhow::{Context as _, Result, bail};
+use anyhow::Result;
 use serde::Serialize;
 
-use crate::core::openp2p::account::{self, token_path};
-use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
-
-/// The account token. No Debug/Display output ever exposes the value.
-#[derive(Clone, Copy)]
-pub struct TokenValue(u64);
-
-impl TokenValue {
-    pub const fn as_u64(self) -> u64 {
-        self.0
-    }
-}
-
-impl std::fmt::Debug for TokenValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("TokenValue(***)")
-    }
-}
+use crate::core::openp2p::account;
+use crate::core::openp2p::schema::AccountSpec;
+use crate::core::openp2p::secrets::TokenValue;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -60,50 +45,6 @@ struct RenderedApp {
 struct RenderedConfig {
     network: RenderedNetwork,
     apps: Vec<RenderedApp>,
-}
-
-pub fn read_token(token_ref: &str) -> Result<TokenValue> {
-    let path = token_path(token_ref)?;
-    read_token_at(&path)
-}
-
-fn read_token_at(path: &std::path::Path) -> Result<TokenValue> {
-    account::ensure_private_file(path)?;
-    let raw = std::fs::read_to_string(path).with_context(|| "openp2p token file is missing".to_string())?;
-    parse_token(raw.trim())
-}
-
-pub fn parse_token(raw: &str) -> Result<TokenValue> {
-    let token: u64 = raw
-        .parse()
-        .map_err(|_| anyhow::anyhow!("openp2p token must be a positive decimal integer"))?;
-    if token == 0 {
-        bail!("openp2p token must be a positive decimal integer");
-    }
-    Ok(TokenValue(token))
-}
-
-#[cfg(test)]
-fn write_token_file(path: &std::path::Path, token: TokenValue) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        account::create_private_dir(parent)?;
-    }
-    let mut bytes = token.as_u64().to_string().into_bytes();
-    bytes.push(b'\n');
-    account::atomic_write(path, &bytes, 0o600)
-}
-
-pub fn validate_private_key(private_key: &str) -> Result<()> {
-    if private_key.is_empty() || private_key.len() > 64 * 1024 {
-        bail!("private key is empty or too large");
-    }
-    if private_key.contains('\0') {
-        bail!("private key contains a NUL byte");
-    }
-    if !private_key.contains("-----BEGIN") || !private_key.contains("PRIVATE KEY-----") {
-        bail!("private key must be PEM encoded");
-    }
-    Ok(())
 }
 
 fn render_config(account: &AccountSpec, token: TokenValue) -> Result<RenderedConfig> {
@@ -186,17 +127,11 @@ pub fn reconcile_after_login(account: &AccountSpec, token: TokenValue) -> Result
         }
     }
 }
-
-pub fn account_secrets(config: &OpenP2PConfig, account: &AccountSpec) -> (bool, bool) {
-    (
-        account::token_present(&account.token_ref),
-        account::account_key_present(config, &account.id),
-    )
-}
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::openp2p::schema::fixtures::sample_config;
+    use crate::core::openp2p::secrets::{parse_token, validate_private_key};
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("cvr-openp2p-config-{name}-{}", std::process::id()));
@@ -205,11 +140,22 @@ mod tests {
         path
     }
 
+    fn write_token_file(path: &std::path::Path, token: TokenValue) -> Result<()> {
+        let mut bytes = token.as_u64().to_string().into_bytes();
+        bytes.push(b'\n');
+        account::atomic_write(path, &bytes, 0o600)
+    }
+
+    fn read_token_at(path: &std::path::Path) -> Result<TokenValue> {
+        let raw = std::fs::read_to_string(path)?;
+        parse_token(&raw)
+    }
+
     #[test]
     fn rendered_config_uses_a_json_number_for_the_token_and_int_for_enabled() {
         let config = sample_config();
         let account = &config.accounts[0];
-        let rendered = render_config(account, TokenValue(1234567890123)).expect("render");
+        let rendered = render_config(account, TokenValue::from_u64_for_tests(1234567890123)).expect("render");
         let value = serde_json::to_value(&rendered).expect("json");
         assert_eq!(value["Network"]["Token"], 1234567890123u64);
         assert_eq!(value["Network"]["Interface"], "auto");
@@ -221,8 +167,8 @@ mod tests {
     #[test]
     fn a_token_file_is_written_0600_and_read_back() {
         let root = scratch("token");
-        let path = root.join("tokens/o2p/home");
-        write_token_file(&path, TokenValue(42)).expect("write");
+        let path = root.join("tokens/home");
+        write_token_file(&path, TokenValue::from_u64_for_tests(42)).expect("write");
         let read = read_token_at(&path).expect("read");
         assert_eq!(read.as_u64(), 42);
         #[cfg(unix)]

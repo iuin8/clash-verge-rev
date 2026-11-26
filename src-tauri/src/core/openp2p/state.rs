@@ -83,8 +83,6 @@ pub struct OpenP2PAccount {
     pub interface: std::string::String,
     pub phase: OpenP2PPhase,
     pub token_present: bool,
-    pub key_present: bool,
-    pub key_refs: Vec<std::string::String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
     pub checks: OpenP2PChecks,
@@ -105,7 +103,6 @@ pub struct OpenP2PAccount {
 pub enum OpenP2PProfileStatus {
     Ready,
     NeedsToken,
-    NeedsKey,
     Error,
     #[default]
     Unknown,

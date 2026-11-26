@@ -116,7 +116,6 @@ fn a_bundle_rejects_two_openp2p_subscription_members() {
 #[test]
 fn a_bundle_merges_a_subscription_member_without_its_secrets() {
     use crate::core::openp2p::portable::parse_import;
-    use crate::core::openp2p::profile_render;
     use serde_yaml_ng::{Mapping, Value};
 
     const TOKEN: &str = "1234567890123";
@@ -127,34 +126,30 @@ fn a_bundle_merges_a_subscription_member_without_its_secrets() {
         .collect::<Vec<_>>()
         .join("\n");
     let document = format!(
-        r#"accounts:
-  - id: home
-    label: Home
-    gateway: {{ host: api.openp2p.cn, port: 27183 }}
-    token: {TOKEN}
-    apps:
-      - {{ name: ssh-home, protocol: tcp, peer_node: home-exit-01, dst_host: 127.0.0.1, dst_port: 22 }}
-proxies:
+        r#"proxies:
   - name: op2p-home
-    account: home
-    ssh_user: tunnel
-    private_key: |-
+    type: ssh
+    server: 127.0.0.1
+    port: 21001
+    username: tunnel
+    private-key: |-
 {key}
-    host_key: "{host_key}"
+    host-key: "{host_key}"
+x-openp2p:
+  version: 1
+  accounts:
+    - id: home
+      label: Home
+      gateway: {{ host: api.openp2p.cn, port: 27183 }}
+      token: {TOKEN}
+      apps:
+        - {{ name: ssh-home, protocol: tcp, src_port: 21001, peer_node: home-exit-01, dst_host: 127.0.0.1, dst_port: 22 }}
 "#,
         host_key = crate::core::openp2p::schema::fixtures::sample_host_key()
     );
-    let parsed = parse_import(&document, None);
+    let parsed = parse_import(&document, None, "0123456789abcdef");
     assert!(parsed.can_apply(), "{:?}", parsed.issues);
-    let member = profile_render::render_subscription_profile_with(
-        &parsed.config,
-        parsed.mihomo.as_deref(),
-        "",
-        |_| true,
-        |_| true,
-    )
-    .expect("render")
-    .yaml;
+    let member = parsed.profile_yaml().expect("projected profile").to_owned();
     assert!(!member.contains(TOKEN));
     assert!(!member.contains("PRIVATE KEY"));
 

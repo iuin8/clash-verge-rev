@@ -4,11 +4,13 @@
 //!
 //! - subscriptions/<id>/source.yaml — the imported document exactly as supplied
 //!   (0600). It may carry inline credentials; only the content command reads it.
-//! - subscriptions/<id>/config.yaml — the normalized, secret-free
-//!   OpenP2PConfig consumed by the sidecar manager and the renderer. Keeping it
-//!   also keeps generated node names and ports stable across restarts.
+//! - subscriptions/<id>/config.yaml — the normalized, secret-free x-openp2p
+//!   wrapper. Keeping it also keeps generated node names and ports stable.
 //! - subscriptions/<id>/meta.yaml — id, name, source kind, source URL, import
 //!   time and account count.
+//! - subscriptions/<id>/secrets.yaml — the staged token/key manifest (0600).
+//! - subscriptions/<id>/tokens/<account-id>, keys/<sha256>.key — 0600 secrets.
+//! - profiles/<profile_uid>.yaml — the projected mihomo profile (0600).
 //!
 //! profiles.yaml:current is the single active authority: the sidecar runs a
 //! subscription only while the current profile is its op2p-sub-<id> card. There
@@ -22,28 +24,25 @@
 //! previous device fields because the normalized config doubles as the merge
 //! source for parse_import.
 //!
-//! Account ids and credential references may repeat across subscriptions; only
-//! the active source runs its sidecars, so a shared account workdir is reused
-//! serially and shared vault refs are reference-counted during removal.
-//!
-//! The generated profile is profiles/op2p-sub-<id>.yaml and its PrfItem carries
-//! desc: openp2p-subscription:<id>. Import never changes profiles.yaml:current.
+//! Credentials are scoped to the subscription directory, so removing the
+//! subscription removes them without reference counting.
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 
 use crate::config::{IProfiles, PrfItem};
 use crate::core::openp2p::account;
-use crate::core::openp2p::portable::{self, ImportTransaction, OpenP2PImportSourceKind, ParsedImport, SecretVault};
-use crate::core::openp2p::profile_render::{self, RenderedProfile};
+use crate::core::openp2p::import_transaction::{ImportUndo, PreparedSubscriptionImport, SecretTransaction};
+use crate::core::openp2p::portable::{self, OpenP2PImportSourceKind, ParsedImport};
 use crate::core::openp2p::profile_store::ProfileStore;
 use crate::core::openp2p::schema::{self, OpenP2PConfig, OpenP2PIssue};
+use crate::core::openp2p::secrets::{SecretManifest, SecretStore};
 use crate::core::openp2p::state::OpenP2PSource;
+use crate::core::openp2p::subscription_identity::{canonical_url, derive_name, stable_id};
+use crate::core::openp2p::subscription_io::{RenderedProfile, describe_issues, inspect_source, render_parsed};
 use crate::utils::dirs;
 use clash_verge_logging::{Type, logging};
 
@@ -91,6 +90,19 @@ pub struct SubscriptionImport {
     pub warnings: Vec<OpenP2PIssue>,
 }
 
+/// One parsed import that has not touched disk yet. Import-time core validation
+/// runs between `preview_*` and `commit_preview`.
+pub struct SubscriptionPreview {
+    meta: SubscriptionMeta,
+    profile_uid: std::string::String,
+    source: std::string::String,
+    profile_yaml: std::string::String,
+    created: bool,
+    warnings: Vec<OpenP2PIssue>,
+    parsed: ParsedImport,
+    previous_manifest: SecretManifest,
+}
+
 #[derive(Debug, Clone)]
 pub struct SubscriptionStore {
     root: PathBuf,
@@ -120,7 +132,7 @@ impl SubscriptionStore {
         self.root.join("profiles")
     }
 
-    fn dir(&self, id: &str) -> PathBuf {
+    pub fn dir(&self, id: &str) -> PathBuf {
         self.subscriptions_dir().join(id)
     }
 
@@ -142,6 +154,16 @@ impl SubscriptionStore {
 
     pub fn profile_path(&self, profile_uid: &str) -> PathBuf {
         self.profiles_dir().join(format!("{profile_uid}.yaml"))
+    }
+
+    pub fn secrets(&self, id: &str) -> SecretStore {
+        SecretStore::at(self.dir(id))
+    }
+
+    /// The subscription's staged token path for one account.
+    #[cfg(test)]
+    pub fn token_path(&self, id: &str, account_id: &str) -> Result<PathBuf> {
+        self.secrets(id).token_path(account_id)
     }
 
     pub fn list(&self) -> Result<Vec<SubscriptionMeta>> {
@@ -230,23 +252,20 @@ impl SubscriptionStore {
         }))
     }
 
-    /// Source metadata for the OpenP2P view. Parses the raw source once; the
+    /// Source metadata for the OpenP2P view. Reads the raw source once; the
     /// result is cached by the manager instead of being rebuilt per event.
     pub fn source_view(&self, meta: &SubscriptionMeta) -> OpenP2PSource {
-        let (contains_mihomo, self_contained) = self
+        let (version, contains_mihomo, self_contained) = self
             .read_source(&meta.id)
-            .map(|raw| {
-                let parsed = portable::parse_import(&raw, None);
-                (parsed.has_mihomo, parsed.self_contained())
-            })
-            .unwrap_or((false, false));
+            .map(|raw| inspect_source(&raw, &self.secrets(&meta.id)))
+            .unwrap_or((None, false, false));
         OpenP2PSource {
             kind: match meta.source {
                 OpenP2PImportSourceKind::Url => "url".into(),
                 OpenP2PImportSourceKind::Local => "local".into(),
             },
             name: Some(meta.name.clone()),
-            version: None,
+            version,
             applied_at: Some(meta.imported_at),
             status: Some("applied".into()),
             contains_mihomo,
@@ -257,7 +276,7 @@ impl SubscriptionStore {
     pub fn render(&self, meta: &SubscriptionMeta) -> Result<RenderedProfile> {
         let text = self.read_source(&meta.id)?;
         let existing = self.load_config(&meta.id).ok();
-        let parsed = portable::parse_import(&text, existing.as_ref());
+        let parsed = portable::parse_import(&text, existing.as_ref(), &meta.id);
         if !parsed.can_apply() {
             bail!(
                 "openp2p subscription {} is invalid: {}",
@@ -268,38 +287,27 @@ impl SubscriptionStore {
         render_parsed(meta, &parsed)
     }
 
-    pub fn prepare_import(
+    pub fn preview_import(
         &self,
-        vault: &SecretVault,
         kind: OpenP2PImportSourceKind,
         text: &str,
         source_url: Option<&str>,
-        profiles: &mut IProfiles,
-    ) -> Result<PreparedSubscriptionImport> {
-        self.prepare_import_inner(vault, kind, text, source_url, None, profiles)
+    ) -> Result<SubscriptionPreview> {
+        self.preview_import_inner(kind, text, source_url, None)
     }
 
-    pub fn prepare_update(
-        &self,
-        vault: &SecretVault,
-        text: &str,
-        id: &str,
-        profiles: &mut IProfiles,
-    ) -> Result<PreparedSubscriptionImport> {
+    pub fn preview_update(&self, text: &str, id: &str) -> Result<SubscriptionPreview> {
         let meta = self.load_meta(id)?;
-        self.prepare_import_inner(vault, meta.source, text, meta.source_url.as_deref(), Some(id), profiles)
+        self.preview_import_inner(meta.source, text, meta.source_url.as_deref(), Some(id))
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn prepare_import_inner(
+    fn preview_import_inner(
         &self,
-        vault: &SecretVault,
         kind: OpenP2PImportSourceKind,
         text: &str,
         source_url: Option<&str>,
         expected_id: Option<&str>,
-        profiles: &mut IProfiles,
-    ) -> Result<PreparedSubscriptionImport> {
+    ) -> Result<SubscriptionPreview> {
         if text.len() > portable::MAX_IMPORT_BYTES {
             bail!("the configuration exceeds 1 MiB");
         }
@@ -317,12 +325,11 @@ impl SubscriptionStore {
         }
         let existing_meta = exists.then(|| self.load_meta(&id)).transpose()?;
         let existing_config = exists.then(|| self.load_config(&id)).transpose()?;
-        let parsed = portable::parse_import(text, existing_config.as_ref());
+        let parsed = portable::parse_import(text, existing_config.as_ref(), &id);
         if !parsed.can_apply() {
             bail!("the subscription is invalid: {}", describe_issues(&parsed.issues));
         }
-
-        let name = existing_meta.as_ref().map_or(derived_name, |meta| meta.name.clone());
+        let name = derived_name;
         let meta = SubscriptionMeta {
             id,
             name,
@@ -333,23 +340,49 @@ impl SubscriptionStore {
             imported_at: existing_meta.as_ref().map_or_else(now_secs, |meta| meta.imported_at),
             account_count: parsed.config.accounts.len(),
         };
-        let rendered = render_parsed(&meta, &parsed)?;
-
         let profile_uid = meta.profile_uid();
+        let profile_yaml = render_parsed(&meta, &parsed)?.yaml;
+        let previous_manifest = self.secrets(&meta.id).load_manifest();
+        let mut warnings = parsed.warnings();
+        if !parsed.has_mihomo {
+            warnings.push(OpenP2PIssue::warning(
+                "mihomo_section_missing",
+                "",
+                "the document has no top-level mihomo config; the generated profile is empty",
+            ));
+        }
+        Ok(SubscriptionPreview {
+            meta,
+            profile_uid,
+            source: text.to_owned(),
+            profile_yaml,
+            created: !exists,
+            warnings,
+            parsed,
+            previous_manifest,
+        })
+    }
+
+    pub fn commit_preview(
+        &self,
+        preview: SubscriptionPreview,
+        profiles: &mut IProfiles,
+    ) -> Result<PreparedSubscriptionImport> {
+        let id = preview.meta.id.clone();
+        let profile_uid = preview.profile_uid.clone();
         let profile_path = self.profile_path(&profile_uid);
-        let undo = ImportUndo::snapshot(self, &meta.id, !exists, &profile_path)?;
-        let stale_secrets = stale_refs(existing_config.as_ref(), &parsed.config);
-        let config_store = ProfileStore::with_config(self.root.clone(), self.config_path(&meta.id));
-        let transaction = ImportTransaction::begin(&config_store, vault, &parsed)?;
+        let undo = ImportUndo::snapshot(self, &id, preview.created, &profile_path)?;
+        let transaction = SecretTransaction::begin(&self.secrets(&id), &preview.parsed, &preview.previous_manifest)?;
         let written = (|| -> Result<bool> {
-            account::atomic_write(&self.source_path(&meta.id), text.as_bytes(), 0o600)?;
+            account::atomic_write(&self.source_path(&id), preview.source.as_bytes(), 0o600)?;
             account::atomic_write(
-                &self.meta_path(&meta.id),
-                serde_yaml_ng::to_string(&meta)?.as_bytes(),
+                &self.meta_path(&id),
+                serde_yaml_ng::to_string(&preview.meta)?.as_bytes(),
                 0o600,
             )?;
-            account::atomic_write(&profile_path, rendered.yaml.as_bytes(), 0o600)?;
-            upsert_profile_item(profiles, &meta)
+            ProfileStore::with_config(self.root.clone(), self.config_path(&id)).save_config(&preview.parsed.config)?;
+            account::atomic_write(&profile_path, preview.profile_yaml.as_bytes(), 0o600)?;
+            upsert_profile_item(profiles, &preview.meta)
         })();
         let items_changed = match written {
             Ok(changed) => changed,
@@ -363,27 +396,44 @@ impl SubscriptionStore {
                 };
             }
         };
-        Ok(PreparedSubscriptionImport {
-            import: SubscriptionImport {
-                meta,
+        Ok(PreparedSubscriptionImport::new(
+            SubscriptionImport {
+                meta: preview.meta,
                 profile_uid,
-                created: !exists,
-                profile_changed: undo.profile_changed(&rendered.yaml),
+                created: preview.created,
+                profile_changed: undo.profile_changed(&preview.profile_yaml),
                 items_changed,
-                warnings: rendered.warnings,
+                warnings: preview.warnings,
             },
-            store: self.clone(),
-            stale_secrets,
-            transaction: Some(transaction),
-            undo: Some(undo),
-        })
+            transaction,
+            undo,
+        ))
+    }
+
+    #[cfg(test)]
+    pub fn prepare_import(
+        &self,
+        kind: OpenP2PImportSourceKind,
+        text: &str,
+        source_url: Option<&str>,
+        profiles: &mut IProfiles,
+    ) -> Result<PreparedSubscriptionImport> {
+        let preview = self.preview_import(kind, text, source_url)?;
+        self.commit_preview(preview, profiles)
+    }
+
+    #[cfg(test)]
+    pub fn prepare_update(&self, text: &str, id: &str, profiles: &mut IProfiles) -> Result<PreparedSubscriptionImport> {
+        let preview = self.preview_update(text, id)?;
+        self.commit_preview(preview, profiles)
     }
 
     /// Removes one subscription after the sidecar stopped its accounts.
     ///
     /// The directory is first renamed to a tombstone so no listing can observe a
     /// half-deleted subscription, then account working directories (which hold
-    /// rendered credentials), vault files and the tombstone are removed.
+    /// rendered credentials) and the tombstone (which holds the staged secrets)
+    /// are removed.
     pub fn remove(&self, id: &str) -> Result<()> {
         validate_id(id)?;
         let dir = self.dir(id);
@@ -399,7 +449,6 @@ impl SubscriptionStore {
                     self.purge_account_workdir(&account.id);
                 }
             }
-            self.remove_secrets(&refs_of(config));
         }
         match std::fs::remove_dir_all(&tombstone) {
             Ok(()) => {}
@@ -441,191 +490,6 @@ impl SubscriptionStore {
             ),
         }
     }
-
-    fn remove_secrets(&self, refs: &BTreeSet<SecretRef>) {
-        if refs.is_empty() {
-            return;
-        }
-        let used_elsewhere = self.refs_used_elsewhere();
-        for secret in refs {
-            if used_elsewhere.contains(secret) {
-                continue;
-            }
-            let dir = match secret.kind {
-                SecretKind::Token => "tokens",
-                SecretKind::Key => "keys",
-            };
-            if !schema::valid_ref(&secret.reference) {
-                continue;
-            }
-            let path = self.openp2p_dir().join(dir).join(&secret.reference);
-            match std::fs::remove_file(&path) {
-                Ok(()) => {
-                    let root = self.openp2p_dir().join(match secret.kind {
-                        SecretKind::Token => "tokens",
-                        SecretKind::Key => "keys",
-                    });
-                    prune_empty_parents(path.parent(), &root);
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    logging!(
-                        warn,
-                        Type::Network,
-                        "failed to remove an openp2p credential file: {error}"
-                    );
-                }
-            }
-        }
-    }
-
-    fn refs_used_elsewhere(&self) -> BTreeSet<SecretRef> {
-        let mut used = BTreeSet::new();
-        for meta in self.list().unwrap_or_default() {
-            if let Ok(config) = self.load_config(&meta.id) {
-                used.extend(refs_of(&config));
-            }
-        }
-        used
-    }
-}
-
-#[derive(Debug)]
-pub struct PreparedSubscriptionImport {
-    import: SubscriptionImport,
-    store: SubscriptionStore,
-    stale_secrets: BTreeSet<SecretRef>,
-    transaction: Option<ImportTransaction>,
-    undo: Option<ImportUndo>,
-}
-
-impl PreparedSubscriptionImport {
-    #[cfg(test)]
-    pub const fn outcome(&self) -> &SubscriptionImport {
-        &self.import
-    }
-
-    /// Keeps the new files and credentials after the caller persisted the profile
-    /// item list, then drops credential files the update made unreachable.
-    pub fn commit(mut self) -> SubscriptionImport {
-        self.undo.take();
-        if let Some(transaction) = self.transaction.take() {
-            transaction.finish();
-        }
-        self.store.remove_secrets(&self.stale_secrets);
-        self.import.clone()
-    }
-
-    /// Restores the previous subscription files, credentials and generated
-    /// profile after the profile item list could not be persisted.
-    pub fn rollback(mut self) -> Result<()> {
-        let transaction_error = match self.transaction.take() {
-            Some(transaction) => transaction.rollback().err(),
-            None => None,
-        };
-        let undo_error = match self.undo.take() {
-            Some(undo) => undo.restore().err(),
-            None => None,
-        };
-        match transaction_error.or(undo_error) {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
-    }
-}
-
-impl Drop for PreparedSubscriptionImport {
-    fn drop(&mut self) {
-        let Some(undo) = self.undo.take() else {
-            return;
-        };
-        if let Err(error) = undo.restore() {
-            logging!(
-                warn,
-                Type::Network,
-                "failed to roll back an unfinished openp2p subscription import: {error:#}"
-            );
-        }
-    }
-}
-
-#[derive(Debug)]
-struct ImportUndo {
-    created: bool,
-    sub_dir: PathBuf,
-    source: (PathBuf, Option<Vec<u8>>),
-    meta: (PathBuf, Option<Vec<u8>>),
-    profile: (PathBuf, Option<Vec<u8>>),
-}
-
-impl ImportUndo {
-    fn snapshot(store: &SubscriptionStore, id: &str, created: bool, profile_path: &Path) -> Result<Self> {
-        let source_path = store.source_path(id);
-        let meta_path = store.meta_path(id);
-        Ok(Self {
-            created,
-            sub_dir: store.dir(id),
-            source: (source_path.clone(), read_optional(&source_path)?),
-            meta: (meta_path.clone(), read_optional(&meta_path)?),
-            profile: (profile_path.to_path_buf(), read_optional(profile_path)?),
-        })
-    }
-
-    fn profile_changed(&self, yaml: &str) -> bool {
-        self.profile.1.as_deref() != Some(yaml.as_bytes())
-    }
-
-    fn restore(self) -> Result<()> {
-        let mut first_error = None;
-        for (path, previous) in [&self.source, &self.meta, &self.profile] {
-            let result = match previous {
-                Some(bytes) => account::atomic_write(path, bytes, 0o600),
-                None => match std::fs::remove_file(path) {
-                    Ok(()) => Ok(()),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    Err(error) => Err(error.into()),
-                },
-            };
-            if let Err(error) = result
-                && first_error.is_none()
-            {
-                first_error = Some(error.context(format!("restore {}", path.display())));
-            }
-        }
-        if self.created
-            && let Err(error) = std::fs::remove_dir_all(&self.sub_dir)
-            && error.kind() != std::io::ErrorKind::NotFound
-            && first_error.is_none()
-        {
-            first_error = Some(anyhow::Error::new(error).context(format!("remove {}", self.sub_dir.display())));
-        }
-        match first_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
-    }
-}
-
-fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-        Ok(bytes) => Ok(Some(bytes)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
-    }
-}
-
-fn render_parsed(meta: &SubscriptionMeta, parsed: &ParsedImport) -> Result<RenderedProfile> {
-    let header = format!(
-        "# Generated by Clash Verge OpenP2P for subscription {} ({}). Edit the imported YAML, not this file.\n",
-        meta.name, meta.id
-    );
-    profile_render::render_subscription_profile_with(
-        &parsed.config,
-        parsed.mihomo.as_deref(),
-        &header,
-        |reference| parsed.carries_token(reference) || account::token_present(reference),
-        |reference| parsed.carries_key(reference) || account::key_present(reference),
-    )
 }
 
 pub(crate) fn upsert_profile_item(profiles: &mut IProfiles, meta: &SubscriptionMeta) -> Result<bool> {
@@ -718,150 +582,11 @@ fn valid_id(id: &str) -> bool {
     schema::valid_slug(id, 32)
 }
 
-fn stable_id(kind: OpenP2PImportSourceKind, source_url: Option<&str>, name: &str, text: &str) -> std::string::String {
-    let material = match kind {
-        OpenP2PImportSourceKind::Url => format!("url\n{}\n", canonical_url(source_url.unwrap_or_default())),
-        OpenP2PImportSourceKind::Local => format!("local\n{name}\n{text}"),
-    };
-    let digest = Sha256::digest(material.as_bytes());
-    digest.iter().take(8).map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn canonical_url(raw: &str) -> std::string::String {
-    reqwest::Url::parse(raw.trim()).map_or_else(|_| raw.trim().to_owned(), |url| url.to_string())
-}
-
-fn derive_name(kind: OpenP2PImportSourceKind, source_url: Option<&str>, text: &str) -> std::string::String {
-    let raw = match kind {
-        // The URL path may carry a capability token; only the host becomes a card name.
-        OpenP2PImportSourceKind::Url => source_url
-            .and_then(|url| reqwest::Url::parse(url.trim()).ok())
-            .and_then(|url| url.host_str().map(str::to_owned))
-            .unwrap_or_default(),
-        OpenP2PImportSourceKind::Local => document_display_name(text),
-    };
-    normalize_name(raw)
-}
-
-fn document_display_name(text: &str) -> std::string::String {
-    let Ok(value) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(text) else {
-        return std::string::String::new();
-    };
-    let Some(document) = value.as_mapping() else {
-        return std::string::String::new();
-    };
-    let block = document
-        .get("x-openp2p")
-        .and_then(serde_yaml_ng::Value::as_mapping)
-        .unwrap_or(document);
-    if let Some(name) = block
-        .get("name")
-        .and_then(serde_yaml_ng::Value::as_str)
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-    {
-        return name.to_owned();
-    }
-    let Some(account) = block
-        .get("accounts")
-        .and_then(serde_yaml_ng::Value::as_sequence)
-        .and_then(|accounts| accounts.first())
-        .and_then(serde_yaml_ng::Value::as_mapping)
-    else {
-        return std::string::String::new();
-    };
-    if let Some(label) = account
-        .get("label")
-        .and_then(serde_yaml_ng::Value::as_str)
-        .map(str::trim)
-        .filter(|label| !label.is_empty())
-    {
-        return format!("OpenP2P {label}");
-    }
-    account
-        .get("id")
-        .and_then(serde_yaml_ng::Value::as_str)
-        .map_or_else(std::string::String::new, |id| format!("OpenP2P {id}"))
-}
-
-fn normalize_name(raw: std::string::String) -> std::string::String {
-    let cleaned = raw
-        .chars()
-        .map(|ch| if ch.is_control() { ' ' } else { ch })
-        .collect::<std::string::String>();
-    let truncated = cleaned.trim().chars().take(64).collect::<std::string::String>();
-    if truncated.is_empty() {
-        "OpenP2P subscription".into()
-    } else {
-        truncated
-    }
-}
-
-fn describe_issues(issues: &[OpenP2PIssue]) -> std::string::String {
-    issues
-        .iter()
-        .map(|issue| format!("{}: {} ({})", issue.path, issue.message, issue.code))
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
-fn stale_refs(previous: Option<&OpenP2PConfig>, next: &OpenP2PConfig) -> BTreeSet<SecretRef> {
-    let Some(previous) = previous else {
-        return BTreeSet::new();
-    };
-    refs_of(previous).difference(&refs_of(next)).cloned().collect()
-}
-
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum SecretKind {
-    Token,
-    Key,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct SecretRef {
-    kind: SecretKind,
-    reference: std::string::String,
-}
-
-fn refs_of(config: &OpenP2PConfig) -> BTreeSet<SecretRef> {
-    let mut refs = BTreeSet::new();
-    for account in &config.accounts {
-        refs.insert(SecretRef {
-            kind: SecretKind::Token,
-            reference: account.token_ref.clone(),
-        });
-    }
-    for proxy in &config.proxies {
-        refs.insert(SecretRef {
-            kind: SecretKind::Key,
-            reference: proxy.private_key_ref.clone(),
-        });
-    }
-    refs
-}
-
-fn prune_empty_parents(start: Option<&Path>, stop: &Path) {
-    if stop.as_os_str().is_empty() {
-        return;
-    }
-    let mut current = start;
-    while let Some(dir) = current {
-        if dir == stop || !dir.starts_with(stop) {
-            break;
-        }
-        if std::fs::remove_dir(dir).is_err() {
-            break;
-        }
-        current = dir.parent();
-    }
 }
 
 #[cfg(test)]

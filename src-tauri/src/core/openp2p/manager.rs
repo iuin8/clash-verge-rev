@@ -10,10 +10,10 @@ use tokio::sync::watch;
 use crate::config::Config;
 use crate::core::handle::Handle;
 use crate::core::openp2p::account::{self, AccountPaths};
-use crate::core::openp2p::config as o2p_config;
 
 use crate::core::openp2p::process::{self, Reconcile};
 use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
+use crate::core::openp2p::secrets::SecretStore;
 use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PSource, OpenP2PView};
 use crate::core::openp2p::subscriptions::{
     self, PROFILE_DESC_PREFIX, SubscriptionRuntime, SubscriptionStore, id_from_profile_uid, purge_account_dir,
@@ -42,6 +42,7 @@ struct Worker {
 
 struct AccountSnapshot {
     account: AccountSpec,
+    secrets: Option<SecretStore>,
     phase: OpenP2PPhase,
     pid: Option<u32>,
     checks: OpenP2PChecks,
@@ -56,11 +57,12 @@ pub struct AccountSlot {
 }
 
 impl AccountSlot {
-    fn new(account: AccountSpec) -> Result<Self> {
+    fn new(account: AccountSpec, secrets: Option<SecretStore>) -> Result<Self> {
         let paths = account::account_paths(&account.id)?;
         Ok(Self {
             snapshot: Mutex::new(AccountSnapshot {
                 account,
+                secrets,
                 phase: OpenP2PPhase::Stopped,
                 pid: None,
                 checks: OpenP2PChecks::default(),
@@ -74,6 +76,18 @@ impl AccountSlot {
 
     fn spec(&self) -> AccountSpec {
         self.snapshot.lock().account.clone()
+    }
+
+    fn token_present(&self) -> bool {
+        let snapshot = self.snapshot.lock();
+        snapshot
+            .secrets
+            .as_ref()
+            .is_some_and(|secrets| secrets.token_present(&snapshot.account.id))
+    }
+
+    fn secrets(&self) -> Option<SecretStore> {
+        self.snapshot.lock().secrets.clone()
     }
 
     fn last_error(&self) -> Option<std::string::String> {
@@ -141,10 +155,13 @@ impl AccountSlot {
         OpenP2PManager::notify_changed();
     }
 
-    fn to_view(&self, config: &OpenP2PConfig) -> OpenP2PAccount {
+    fn to_view(&self) -> OpenP2PAccount {
         let snapshot = self.snapshot.lock();
         let account = &snapshot.account;
-        let (token_present, key_present) = o2p_config::account_secrets(config, account);
+        let token_present = snapshot
+            .secrets
+            .as_ref()
+            .is_some_and(|secrets| secrets.token_present(&account.id));
         OpenP2PAccount {
             id: account.id.clone(),
             label: account.label().to_owned(),
@@ -162,11 +179,6 @@ impl AccountSlot {
             interface: account.interface().to_owned(),
             phase: snapshot.phase,
             token_present,
-            key_present,
-            key_refs: config
-                .proxies_for(&account.id)
-                .map(|proxy| proxy.private_key_ref.clone())
-                .collect(),
             pid: snapshot.pid,
             checks: snapshot.checks.clone(),
             last_error: snapshot.last_error.clone(),
@@ -184,6 +196,7 @@ impl AccountSlot {
 pub struct OpenP2PActiveSource {
     pub profile_uid: std::string::String,
     pub view: OpenP2PSource,
+    pub token_store: SecretStore,
 }
 
 struct ManagerData {
@@ -234,7 +247,7 @@ impl OpenP2PManager {
             .config
             .accounts
             .iter()
-            .filter_map(|account| data.accounts.get(&account.id).map(|slot| slot.to_view(&data.config)))
+            .filter_map(|account| data.accounts.get(&account.id).map(|slot| slot.to_view()))
             .map(|mut account| {
                 let id = account.id.clone();
                 account.route_count = data
@@ -249,12 +262,10 @@ impl OpenP2PManager {
                     .sum();
                 if let Some(active) = data.active.as_ref() {
                     account.profile_uid = Some(active.profile_uid.clone());
-                    account.profile_status = if !account.token_present {
-                        crate::core::openp2p::state::OpenP2PProfileStatus::NeedsToken
-                    } else if !account.key_present {
-                        crate::core::openp2p::state::OpenP2PProfileStatus::NeedsKey
-                    } else {
+                    account.profile_status = if account.token_present {
                         crate::core::openp2p::state::OpenP2PProfileStatus::Ready
+                    } else {
+                        crate::core::openp2p::state::OpenP2PProfileStatus::NeedsToken
                     };
                 }
                 account
@@ -341,8 +352,9 @@ impl OpenP2PManager {
             );
         }
         let source = OpenP2PActiveSource {
-            profile_uid: runtime.profile_uid,
+            profile_uid: runtime.profile_uid.clone(),
             view: runtime.source,
+            token_store: store.secrets(&runtime.meta.id),
         };
         self.apply_source(runtime.config, Some(source)).await;
         Ok(())
@@ -442,13 +454,15 @@ impl OpenP2PManager {
         active: Option<OpenP2PActiveSource>,
     ) {
         let config = Arc::new(config);
+        let token_store = active.as_ref().map(|active| active.token_store.clone());
         let previous: BTreeMap<std::string::String, Arc<AccountSlot>> = self.data.read().accounts.clone();
         let mut accounts = BTreeMap::new();
         for account in &config.accounts {
-            let slot = previous
-                .get(&account.id)
-                .cloned()
-                .or_else(|| AccountSlot::new(account.clone()).ok().map(Arc::new));
+            let slot = previous.get(&account.id).cloned().or_else(|| {
+                AccountSlot::new(account.clone(), token_store.clone())
+                    .ok()
+                    .map(Arc::new)
+            });
             if let Some(slot) = slot {
                 accounts.insert(account.id.clone(), slot);
             }
@@ -474,7 +488,11 @@ impl OpenP2PManager {
                 continue;
             };
             let changed = slot.spec() != *account;
-            slot.snapshot.lock().account = account.clone();
+            {
+                let mut snapshot = slot.snapshot.lock();
+                snapshot.account = account.clone();
+                snapshot.secrets = token_store.clone();
+            }
             let running = slot
                 .worker
                 .lock()
@@ -490,11 +508,14 @@ impl OpenP2PManager {
                 }
                 continue;
             }
-            if !account::token_present(&account.token_ref) {
+            if !slot.token_present() {
                 if running {
                     self.stop_slot(slot, STOP_TIMEOUT).await;
                 }
-                slot.set_terminal(OpenP2PPhase::TokenMissing, "token is not saved for this account".into());
+                slot.set_terminal(
+                    OpenP2PPhase::TokenMissing,
+                    "no staged token belongs to this account in the active subscription".into(),
+                );
                 continue;
             }
             if running && !changed {
@@ -529,9 +550,10 @@ impl OpenP2PManager {
         *worker_guard = None;
         let (stop_tx, stop_rx) = watch::channel(false);
         let spec = slot.spec();
+        let secrets = slot.secrets();
         let slot_clone = Arc::clone(slot);
         let join = tokio::spawn(async move {
-            supervise(slot_clone, spec, stop_rx).await;
+            supervise(slot_clone, spec, secrets, stop_rx).await;
         });
         *worker_guard = Some(Worker { stop: stop_tx, join });
     }

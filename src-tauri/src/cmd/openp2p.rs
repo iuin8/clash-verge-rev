@@ -4,13 +4,14 @@ use super::{CmdResult, CommandFailure, coded_error};
 use crate::config::Config;
 use crate::core::notify::{Refresh, announce};
 use crate::core::openp2p::account;
+use crate::core::openp2p::import_transaction::PreparedSubscriptionImport;
 use crate::core::openp2p::manager::OpenP2PManager;
-use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind, SecretVault};
+use crate::core::openp2p::portable::{self, MAX_IMPORT_BYTES, OpenP2PImportSourceKind};
 use crate::core::openp2p::state::OpenP2PView;
 use crate::core::openp2p::subscriptions::{
     self, SubscriptionImport, SubscriptionMeta, SubscriptionRuntime, SubscriptionStore,
 };
-use crate::core::validate::ValidationOutcome;
+use crate::core::validate::{CoreConfigValidator, ValidationOutcome};
 use crate::utils::network::{NetworkManager, ProxyType};
 use clash_verge_logging::{Type, logging};
 
@@ -206,10 +207,6 @@ fn subscription_store() -> CmdResult<SubscriptionStore> {
     SubscriptionStore::app_default().map_err(subscription_failure)
 }
 
-fn secret_vault() -> CmdResult<SecretVault> {
-    SecretVault::app_default().map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))
-}
-
 fn find_subscription(store: &SubscriptionStore, profile_uid: &str) -> CmdResult<SubscriptionMeta> {
     store
         .find_by_profile_uid(profile_uid)
@@ -335,24 +332,88 @@ enum SubscriptionWrite<'a> {
     },
 }
 
+/// The projected profile reached the profile file but the core rejected it.
+#[derive(Debug)]
+struct ProjectedProfileRejected(std::string::String);
+
+impl std::fmt::Display for ProjectedProfileRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ProjectedProfileRejected {}
+
+/// Validates the projected profile after it is written and its staged key files
+/// exist, so mihomo can resolve `private-key` during parsing. A missing core does
+/// not block an inert import; the skip reason is logged.
+async fn validate_written_profile(
+    store: &SubscriptionStore,
+    prepared: &PreparedSubscriptionImport,
+) -> std::result::Result<(), ProjectedProfileRejected> {
+    let path = store.profile_path(&prepared.outcome().profile_uid);
+    let Ok(path) = crate::utils::dirs::path_to_str(&path) else {
+        return Ok(());
+    };
+    match CoreConfigValidator::validate_config_file_outcome(path, None).await {
+        Ok(ValidationOutcome::Valid) => Ok(()),
+        Ok(ValidationOutcome::Invalid { message, .. }) => Err(ProjectedProfileRejected(format!(
+            "the core rejected the projected mihomo profile: {message}"
+        ))),
+        Ok(ValidationOutcome::Skipped { reason }) => {
+            logging!(
+                warn,
+                Type::Network,
+                "openp2p projected profile was not checked by the core: {reason}"
+            );
+            Ok(())
+        }
+        Ok(ValidationOutcome::Busy) => {
+            logging!(
+                warn,
+                Type::Network,
+                "openp2p projected profile was not checked because core validation is already running"
+            );
+            Ok(())
+        }
+        Err(error) => {
+            logging!(
+                warn,
+                Type::Network,
+                "openp2p projected profile was not checked by the core: {error:#}"
+            );
+            Ok(())
+        }
+    }
+}
+
 /// Writes one subscription and its generated profile, then persists the profile
 /// item list. On a failed profiles.yaml write the subscription files,
 /// credentials and generated profile are rolled back.
 async fn run_subscription_write(
     store: &SubscriptionStore,
-    vault: &SecretVault,
     write: SubscriptionWrite<'_>,
 ) -> CmdResult<SubscriptionImport> {
     let _profile_write_guard = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
+    let preview = match write {
+        SubscriptionWrite::Import { kind, text, url } => store.preview_import(kind, text, url),
+        SubscriptionWrite::Update { text, id } => store.preview_update(text, id),
+    }
+    .map_err(subscription_failure)?;
     let profiles = Config::profiles().await;
     profiles
         .with_data_modify(|mut candidate| async move {
-            let prepared = match write {
-                SubscriptionWrite::Import { kind, text, url } => {
-                    store.prepare_import(vault, kind, text, url, &mut candidate)?
+            let prepared = store.commit_preview(preview, &mut candidate)?;
+            if let Err(rejected) = validate_written_profile(store, &prepared).await {
+                if let Err(rollback) = prepared.rollback() {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "openp2p profile validation rollback failed: {rollback:#}"
+                    );
                 }
-                SubscriptionWrite::Update { text, id } => store.prepare_update(vault, text, id, &mut candidate)?,
-            };
+                return Err(anyhow::Error::new(rejected));
+            }
             if let Err(error) = candidate.save_file().await {
                 if let Err(rollback) = prepared.rollback() {
                     logging!(
@@ -367,7 +428,12 @@ async fn run_subscription_write(
             Ok((candidate, import))
         })
         .await
-        .map_err(|error| coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")))
+        .map_err(
+            |error: anyhow::Error| match error.downcast::<ProjectedProfileRejected>() {
+                Ok(rejected) => coded_error("OPENP2P_PROFILE_INVALID", rejected),
+                Err(error) => coded_error("OPENP2P_IMPORT_FAILED", format!("{error:#}")),
+            },
+        )
 }
 
 fn log_import_warnings(import: &SubscriptionImport) {
@@ -433,10 +499,8 @@ pub async fn import_openp2p_subscription(
 ) -> CmdResult<OpenP2PSubscription> {
     let resolved = read_import(yaml, url).await.map_err(source_failure)?;
     let store = subscription_store()?;
-    let vault = secret_vault()?;
     let import = run_subscription_write(
         &store,
-        &vault,
         SubscriptionWrite::Import {
             kind: resolved.kind,
             text: &resolved.text,
@@ -473,10 +537,8 @@ pub async fn update_openp2p_subscription(profile_uid: std::string::String) -> Cm
         }
         OpenP2PImportSourceKind::Local => store.read_source(&meta.id).map_err(subscription_failure)?,
     };
-    let vault = secret_vault()?;
     let import = run_subscription_write(
         &store,
-        &vault,
         SubscriptionWrite::Update {
             text: &text,
             id: &meta.id,

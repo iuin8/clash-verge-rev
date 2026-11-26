@@ -338,7 +338,6 @@ export interface TranslationResources {
     openp2p: {
       account: {
         actions: {
-          key: string
           logs: string
           restart: string
           start: string
@@ -360,16 +359,12 @@ export interface TranslationResources {
           tcpUnreachable: string
         }
         credentials: {
-          keyRequired: string
           profileError: string
           tokenRequired: string
         }
         disabled: string
         gateway: string
         interface: string
-        keyMissing: string
-        keyNoNode: string
-        keySaved: string
         managedBy: string
         managedLocally: string
         node: string
@@ -389,7 +384,6 @@ export interface TranslationResources {
         }
         profileStatus: {
           error: string
-          needsKey: string
           needsToken: string
           ready: string
           unknown: string
@@ -405,15 +399,11 @@ export interface TranslationResources {
         accounts_missing: string
         config_too_large: string
         device_generation_failed: string
-        dns_without_domains: string
         duplicate_account: string
         duplicate_app: string
         duplicate_port: string
-        duplicate_proxy: string
-        duplicate_token_ref: string
         fetch_failed: string
         gateway_invalid: string
-        health_not_in_domains: string
         host_key_invalid: string
         host_key_missing: string
         invalid_app_name: string
@@ -421,7 +411,6 @@ export interface TranslationResources {
         invalid_dns: string
         invalid_domain: string
         invalid_dst_host: string
-        invalid_health: string
         invalid_id: string
         invalid_interface: string
         invalid_label: string
@@ -429,139 +418,48 @@ export interface TranslationResources {
         invalid_peer_node: string
         invalid_port: string
         invalid_protocol: string
-        invalid_proxy_name: string
-        invalid_ref: string
         invalid_secret: string
         invalid_ssh_user: string
         invalid_whitelist: string
-        key_ref_invalid: string
+        legacy_reference: string
+        mihomo_section_at_top_level: string
+        network_account_missing: string
         networks: string
-        OPENP2P_ACCOUNT_FAILED: string
         OPENP2P_ACCOUNT_NOT_FOUND: string
         OPENP2P_ACTIVATION_FAILED: string
-        OPENP2P_CONFIG_INVALID: string
-        OPENP2P_IMPORT_APPLY_FAILED: string
         OPENP2P_IMPORT_FAILED: string
         OPENP2P_IMPORT_FETCH_FAILED: string
         OPENP2P_IMPORT_SOURCE_INVALID: string
         OPENP2P_IMPORT_TOO_LARGE: string
         OPENP2P_IMPORT_URL_INVALID: string
-        OPENP2P_KEY_REF_MISMATCH: string
-        OPENP2P_KEY_WRITE_FAILED: string
         OPENP2P_LOG_DIR_FAILED: string
-        openp2p_missing: string
         OPENP2P_PLATFORM_UNSUPPORTED: string
+        OPENP2P_PROFILE_INVALID: string
+        OPENP2P_PROFILE_MANAGED: string
         OPENP2P_PROFILE_SYNC_FAILED: string
         OPENP2P_SUBSCRIPTION_FAILED: string
         OPENP2P_SUBSCRIPTION_NOT_FOUND: string
-        OPENP2P_TOKEN_INVALID: string
-        OPENP2P_TOKEN_WRITE_FAILED: string
+        OPENP2P_VERSION_FAILED: string
         platform_unsupported: string
-        profile_import_required: string
-        proxies: string
-        proxy_account_disabled: string
-        proxy_account_missing: string
-        proxy_app_ambiguous: string
-        proxy_app_missing: string
+        private_key_invalid: string
+        private_key_missing: string
+        proxy_password_not_allowed: string
         schema_invalid: string
-        secret_conflict: string
+        secrets_block_removed: string
         source_ambiguous: string
         source_missing: string
         source_not_utf8: string
         source_too_large: string
-        token_ref_invalid: string
+        src_port_required: string
         too_many_accounts: string
         too_many_networks: string
-        too_many_proxies: string
         unknown_field: string
         unsupported_version: string
-        unused_secret: string
         url_insecure: string
         url_invalid: string
         version: string
         x_openp2p_missing: string
         yaml_syntax: string
-      }
-      import: {
-        accounts: string
-        actions: {
-          add: string
-          remove: string
-          unchanged: string
-          update: string
-        }
-        applied: string
-        apply: string
-        applyFailed: string
-        applying: string
-        canApply: string
-        cannotApply: string
-        confirmApply: string
-        confirmRemoveMessage: string
-        confirmRemoveTitle: string
-        containsMihomo: string
-        credential: {
-          inline: string
-          key: string
-          missing: string
-          present: string
-          token: string
-        }
-        deviceHint: string
-        emptyInput: string
-        file: string
-        fileReadFailed: string
-        fileSelected: string
-        fileTooLarge: string
-        invalidUrl: string
-        issues: string
-        mihomoHint: string
-        mihomoOnly: string
-        mode: {
-          label: string
-          url: string
-          yaml: string
-        }
-        noAccounts: string
-        node: string
-        noIssues: string
-        noNodes: string
-        paste: string
-        placeholder: string
-        policyOnly: string
-        preview: string
-        previewFailed: string
-        previewing: string
-        removeWarning: string
-        routes: string
-        secretWarning: string
-        selfContained: string
-        source: string
-        title: string
-        url: string
-        urlHint: string
-        urlPlaceholder: string
-        urlRequired: string
-        version: string
-        warnings: {
-          account_disabled: string
-          key_missing: string
-          token_missing: string
-        }
-      }
-      key: {
-        chooseFile: string
-        fileTooLarge: string
-        hint: string
-        invalidFile: string
-        noFile: string
-        noSshNode: string
-        readFailed: string
-        ref: string
-        save: string
-        saved: string
-        selected: string
-        title: string
       }
       page: {
         actions: {

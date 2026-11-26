@@ -561,6 +561,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_relative_ssh_private_key_below_the_config_root_is_copied() -> anyhow::Result<()> {
+        let root = std::env::temp_dir().join(format!("clash-verge-bundle-ssh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let key_dir = root.join("openp2p/subscriptions/0123456789abcdef/keys");
+        std::fs::create_dir_all(&key_dir)?;
+        let key = key_dir.join("deadbeef.key");
+        std::fs::write(
+            &key,
+            b"-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----",
+        )?;
+        let config = root.join("config.yaml");
+        std::fs::write(
+            &config,
+            "proxies:\n  - name: op2p-home\n    type: ssh\n    server: 127.0.0.1\n    port: 21001\n    username: tunnel\n    private-key: openp2p/subscriptions/0123456789abcdef/keys/deadbeef.key\n    host-key:\n      - ssh-ed25519 AAAA\n",
+        )?;
+        let core = root.join("mihomo");
+        std::fs::write(&core, b"core")?;
+
+        let bundle = collect_runtime_bundle(&config, &core).await?;
+
+        let rewritten: serde_yaml_ng::Value = serde_yaml_ng::from_str(&bundle.yaml)?;
+        let destination = rewritten["proxies"][0]["private-key"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("rewritten private-key is missing"))?;
+        assert_ne!(
+            destination, "openp2p/subscriptions/0123456789abcdef/keys/deadbeef.key",
+            "the staged key is copied to a bundle destination"
+        );
+        assert!(destination.starts_with("cvr-"), "{destination}");
+        let asset = bundle
+            .assets
+            .iter()
+            .find(|asset| asset.destination == destination)
+            .ok_or_else(|| anyhow::anyhow!("staged key asset is missing"))?;
+        assert_eq!(
+            std::fs::canonicalize(&asset.source)?,
+            std::fs::canonicalize(&key)?,
+            "the asset source is the staged key below the config root"
+        );
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn two_names_for_one_remote_file_are_folded_rather_than_refused() -> anyhow::Result<()> {
         // Identical repeats are one service-side file and are safe to fold.
         let root = std::env::temp_dir().join(format!("clash-verge-bundle-dup-{}", std::process::id()));

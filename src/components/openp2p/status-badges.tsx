@@ -136,34 +136,3 @@ export const OpenP2PTokenBadge = ({ present }: { present: boolean }) => {
     />
   )
 }
-
-export const OpenP2PKeyBadge = ({
-  present,
-  hasNode,
-}: {
-  present: boolean
-  hasNode: boolean
-}) => {
-  const { t } = useTranslation()
-  if (!hasNode) {
-    return (
-      <Chip
-        size="small"
-        variant="outlined"
-        label={t('openp2p.account.keyNoNode')}
-      />
-    )
-  }
-  return (
-    <Chip
-      size="small"
-      variant="outlined"
-      color={present ? 'success' : 'default'}
-      label={
-        present
-          ? t('openp2p.account.keySaved')
-          : t('openp2p.account.keyMissing')
-      }
-    />
-  )
-}

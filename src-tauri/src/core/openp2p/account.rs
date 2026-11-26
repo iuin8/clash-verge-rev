@@ -12,14 +12,6 @@ pub fn accounts_root() -> Result<PathBuf> {
     Ok(openp2p_root()?.join("accounts"))
 }
 
-pub fn tokens_root() -> Result<PathBuf> {
-    Ok(openp2p_root()?.join("tokens"))
-}
-
-pub fn keys_root() -> Result<PathBuf> {
-    Ok(openp2p_root()?.join("keys"))
-}
-
 pub fn account_paths(account_id: &str) -> Result<AccountPaths> {
     if !crate::core::openp2p::schema::valid_slug(account_id, 32) {
         bail!("invalid openp2p account id");
@@ -52,28 +44,6 @@ impl AccountPaths {
     }
 }
 
-pub fn token_path(token_ref: &str) -> Result<PathBuf> {
-    ref_path(&tokens_root()?, token_ref, "token_ref")
-}
-
-pub fn key_path(key_ref: &str) -> Result<PathBuf> {
-    ref_path(&keys_root()?, key_ref, "private_key_ref")
-}
-
-pub fn relative_key_path(key_ref: &str) -> Result<std::string::String> {
-    // mihomo resolves private-key against the core data directory and runtime_bundle copies
-    // files below it, so the generated node must carry this relative path.
-    let _ = key_path(key_ref)?;
-    Ok(format!("openp2p/keys/{key_ref}"))
-}
-
-fn ref_path(root: &Path, reference: &str, field: &str) -> Result<PathBuf> {
-    if !crate::core::openp2p::schema::valid_ref(reference) {
-        bail!("invalid {field}");
-    }
-    Ok(root.join(reference))
-}
-
 pub fn create_private_dir(path: &Path) -> Result<()> {
     std::fs::create_dir_all(path).with_context(|| format!("failed to create {}", path.display()))?;
     let metadata = std::fs::symlink_metadata(path).with_context(|| format!("failed to inspect {}", path.display()))?;
@@ -81,7 +51,7 @@ pub fn create_private_dir(path: &Path) -> Result<()> {
         bail!("{} must be a real directory, not a symlink or file", path.display());
     }
     set_mode(path, 0o700)?;
-    // Nested refs (o2p/home) create ancestors; keep every openp2p-owned ancestor private.
+    // Nested subscription paths create ancestors; keep every openp2p-owned ancestor private.
     let Ok(root) = openp2p_root() else {
         return Ok(());
     };
@@ -134,25 +104,6 @@ pub fn set_mode(path: &Path, mode: u32) -> Result<()> {
     #[cfg(not(unix))]
     let _ = (path, mode);
     Ok(())
-}
-
-pub fn token_present(token_ref: &str) -> bool {
-    token_path(token_ref)
-        .ok()
-        .is_some_and(|path| path.is_file() && !std::fs::read(&path).unwrap_or_default().is_empty())
-}
-
-pub fn key_present(key_ref: &str) -> bool {
-    let Some(path) = key_path(key_ref).ok().filter(|path| path.is_file()) else {
-        return false;
-    };
-    let _ = ensure_private_file(&path);
-    true
-}
-
-pub fn account_key_present(config: &crate::core::openp2p::schema::OpenP2PConfig, account_id: &str) -> bool {
-    let proxies: Vec<&crate::core::openp2p::schema::ProxySpec> = config.proxies_for(account_id).collect();
-    proxies.is_empty() || proxies.iter().all(|proxy| key_present(&proxy.private_key_ref))
 }
 
 pub fn enforce_permissions(paths: &AccountPaths) {

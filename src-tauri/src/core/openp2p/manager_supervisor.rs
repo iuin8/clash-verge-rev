@@ -10,6 +10,7 @@ use crate::core::openp2p::config as o2p_config;
 use crate::core::openp2p::health::{self, HealthFailure, HealthMonitor, LogTail};
 use crate::core::openp2p::process::{self, Reconcile, SpawnSpec};
 use crate::core::openp2p::schema::AccountSpec;
+use crate::core::openp2p::secrets::SecretStore;
 use crate::core::openp2p::state::{OpenP2PChecks, OpenP2PPhase};
 use clash_verge_logging::{Type, logging};
 
@@ -31,7 +32,12 @@ pub(super) fn force_stop_slot(slot: &Arc<AccountSlot>) {
     clippy::cognitive_complexity,
     reason = "the supervisor is one explicit child lifecycle state machine"
 )]
-pub(super) async fn supervise(slot: Arc<AccountSlot>, spec: AccountSpec, mut stop: watch::Receiver<bool>) {
+pub(super) async fn supervise(
+    slot: Arc<AccountSlot>,
+    spec: AccountSpec,
+    secrets: Option<SecretStore>,
+    mut stop: watch::Receiver<bool>,
+) {
     let Ok(paths) = account::account_paths(&spec.id) else {
         slot.set_terminal(OpenP2PPhase::Failed, "invalid account directory".into());
         return;
@@ -58,7 +64,11 @@ pub(super) async fn supervise(slot: Arc<AccountSlot>, spec: AccountSpec, mut sto
             slot.set_stopped();
             return;
         }
-        let token = match o2p_config::read_token(&spec.token_ref) {
+        let token = match secrets
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("token is not staged for this account"))
+            .and_then(|secrets| secrets.read_token(&spec.id))
+        {
             Ok(token) => token,
             Err(error) => {
                 slot.set_terminal(OpenP2PPhase::TokenMissing, health::sanitize(&format!("{error:#}")));

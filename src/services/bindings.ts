@@ -737,8 +737,6 @@ export type OpenP2PAccount_Deserialize = {
   interface: string
   phase: OpenP2PPhase
   tokenPresent: boolean
-  keyPresent: boolean
-  keyRefs: string[]
   pid: number | null
   checks: OpenP2PChecks_Deserialize
   lastError: string | null
@@ -759,8 +757,6 @@ export type OpenP2PAccount_Serialize = {
   interface: string
   phase: OpenP2PPhase
   tokenPresent: boolean
-  keyPresent: boolean
-  keyRefs: string[]
   pid?: number | null
   checks: OpenP2PChecks_Serialize
   lastError?: string | null
@@ -843,12 +839,7 @@ export type OpenP2PPhase =
   | 'stopping'
   | 'failed'
 
-export type OpenP2PProfileStatus =
-  | 'ready'
-  | 'needsToken'
-  | 'needsKey'
-  | 'error'
-  | 'unknown'
+export type OpenP2PProfileStatus = 'ready' | 'needsToken' | 'error' | 'unknown'
 
 export type OpenP2PSource = OpenP2PSource_Serialize | OpenP2PSource_Deserialize
 

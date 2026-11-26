@@ -15,7 +15,7 @@ pub(crate) fn sample_host_key() -> std::string::String {
 pub(crate) fn sample_config() -> OpenP2PConfig {
     OpenP2PConfig {
         version: 1,
-        enabled: true,
+        name: Some("Home".into()),
         accounts: vec![AccountSpec {
             id: "home".into(),
             label: Some("Home".into()),
@@ -25,7 +25,7 @@ pub(crate) fn sample_config() -> OpenP2PConfig {
                 port: 27183,
             }),
             node: "mbp-fa-home".into(),
-            token_ref: "o2p/home".into(),
+            token: None,
             public_ip_port: 2065,
             interface: None,
             dns: vec!["223.5.5.5:53".into()],
@@ -40,24 +40,11 @@ pub(crate) fn sample_config() -> OpenP2PConfig {
                 enabled: Enabled::Bool(true),
             }],
         }],
-        proxies: vec![ProxySpec {
-            name: "op2p-home".into(),
-            account: "home".into(),
-            app: Some("ssh-home".into()),
-            ssh_user: "tunnel".into(),
-            private_key_ref: "o2p/home/id_ed25519".into(),
-            host_key: Some(sample_host_key()),
-        }],
         networks: vec![NetworkSpec {
             name: Some("corp".into()),
             account: Some("home".into()),
             domains: vec!["corp.example".into()],
             cidrs: vec!["10.0.0.0/8".into()],
-            dns: vec!["10.0.0.53:53".into()],
-            health: Some(HealthSpec {
-                host: "health.corp.example".into(),
-                port: Some(80),
-            }),
         }],
     }
 }

@@ -1,12 +1,10 @@
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
-use serde_yaml_ng::Value;
+use serde_yaml_ng::{Mapping, Value};
 
-#[allow(dead_code)] // wired by profile render/sync in the next slice
-pub fn account_group_name(account_id: &str) -> std::string::String {
-    format!("OP2P-{account_id}")
-}
+/// The only marker that makes a document an OpenP2P document.
+pub const DOCUMENT_KEY: &str = "x-openp2p";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +18,7 @@ pub enum IssueSeverity {
 pub struct OpenP2PIssue {
     pub code: std::string::String,
     pub severity: IssueSeverity,
-    /// Dotted path inside x-openp2p (never a value).
+    /// Dotted path inside the document (never a value).
     pub path: std::string::String,
     pub message: std::string::String,
 }
@@ -43,10 +41,14 @@ impl OpenP2PIssue {
             message: message.into(),
         }
     }
+
+    pub const fn is_error(&self) -> bool {
+        matches!(self.severity, IssueSeverity::Error)
+    }
 }
 
 pub fn has_errors(issues: &[OpenP2PIssue]) -> bool {
-    issues.iter().any(|issue| issue.severity == IssueSeverity::Error)
+    issues.iter().any(OpenP2PIssue::is_error)
 }
 
 /// A boolean that also accepts the 0/1 form openp2p stores in config.json.
@@ -150,7 +152,14 @@ pub struct AccountSpec {
     pub enabled: bool,
     pub gateway: Option<GatewaySpec>,
     pub node: std::string::String,
-    pub token_ref: std::string::String,
+    /// Inline during import; the stored config never carries it. Accepts the
+    /// numeric and string spellings openp2p documents use.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_token",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<std::string::String>,
     pub public_ip_port: u16,
     pub interface: Option<std::string::String>,
     pub dns: Vec<std::string::String>,
@@ -165,7 +174,7 @@ impl Default for AccountSpec {
             enabled: true,
             gateway: None,
             node: std::string::String::new(),
-            token_ref: std::string::String::new(),
+            token: None,
             public_ip_port: 0,
             interface: None,
             dns: Vec::new(),
@@ -184,65 +193,37 @@ impl AccountSpec {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct ProxySpec {
-    pub name: std::string::String,
-    pub account: std::string::String,
-    /// Which forwarded app this SSH node reaches. Optional when the account has one enabled TCP app.
-    pub app: Option<std::string::String>,
-    pub ssh_user: std::string::String,
-    pub private_key_ref: std::string::String,
-    pub host_key: Option<std::string::String>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct HealthSpec {
-    pub host: std::string::String,
-    pub port: Option<u16>,
+fn deserialize_token<'de, D>(deserializer: D) -> std::result::Result<Option<std::string::String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(token)) => Ok(Some(token)),
+        Some(Value::Number(token)) => Ok(Some(token.to_string())),
+        Some(_) => Err(serde::de::Error::custom("token must be a number or a string")),
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NetworkSpec {
     pub name: Option<std::string::String>,
-    /// Account that owns this route. None is legacy/global and is allowed only
-    /// for migration from the single-account overlay format.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<std::string::String>,
     pub domains: Vec<std::string::String>,
     pub cidrs: Vec<std::string::String>,
-    pub dns: Vec<std::string::String>,
-    #[serde(default, deserialize_with = "deserialize_health")]
-    pub health: Option<HealthSpec>,
-}
-
-fn deserialize_health<'de, D>(deserializer: D) -> std::result::Result<Option<HealthSpec>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::Deserialize as _;
-    let value = Option::<Value>::deserialize(deserializer)?;
-    match value {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(host)) => Ok(Some(HealthSpec { host, port: None })),
-        Some(Value::Mapping(mapping)) => serde_yaml_ng::from_value::<HealthSpec>(Value::Mapping(mapping))
-            .map(Some)
-            .map_err(serde::de::Error::custom),
-        Some(_) => Err(serde::de::Error::custom(
-            "health must be a hostname string or a {host, port} mapping",
-        )),
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct OpenP2PConfig {
     pub version: u32,
-    pub enabled: bool,
+    /// Optional display name of the document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<std::string::String>,
     pub accounts: Vec<AccountSpec>,
-    pub proxies: Vec<ProxySpec>,
     pub networks: Vec<NetworkSpec>,
 }
 
@@ -250,9 +231,8 @@ impl Default for OpenP2PConfig {
     fn default() -> Self {
         Self {
             version: 1,
-            enabled: true,
+            name: None,
             accounts: Vec::new(),
-            proxies: Vec::new(),
             networks: Vec::new(),
         }
     }
@@ -262,25 +242,27 @@ impl OpenP2PConfig {
     pub fn account(&self, id: &str) -> Option<&AccountSpec> {
         self.accounts.iter().find(|account| account.id == id)
     }
-
-    pub fn proxies_for<'a>(&'a self, account_id: &'a str) -> impl Iterator<Item = &'a ProxySpec> + 'a {
-        self.proxies.iter().filter(move |proxy| proxy.account == account_id)
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.accounts.is_empty() && self.proxies.is_empty() && self.networks.is_empty()
-    }
 }
 
-pub struct ParsedSeed {
+/// Wraps the normalized config as a re-parseable OpenP2P document. The store
+/// keeps this wrapper so `load_config` exercises the same canonical shape as an
+/// import, without the mihomo part or any credential value.
+pub fn store_document(config: &OpenP2PConfig) -> std::result::Result<std::string::String, serde_yaml_ng::Error> {
+    let mut document = Mapping::new();
+    document.insert(Value::from(DOCUMENT_KEY), serde_yaml_ng::to_value(config)?);
+    serde_yaml_ng::to_string(&Value::Mapping(document))
+}
+
+pub struct ParsedStore {
     pub config: OpenP2PConfig,
     pub issues: Vec<OpenP2PIssue>,
 }
 
-/// Extracts and validates x-openp2p. A bare document with a known top-level key is also accepted.
-pub fn parse_seed(yaml: &str) -> ParsedSeed {
+/// Store parse path: accepts only the `x-openp2p` wrapper and never performs
+/// import-time generation or privilege checks.
+pub fn parse_store(yaml: &str) -> ParsedStore {
     if yaml.len() > 1024 * 1024 {
-        return ParsedSeed {
+        return ParsedStore {
             config: OpenP2PConfig::default(),
             issues: vec![OpenP2PIssue::error(
                 "config_too_large",
@@ -292,14 +274,14 @@ pub fn parse_seed(yaml: &str) -> ParsedSeed {
     let value = match serde_yaml_ng::from_str::<Value>(yaml) {
         Ok(value) => value,
         Err(error) => {
-            return ParsedSeed {
+            return ParsedStore {
                 config: OpenP2PConfig::default(),
                 issues: vec![OpenP2PIssue::error("yaml_syntax", "", error.to_string())],
             };
         }
     };
     let Some(document) = value.as_mapping() else {
-        return ParsedSeed {
+        return ParsedStore {
             config: OpenP2PConfig::default(),
             issues: vec![OpenP2PIssue::error(
                 "yaml_syntax",
@@ -308,15 +290,8 @@ pub fn parse_seed(yaml: &str) -> ParsedSeed {
             )],
         };
     };
-
-    let from_profile = document.contains_key("x-openp2p");
-    let seed = if from_profile {
-        document.get("x-openp2p").cloned().unwrap_or(Value::Null)
-    } else if document.contains_key("accounts") || document.contains_key("proxies") || document.contains_key("networks")
-    {
-        Value::Mapping(document.clone())
-    } else {
-        return ParsedSeed {
+    let Some(block) = document.get(DOCUMENT_KEY) else {
+        return ParsedStore {
             config: OpenP2PConfig::default(),
             issues: vec![OpenP2PIssue::error(
                 "x_openp2p_missing",
@@ -325,84 +300,141 @@ pub fn parse_seed(yaml: &str) -> ParsedSeed {
             )],
         };
     };
-
-    let mut issues = reject_secret_fields(&seed, "x-openp2p");
-    if from_profile
-        && document.keys().any(|key| {
-            matches!(
-                key.as_str(),
-                Some("proxies" | "proxy-groups" | "proxy-providers" | "rules" | "dns")
-            )
-        })
-    {
-        issues.push(OpenP2PIssue::warning(
-            "profile_import_required",
-            "",
-            "this document also contains mihomo configuration; import the full profile under Profiles to use it, this page only stores the x-openp2p block",
-        ));
+    let Some(block) = block.as_mapping() else {
+        return ParsedStore {
+            config: OpenP2PConfig::default(),
+            issues: vec![OpenP2PIssue::error(
+                "schema_invalid",
+                DOCUMENT_KEY,
+                "x-openp2p must be a mapping",
+            )],
+        };
+    };
+    let issues = legacy_document_issues(document, block);
+    if has_errors(&issues) {
+        return ParsedStore {
+            config: OpenP2PConfig::default(),
+            issues,
+        };
     }
-    let mut config = match serde_yaml_ng::from_value::<OpenP2PConfig>(seed) {
+    let mut config = match serde_yaml_ng::from_value::<OpenP2PConfig>(Value::Mapping(block.clone())) {
         Ok(config) => config,
         Err(error) => {
-            let message = error.to_string();
-            let code = if message.contains("unknown field") {
-                "unknown_field"
-            } else {
-                "schema_invalid"
+            return ParsedStore {
+                config: OpenP2PConfig::default(),
+                issues: vec![schema_issue(&error)],
             };
-            issues.push(OpenP2PIssue::error(code, "x-openp2p", message));
-            OpenP2PConfig::default()
         }
     };
-    issues.extend(normalize_and_validate(&mut config));
-    ParsedSeed { config, issues }
+    let mut issues = Vec::new();
+    for (index, account) in config.accounts.iter().enumerate() {
+        if account.token.is_some() {
+            issues.push(OpenP2PIssue::error(
+                "invalid_secret",
+                format!("accounts[{index}].token"),
+                "the stored config must not carry a token",
+            ));
+        }
+    }
+    issues.extend(crate::core::openp2p::schema_validate::normalize_and_validate(
+        &mut config,
+    ));
+    ParsedStore { config, issues }
 }
 
-/// Rejects inline secrets. Only token_ref / private_key_ref may appear.
-fn reject_secret_fields(value: &Value, path: &str) -> Vec<OpenP2PIssue> {
+pub fn schema_issue(error: &serde_yaml_ng::Error) -> OpenP2PIssue {
+    let message = error.to_string();
+    let code = if message.contains("unknown field") {
+        "unknown_field"
+    } else {
+        "schema_invalid"
+    };
+    OpenP2PIssue::error(code, DOCUMENT_KEY, message)
+}
+
+/// Explicit failures for the shapes the canonical document replaced.
+pub fn legacy_document_issues(document: &Mapping, block: &Mapping) -> Vec<OpenP2PIssue> {
     let mut issues = Vec::new();
-    reject_secret_fields_inner(value, path, &mut issues);
+    if document.contains_key("x-openp2p-secrets") {
+        issues.push(OpenP2PIssue::error(
+            "secrets_block_removed",
+            "x-openp2p-secrets",
+            "x-openp2p-secrets is no longer supported; put account tokens inline under accounts[] and SSH keys inline in the mihomo proxies",
+        ));
+    }
+    for section in ["proxies", "proxy-groups", "proxy-providers", "rules", "dns"] {
+        if block.contains_key(section) {
+            issues.push(OpenP2PIssue::error(
+                "mihomo_section_at_top_level",
+                format!("{DOCUMENT_KEY}.{section}"),
+                format!("{section} is ordinary mihomo config and must be a top-level key, not part of x-openp2p"),
+            ));
+        }
+    }
+    scan_legacy_keys(&Value::Mapping(block.clone()), DOCUMENT_KEY, &mut issues);
+    scan_legacy_proxies(document.get("proxies"), "proxies", &mut issues);
+    if let Some(Value::Mapping(providers)) = document.get("proxy-providers") {
+        for (name, provider) in providers {
+            let Some(payload) = provider.get("payload") else {
+                continue;
+            };
+            let path = format!("proxy-providers.{}.payload", name.as_str().unwrap_or_default());
+            scan_legacy_proxies(Some(payload), &path, &mut issues);
+        }
+    }
     issues
 }
 
-fn reject_secret_fields_inner(value: &Value, path: &str, issues: &mut Vec<OpenP2PIssue>) {
+fn scan_legacy_keys(value: &Value, path: &str, issues: &mut Vec<OpenP2PIssue>) {
     match value {
         Value::Mapping(mapping) => {
             for (key, child) in mapping {
                 let Some(key) = key.as_str() else {
                     continue;
                 };
-                let lower = key.to_ascii_lowercase();
                 let child_path = format!("{path}.{key}");
-                match lower.as_str() {
-                    "token" => issues.push(OpenP2PIssue::error(
-                        "token_in_config",
+                if key == "token_ref" || key == "private_key_ref" {
+                    issues.push(OpenP2PIssue::error(
+                        "legacy_reference",
                         &child_path,
-                        "x-openp2p must not contain token values; use token_ref",
-                    )),
-                    "private_key" | "private-key" | "privatekey" | "password" | "passphrase" => {
-                        issues.push(OpenP2PIssue::error(
-                            "key_in_config",
-                            &child_path,
-                            "x-openp2p must not contain key material; put credentials inline or in x-openp2p-secrets",
-                        ));
-                    }
-                    _ => {}
+                        "token_ref/private_key_ref were removed; account tokens are inline and SSH keys are inline private-key values",
+                    ));
                 }
-                reject_secret_fields_inner(child, &child_path, issues);
+                scan_legacy_keys(child, &child_path, issues);
             }
         }
         Value::Sequence(sequence) => {
             for (index, child) in sequence.iter().enumerate() {
-                reject_secret_fields_inner(child, &format!("{path}[{index}]"), issues);
+                scan_legacy_keys(child, &format!("{path}[{index}]"), issues);
             }
         }
-        Value::String(text) if text.contains("PRIVATE KEY") => issues.push(OpenP2PIssue::error(
-            "key_in_config",
-            path,
-            "x-openp2p must not contain key material",
-        )),
         _ => {}
+    }
+}
+
+fn scan_legacy_proxies(value: Option<&Value>, path: &str, issues: &mut Vec<OpenP2PIssue>) {
+    let Some(Value::Sequence(proxies)) = value else {
+        return;
+    };
+    for (index, proxy) in proxies.iter().enumerate() {
+        let Some(proxy) = proxy.as_mapping() else {
+            continue;
+        };
+        let legacy: Vec<&str> = ["account", "app", "ssh_user", "private_key", "private_key_ref"]
+            .into_iter()
+            .filter(|field| proxy.contains_key(*field))
+            .collect();
+        if legacy.is_empty() {
+            continue;
+        }
+        issues.push(OpenP2PIssue::error(
+            "legacy_reference",
+            format!("{path}[{index}]"),
+            format!(
+                "custom OpenP2P proxy fields ({}) were removed; use a standard mihomo type: ssh proxy",
+                legacy.join(", ")
+            ),
+        ));
     }
 }
 
@@ -423,10 +455,6 @@ pub fn normalize_domain(raw: &str) -> Option<std::string::String> {
         return None;
     }
     Some(domain.to_ascii_lowercase())
-}
-
-pub fn dns_policy_key(domain: &str) -> std::string::String {
-    format!("+.{domain}")
 }
 
 pub fn normalize_dns_server(raw: &str) -> Option<std::string::String> {
@@ -487,24 +515,6 @@ pub fn valid_authorized_key(raw: &str) -> bool {
     decoded.len() >= 4 + embedded_len && decoded[4..4 + embedded_len] == *kind.as_bytes()
 }
 
-pub fn valid_ref(value: &str) -> bool {
-    if value.is_empty() || value.len() > 128 || value.starts_with('/') || value.ends_with('/') {
-        return false;
-    }
-    if value.contains("..") || value.contains("//") {
-        return false;
-    }
-    value.split('/').all(|segment| {
-        !segment.is_empty()
-            && segment
-                .chars()
-                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
-    }) && value
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
-}
-
 pub fn valid_slug(value: &str, max_len: usize) -> bool {
     let mut chars = value.chars();
     let Some(first) = chars.next() else {
@@ -522,7 +532,7 @@ pub fn valid_node_name(value: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-')
 }
 
-fn valid_host(value: &str) -> bool {
+pub fn valid_host(value: &str) -> bool {
     let value = value.trim();
     (!value.is_empty()
         && value.len() <= 253
@@ -533,7 +543,7 @@ fn valid_host(value: &str) -> bool {
         || normalize_domain(value).is_some()
 }
 
-fn valid_interface(value: &str) -> bool {
+pub fn valid_interface(value: &str) -> bool {
     if value == "auto" {
         return true;
     }
@@ -543,7 +553,7 @@ fn valid_interface(value: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == ':' || ch == '-')
 }
 
-fn valid_whitelist(value: &str) -> bool {
+pub fn valid_whitelist(value: &str) -> bool {
     let value = value.trim();
     if value.is_empty() {
         return false;
@@ -577,9 +587,6 @@ fn split_host_port(raw: &str) -> Option<(&str, Option<u16>)> {
         None => Some((raw, None)),
     }
 }
-#[path = "schema_validate.rs"]
-mod validate;
-pub use validate::normalize_and_validate;
 
 #[cfg(test)]
 #[path = "schema_fixtures.rs"]
