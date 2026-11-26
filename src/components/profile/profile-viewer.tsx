@@ -133,10 +133,21 @@ export function ProfileViewer({
           if (!uid) {
             throw new Error(t('profiles.modals.profileForm.errors.uidMissing'))
           }
-          await mutate(() => patchProfile(uid, managedOpenP2pPatch(option)), {
-            id: 'patch-profile',
-            errorNotice: false,
-          })
+          await mutate(
+            () =>
+              patchProfile(
+                uid,
+                managedOpenP2pPatch({
+                  name: form.name,
+                  desc: form.desc,
+                  option,
+                }),
+              ),
+            {
+              id: 'patch-profile',
+              errorNotice: false,
+            },
+          )
           setOpen(false)
           setTimeout(() => reset(), 500)
           setTimeout(() => onChange(false), 0)
@@ -373,53 +384,59 @@ export function ProfileViewer({
       onOk={handleOk}
       loading={loading}
     >
-      {!managedOpenP2p && (
-        <>
-          <Controller
-            name="type"
-            control={control}
-            render={({ field }) => (
-              <FormControl size="small" fullWidth sx={{ mt: 1, mb: 1 }}>
-                <InputLabel>
-                  {t('profiles.modals.profileForm.fields.type')}
-                </InputLabel>
-                <Select
-                  {...field}
-                  autoFocus
-                  label={t('profiles.modals.profileForm.fields.type')}
-                >
-                  <MenuItem value="remote">
-                    {t('profiles.modals.profileForm.types.remote')}
-                  </MenuItem>
-                  <MenuItem value="local">
-                    {t('profiles.modals.profileForm.types.local')}
-                  </MenuItem>
-                </Select>
-              </FormControl>
-            )}
-          />
-
-          <Controller
-            name="name"
-            control={control}
-            render={({ field }) => (
-              <TextField {...text} {...field} label={t('shared.labels.name')} />
-            )}
-          />
-
-          <Controller
-            name="desc"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...text}
+      {managedOpenP2p ? (
+        <TextField
+          {...text}
+          sx={{ mt: 1, mb: 1 }}
+          label={t('profiles.modals.profileForm.fields.type')}
+          value={t('profiles.components.profileItem.openp2p')}
+          slotProps={{ input: { readOnly: true } }}
+        />
+      ) : (
+        <Controller
+          name="type"
+          control={control}
+          render={({ field }) => (
+            <FormControl size="small" fullWidth sx={{ mt: 1, mb: 1 }}>
+              <InputLabel>
+                {t('profiles.modals.profileForm.fields.type')}
+              </InputLabel>
+              <Select
                 {...field}
-                label={t('profiles.modals.profileForm.fields.description')}
-              />
-            )}
-          />
-        </>
+                autoFocus
+                label={t('profiles.modals.profileForm.fields.type')}
+              >
+                <MenuItem value="remote">
+                  {t('profiles.modals.profileForm.types.remote')}
+                </MenuItem>
+                <MenuItem value="local">
+                  {t('profiles.modals.profileForm.types.local')}
+                </MenuItem>
+              </Select>
+            </FormControl>
+          )}
+        />
       )}
+
+      <Controller
+        name="name"
+        control={control}
+        render={({ field }) => (
+          <TextField {...text} {...field} label={t('shared.labels.name')} />
+        )}
+      />
+
+      <Controller
+        name="desc"
+        control={control}
+        render={({ field }) => (
+          <TextField
+            {...text}
+            {...field}
+            label={t('profiles.modals.profileForm.fields.description')}
+          />
+        )}
+      />
 
       {isLocal && openType === 'new' && (
         <FileInput
@@ -432,7 +449,7 @@ export function ProfileViewer({
 
       {(isRemote || managedOpenP2p) && (
         <>
-          {isRemote && (
+          {isRemote && !managedOpenP2p && (
             <Controller
               name="url"
               control={control}

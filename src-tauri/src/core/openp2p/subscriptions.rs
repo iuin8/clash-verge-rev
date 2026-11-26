@@ -6,8 +6,8 @@
 //!   (0600). It may carry inline credentials; only the content command reads it.
 //! - subscriptions/<id>/config.yaml — the normalized, secret-free x-openp2p
 //!   wrapper. Keeping it also keeps generated node names and ports stable.
-//! - subscriptions/<id>/meta.yaml — id, name, source kind, source URL, import
-//!   time and account count.
+//! - subscriptions/<id>/meta.yaml — id, source-derived name, source kind, source
+//!   URL, import time, account count and the user's display name/description.
 //! - subscriptions/<id>/secrets.yaml — the staged token/key manifest (0600).
 //! - subscriptions/<id>/tokens/<account-id>, keys/<sha256>.key — 0600 secrets.
 //! - profiles/<profile_uid>.yaml — the projected mihomo profile (0600).
@@ -47,7 +47,6 @@ use crate::utils::dirs;
 use clash_verge_logging::{Type, logging};
 
 pub const PROFILE_UID_PREFIX: &str = "op2p-sub-";
-pub const PROFILE_DESC_PREFIX: &str = "openp2p-subscription:";
 
 const SOURCE_FILE: &str = "source.yaml";
 const CONFIG_FILE: &str = "config.yaml";
@@ -56,7 +55,14 @@ const META_FILE: &str = "meta.yaml";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionMeta {
     pub id: std::string::String,
+    /// The name derived from the imported document or URL.
     pub name: std::string::String,
+    /// The card name the user chose; absent means `name` is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<std::string::String>,
+    /// Free-form card description; never generated from the source document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<std::string::String>,
     pub source: OpenP2PImportSourceKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_url: Option<std::string::String>,
@@ -68,6 +74,53 @@ pub struct SubscriptionMeta {
 impl SubscriptionMeta {
     pub fn profile_uid(&self) -> std::string::String {
         profile_uid(&self.id)
+    }
+
+    /// The card name: the user's display overlay, or the source-derived name.
+    pub fn card_name(&self) -> &str {
+        self.display_name.as_deref().unwrap_or(&self.name)
+    }
+
+    /// Applies a display edit; returns whether anything changed. `Some(None)` in
+    /// the patch clears the custom value.
+    pub(crate) fn apply_display_patch(&mut self, patch: &DisplayPatch) -> bool {
+        let name_changed = patch
+            .name
+            .as_ref()
+            .is_some_and(|name| self.display_name.as_ref() != name.as_ref());
+        if name_changed {
+            self.display_name = patch.name.clone().flatten();
+        }
+        let description_changed = patch
+            .description
+            .as_ref()
+            .is_some_and(|description| self.description.as_ref() != description.as_ref());
+        if description_changed {
+            self.description = patch.description.clone().flatten();
+        }
+        name_changed || description_changed
+    }
+}
+
+/// Display fields from a profile patch. The outer `None` means the field was not
+/// part of the patch; the inner `None` clears the custom value.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DisplayPatch {
+    pub name: Option<Option<std::string::String>>,
+    pub description: Option<Option<std::string::String>>,
+}
+
+impl DisplayPatch {
+    /// Blank text clears the custom value so the card falls back to the source
+    /// name and carries no description.
+    pub(crate) fn from_fields(name: Option<&str>, description: Option<&str>) -> Self {
+        fn value(raw: &str) -> Option<std::string::String> {
+            (!raw.trim().is_empty()).then(|| raw.to_owned())
+        }
+        Self {
+            name: name.map(value),
+            description: description.map(value),
+        }
     }
 }
 
@@ -134,10 +187,6 @@ impl SubscriptionStore {
 
     pub fn dir(&self, id: &str) -> PathBuf {
         self.subscriptions_dir().join(id)
-    }
-
-    pub fn dir_exists(&self, id: &str) -> bool {
-        schema::valid_slug(id, 32) && self.dir(id).is_dir()
     }
 
     pub fn source_path(&self, id: &str) -> PathBuf {
@@ -210,6 +259,15 @@ impl SubscriptionStore {
             bail!("openp2p subscription {id} has mismatched metadata");
         }
         Ok(meta)
+    }
+
+    pub fn save_meta(&self, meta: &SubscriptionMeta) -> Result<()> {
+        validate_id(&meta.id)?;
+        account::atomic_write(
+            &self.meta_path(&meta.id),
+            serde_yaml_ng::to_string(meta)?.as_bytes(),
+            0o600,
+        )
     }
 
     pub fn load_config(&self, id: &str) -> Result<OpenP2PConfig> {
@@ -333,6 +391,8 @@ impl SubscriptionStore {
         let meta = SubscriptionMeta {
             id,
             name,
+            display_name: existing_meta.as_ref().and_then(|meta| meta.display_name.clone()),
+            description: existing_meta.as_ref().and_then(|meta| meta.description.clone()),
             source: kind,
             source_url: source_url
                 .map(canonical_url)
@@ -380,11 +440,7 @@ impl SubscriptionStore {
         let transaction = SecretTransaction::begin(&self.secrets(&id), &preview.parsed, &preview.previous_manifest)?;
         let written = (|| -> Result<bool> {
             account::atomic_write(&self.source_path(&id), preview.source.as_bytes(), 0o600)?;
-            account::atomic_write(
-                &self.meta_path(&id),
-                serde_yaml_ng::to_string(&preview.meta)?.as_bytes(),
-                0o600,
-            )?;
+            self.save_meta(&preview.meta)?;
             ProfileStore::with_config(self.root.clone(), self.config_path(&id)).save_config(&preview.parsed.config)?;
             account::atomic_write(&profile_path, preview.profile_yaml.as_bytes(), 0o600)?;
             upsert_profile_item(profiles, &preview.meta, updated_at)
@@ -516,16 +572,17 @@ pub(crate) fn upsert_profile_item(
 ) -> Result<bool> {
     let uid = meta.profile_uid();
     let file = format!("{uid}.yaml");
-    let desc = format!("{PROFILE_DESC_PREFIX}{}", meta.id);
+    let name = meta.card_name();
+    let description = meta.description.as_deref();
     let updated = Some(updated_at);
     let items = profiles.items.get_or_insert_with(Vec::new);
     let Some(item) = items.iter_mut().find(|item| item.uid.as_deref() == Some(uid.as_str())) else {
         items.push(PrfItem {
             uid: Some(uid.into()),
             itype: Some("local".into()),
-            name: Some(meta.name.clone().into()),
+            name: Some(name.into()),
             file: Some(file.into()),
-            desc: Some(desc.into()),
+            desc: description.map(Into::into),
             updated,
             option: Some(generated_profile_option()),
             ..PrfItem::default()
@@ -535,13 +592,13 @@ pub(crate) fn upsert_profile_item(
     if item.itype.as_deref() != Some("local") || item.file.as_deref() != Some(file.as_str()) {
         bail!("profile {uid} is already used by a different profile item");
     }
-    let name_changed = item.name.as_deref() != Some(meta.name.as_str());
+    let name_changed = item.name.as_deref() != Some(name);
     if name_changed {
-        item.name = Some(meta.name.clone().into());
+        item.name = Some(name.into());
     }
-    let desc_changed = item.desc.as_deref() != Some(desc.as_str());
+    let desc_changed = item.desc.as_deref() != description;
     if desc_changed {
-        item.desc = Some(desc.into());
+        item.desc = description.map(Into::into);
     }
     let updated_changed = item.updated != updated;
     if updated_changed {
@@ -561,6 +618,32 @@ pub(crate) fn upsert_profile_item(
         }
     };
     Ok(name_changed || desc_changed || updated_changed || option_changed)
+}
+
+/// Mirrors a managed display/option patch onto the generated profile card. The
+/// caller persists the subscription meta first; the card only carries a copy.
+pub(crate) fn patch_profile_item(
+    profiles: &mut IProfiles,
+    meta: &SubscriptionMeta,
+    display: &DisplayPatch,
+    option: Option<PrfOption>,
+) -> Result<()> {
+    let uid = meta.profile_uid();
+    let item = profiles
+        .items
+        .as_mut()
+        .and_then(|items| items.iter_mut().find(|item| item.uid.as_deref() == Some(uid.as_str())))
+        .ok_or_else(|| anyhow::anyhow!("the openp2p profile card {uid} is missing"))?;
+    if display.name.is_some() {
+        item.name = Some(meta.card_name().into());
+    }
+    if display.description.is_some() {
+        item.desc = meta.description.as_ref().map(|description| description.as_str().into());
+    }
+    if let Some(option) = option {
+        item.option = Some(option);
+    }
+    Ok(())
 }
 
 pub fn purge_account_dir(account_id: &str) {

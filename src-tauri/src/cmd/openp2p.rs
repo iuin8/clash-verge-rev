@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 
 use super::{CmdResult, CommandFailure, coded_error};
@@ -216,6 +217,46 @@ pub(crate) fn sanitize_option_patch(option: PrfOption) -> PrfOption {
         allow_auto_update: option.allow_auto_update,
         ..PrfOption::default()
     }
+}
+
+/// Persists a managed card's display fields on the subscription meta, then
+/// mirrors them and the merged update options onto the generated profile card.
+/// The meta is written first; a failed card write restores the previous display
+/// text so the card never wins over the durable copy.
+pub(crate) async fn patch_managed_subscription(
+    store: &SubscriptionStore,
+    meta: &SubscriptionMeta,
+    display: &subscriptions::DisplayPatch,
+    option: Option<PrfOption>,
+) -> anyhow::Result<()> {
+    let mut updated = meta.clone();
+    let meta_changed = updated.apply_display_patch(display);
+    if meta_changed {
+        store
+            .save_meta(&updated)
+            .context("save the OpenP2P subscription display fields")?;
+    }
+    let updated_meta = updated;
+    let display = display.clone();
+    let item_result = Config::profiles()
+        .await
+        .with_data_modify(|mut profiles| async move {
+            subscriptions::patch_profile_item(&mut profiles, &updated_meta, &display, option)?;
+            profiles.save_file().await?;
+            Ok((profiles, ()))
+        })
+        .await;
+    if let Err(error) = item_result {
+        if meta_changed && let Err(rollback) = store.save_meta(meta) {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to restore the OpenP2P subscription display fields: {rollback:#}"
+            );
+        }
+        return Err(error.context("save the OpenP2P profile card"));
+    }
+    Ok(())
 }
 
 /// A partial edit-info patch keeps the settings it does not mention instead of

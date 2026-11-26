@@ -69,12 +69,10 @@ fn validation_rejects_non_subscriptions_and_missing_items() {
 }
 
 fn subscription_item(uid: &str) -> PrfItem {
-    let id = uid.strip_prefix("op2p-sub-").expect("subscription uid");
     PrfItem {
         uid: Some(uid.into()),
         itype: Some("local".into()),
         file: Some(format!("{uid}.yaml").into()),
-        desc: Some(format!("{}{id}", crate::core::openp2p::subscriptions::PROFILE_DESC_PREFIX).into()),
         ..PrfItem::default()
     }
 }

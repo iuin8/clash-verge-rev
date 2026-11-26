@@ -16,7 +16,7 @@ use crate::core::openp2p::schema::{AccountSpec, OpenP2PConfig};
 use crate::core::openp2p::secrets::SecretStore;
 use crate::core::openp2p::state::{OpenP2PAccount, OpenP2PChecks, OpenP2PPhase, OpenP2PSource, OpenP2PView};
 use crate::core::openp2p::subscriptions::{
-    self, PROFILE_DESC_PREFIX, SubscriptionRuntime, SubscriptionStore, id_from_profile_uid, purge_account_dir,
+    self, SubscriptionRuntime, SubscriptionStore, id_from_profile_uid, purge_account_dir,
 };
 use crate::singleton;
 use clash_verge_logging::{Type, logging};
@@ -277,13 +277,6 @@ impl OpenP2PManager {
             return;
         }
         let _ = tokio::task::spawn_blocking(reconcile_orphans).await;
-        if let Err(error) = repair_orphan_subscription_items().await {
-            logging!(
-                warn,
-                Type::Setup,
-                "failed to repair restored openp2p subscription cards: {error:#}"
-            );
-        }
         if let Err(error) = manager.reconcile_current().await {
             logging!(
                 error,
@@ -630,48 +623,6 @@ async fn ensure_current_projection(store: &SubscriptionStore, runtime: &Subscrip
     Ok(())
 }
 
-/// Restored backups carry subscription cards but not the subscription store.
-/// Demote those cards to plain local profiles so they stay deletable and
-/// editable; the profile file itself is still in the archive.
-async fn repair_orphan_subscription_items() -> Result<()> {
-    let store = SubscriptionStore::app_default()?;
-    let profiles = Config::profiles().await;
-    let needs_repair = profiles
-        .latest_arc()
-        .items
-        .as_ref()
-        .is_some_and(|items| items.iter().any(|item| is_orphan_subscription_item(item, &store)));
-    if !needs_repair {
-        return Ok(());
-    }
-    let store = store.clone();
-    profiles
-        .with_data_modify(|mut candidate| async move {
-            let mut changed = false;
-            if let Some(items) = candidate.items.as_mut() {
-                for item in items.iter_mut() {
-                    if is_orphan_subscription_item(item, &store) {
-                        item.desc = None;
-                        changed = true;
-                    }
-                }
-            }
-            if changed {
-                candidate.save_file().await?;
-            }
-            Ok((candidate, ()))
-        })
-        .await?;
-    Ok(())
-}
-
-fn is_orphan_subscription_item(item: &crate::config::PrfItem, store: &SubscriptionStore) -> bool {
-    item.desc
-        .as_deref()
-        .and_then(|desc| desc.strip_prefix(PROFILE_DESC_PREFIX))
-        .is_some_and(|id| !store.dir_exists(id))
-}
-
 /// An inactive subscription keeps no account working directory: config.json holds
 /// the rendered token and must not outlive the sidecar run.
 fn purge_inactive_accounts(active_profile_uid: Option<&str>) {
@@ -790,34 +741,6 @@ mod tests {
         );
         assert_eq!(OpenP2PManager::direct_subscription_uid("bundle-main"), None);
         assert_eq!(OpenP2PManager::direct_subscription_uid("plain-profile"), None);
-    }
-
-    #[test]
-    fn orphan_subscription_cards_are_detected_for_repair() {
-        let root = std::env::temp_dir().join(format!(
-            "cvr-openp2p-orphan-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos()
-        ));
-        let store = SubscriptionStore::at(root.clone());
-        let id = "deadbeefdeadbeef";
-        let item = crate::config::PrfItem {
-            uid: Some(format!("op2p-sub-{id}").into()),
-            desc: Some(format!("{PROFILE_DESC_PREFIX}{id}").into()),
-            ..Default::default()
-        };
-        assert!(is_orphan_subscription_item(&item, &store));
-        std::fs::create_dir_all(root.join("openp2p/subscriptions").join(id)).expect("subscription dir");
-        assert!(!is_orphan_subscription_item(&item, &store));
-        let plain = crate::config::PrfItem {
-            desc: Some("OpenP2P".into()),
-            ..Default::default()
-        };
-        assert!(!is_orphan_subscription_item(&plain, &store));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

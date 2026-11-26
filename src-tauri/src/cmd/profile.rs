@@ -530,16 +530,26 @@ fn timer_settings_changed(old: Option<&crate::config::PrfOption>, new: Option<&c
     (old_interval != new_interval) || (old_allow_auto_update != new_allow_auto_update)
 }
 
+fn refresh_timer_after_patch(index: String) {
+    crate::process::AsyncHandler::spawn(move || async move {
+        logging!(info, Type::Timer, "Timer update settings changed, refreshing timer...");
+        if let Err(e) = crate::core::Timer::global().refresh().await {
+            logging!(error, Type::Timer, "Failed to refresh timer: {e:#}");
+        } else {
+            crate::core::handle::Handle::notify_timer_updated(&index);
+        }
+    });
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) -> CmdResult {
     let index: String = index.into();
-    let managed = super::openp2p::find_managed_subscription(&index)?.is_some();
     let mut profile: PrfItem = profile.into();
-    if managed {
-        // An OpenP2P card is generated from its source document: only update
-        // settings are writable, and the edit-info form's display fields are
-        // ignored rather than rejected.
+    if let Some((store, meta)) = super::openp2p::find_managed_subscription(&index)? {
+        // An OpenP2P card is generated from its source document: the card's
+        // display text and the generic update settings are the only writable
+        // fields.
         let existing_option = {
             let profiles = Config::profiles().await;
             profiles
@@ -548,20 +558,24 @@ pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) ->
                 .ok()
                 .and_then(|item| item.option.clone())
         };
-        profile.itype = None;
-        profile.name = None;
-        profile.desc = None;
-        profile.file = None;
-        profile.url = None;
-        profile.selected = None;
-        profile.extra = None;
-        profile.updated = None;
-        profile.option = profile
+        let display = crate::core::openp2p::subscriptions::DisplayPatch::from_fields(
+            profile.name.as_deref(),
+            profile.desc.as_deref(),
+        );
+        let option = profile
             .option
+            .take()
             .map(|option| super::openp2p::merge_option_patch(existing_option.as_ref(), option));
-    } else {
-        super::bundle_save::ensure_not_managed(&index)?;
+        let should_refresh_timer = timer_settings_changed(existing_option.as_ref(), option.as_ref());
+        super::openp2p::patch_managed_subscription(&store, &meta, &display, option)
+            .await
+            .with_error_code("PROFILE_UPDATE_FAILED")?;
+        if should_refresh_timer {
+            refresh_timer_after_patch(index);
+        }
+        return Ok(());
     }
+    super::bundle_save::ensure_not_managed(&index)?;
     if crate::config::bundle::is_bundle_uid(&index) {
         // The generated bundle is owned by its members; only display fields may change.
         profile.itype = None;
@@ -590,14 +604,7 @@ pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) ->
     }
 
     if should_refresh_timer {
-        crate::process::AsyncHandler::spawn(move || async move {
-            logging!(info, Type::Timer, "Timer update settings changed, refreshing timer...");
-            if let Err(e) = crate::core::Timer::global().refresh().await {
-                logging!(error, Type::Timer, "Failed to refresh timer: {e:#}");
-            } else {
-                crate::core::handle::Handle::notify_timer_updated(&index);
-            }
-        });
+        refresh_timer_after_patch(index);
     }
 
     Ok(())

@@ -9,9 +9,11 @@ it('treats only op2p-sub profiles as managed OpenP2P profiles', () => {
   expect(isManagedOpenP2pProfile(undefined)).toBe(false)
 })
 
-it('persists generic fetch/update fields and drops enhancer fields', () => {
-  expect(
-    managedOpenP2pPatch({
+it('writes display identity and generic fetch/update fields only', () => {
+  const patch = managedOpenP2pPatch({
+    name: 'Home gateway',
+    desc: 'Family subscription',
+    option: {
       update_interval: 30,
       allow_auto_update: false,
       with_proxy: true,
@@ -24,8 +26,12 @@ it('persists generic fetch/update fields and drops enhancer fields', () => {
       script: 'script',
       proxies: 'proxies',
       groups: 'groups',
-    }),
-  ).toEqual({
+    },
+  })
+
+  expect(patch).toEqual({
+    name: 'Home gateway',
+    desc: 'Family subscription',
     option: {
       user_agent: 'agent',
       with_proxy: true,
@@ -35,5 +41,18 @@ it('persists generic fetch/update fields and drops enhancer fields', () => {
       danger_accept_invalid_certs: true,
       allow_auto_update: false,
     },
+  })
+  expect(Object.keys(patch).sort()).toEqual(['desc', 'name', 'option'])
+})
+
+it('clears identity overrides with empty or missing values', () => {
+  expect(managedOpenP2pPatch({ name: '', desc: '' })).toMatchObject({
+    name: '',
+    desc: '',
+  })
+  expect(managedOpenP2pPatch({})).toMatchObject({ name: '', desc: '' })
+  expect(managedOpenP2pPatch({ name: null, desc: null })).toMatchObject({
+    name: '',
+    desc: '',
   })
 })

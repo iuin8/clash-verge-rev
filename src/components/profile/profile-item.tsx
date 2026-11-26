@@ -267,8 +267,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const { upload = 0, download = 0, total = 0 } = extra ?? {}
   const from = parseUrl(itemData.url!)
-  // The marker identifies the card; it is not user-facing text.
-  const description = openP2pSubscription ? undefined : itemData.desc
+  const description = itemData.desc
   const expire = parseExpire(extra?.expire)
   const progress = Math.min(
     Math.round(((download + upload) * 100) / (total + 0.01)) + 1,

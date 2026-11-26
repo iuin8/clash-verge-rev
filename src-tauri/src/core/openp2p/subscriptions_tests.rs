@@ -7,7 +7,7 @@ use crate::core::openp2p::portable::OpenP2PImportSourceKind;
 use crate::core::openp2p::schema::fixtures::sample_host_key;
 use crate::core::openp2p::secrets::key_digest;
 use crate::core::openp2p::subscriptions::{
-    PROFILE_DESC_PREFIX, SubscriptionStore, id_from_profile_uid, is_subscription_profile_uid,
+    DisplayPatch, SubscriptionStore, id_from_profile_uid, is_subscription_profile_uid, patch_profile_item,
     single_subscription_member,
 };
 
@@ -131,6 +131,8 @@ fn an_import_writes_private_source_meta_config_and_profile_without_activating() 
     assert!(import.profile_changed);
     assert_eq!(import.meta.account_count, 1);
     assert_eq!(import.meta.name, "Home");
+    assert_eq!(import.meta.display_name, None);
+    assert_eq!(import.meta.description, None);
     assert_eq!(import.meta.source, OpenP2PImportSourceKind::Local);
     assert!(profiles.current.is_none());
 
@@ -186,14 +188,12 @@ fn an_import_writes_private_source_meta_config_and_profile_without_activating() 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].uid.as_deref(), Some(import.profile_uid.as_str()));
     assert_eq!(items[0].itype.as_deref(), Some("local"));
+    assert_eq!(items[0].name.as_deref(), Some("Home"));
     assert_eq!(
         items[0].file.as_deref(),
         Some(format!("{}.yaml", import.profile_uid).as_str())
     );
-    assert_eq!(
-        items[0].desc.as_deref(),
-        Some(format!("{PROFILE_DESC_PREFIX}{}", import.meta.id).as_str())
-    );
+    assert!(items[0].desc.is_none(), "a new card starts without a description");
     let option = items[0].option.as_ref().expect("generated option");
     assert_eq!(option.allow_auto_update, Some(true));
     assert_eq!(option.update_interval, None);
@@ -224,6 +224,163 @@ fn reimporting_keeps_the_subscription_identity_and_generated_device_fields() {
     assert_eq!(second.meta.id, first.meta.id);
     assert_eq!(scratch.read(&store.config_path(&second.meta.id)), config_before);
     assert_eq!(scratch.read(&store.profile_path(&second.profile_uid)), profile_before);
+}
+
+#[test]
+fn meta_without_display_fields_still_loads() {
+    let scratch = Scratch::new("legacy-meta");
+    let store = scratch.store();
+    let id = "0123456789abcdef";
+    std::fs::create_dir_all(store.dir(id)).expect("subscription dir");
+    std::fs::write(
+        store.meta_path(id),
+        format!("id: {id}\nname: Home\nsource: local\nimported_at: 1\n"),
+    )
+    .expect("legacy meta");
+
+    let meta = store.load_meta(id).expect("legacy meta loads");
+    assert_eq!(meta.name, "Home");
+    assert_eq!(meta.display_name, None);
+    assert_eq!(meta.description, None);
+    assert_eq!(meta.account_count, 0);
+    assert_eq!(meta.card_name(), "Home");
+}
+
+#[test]
+fn display_fields_survive_reimport_and_a_raw_source_update() {
+    let scratch = Scratch::new("display-fields");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let url = "https://example.com/profiles/openp2p.yaml";
+    let first = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Url,
+            &document("Home", Some(TOKEN), true),
+            Some(url),
+            &mut profiles,
+        )
+        .expect("first")
+        .commit();
+    assert_eq!(first.meta.display_name, None);
+    assert_eq!(first.meta.description, None);
+
+    let mut meta = store.load_meta(&first.meta.id).expect("meta");
+    meta.display_name = Some("Custom name".to_owned());
+    meta.description = Some("Card description".to_owned());
+    store.save_meta(&meta).expect("save display fields");
+
+    // A changed source name must not overwrite the custom display name.
+    let second = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Url,
+            &document("Renamed", Some(TOKEN), true),
+            Some(url),
+            &mut profiles,
+        )
+        .expect("reimport")
+        .commit();
+    assert_eq!(second.meta.id, first.meta.id);
+    assert_eq!(second.meta.name, "Renamed");
+    assert_eq!(second.meta.display_name.as_deref(), Some("Custom name"));
+    assert_eq!(second.meta.description.as_deref(), Some("Card description"));
+    let item = &profiles.items.as_ref().expect("items")[0];
+    assert_eq!(item.name.as_deref(), Some("Custom name"));
+    assert_eq!(item.desc.as_deref(), Some("Card description"));
+
+    let edited = document("Renamed", Some(TOKEN), true).replace("mixed-port: 7890", "mixed-port: 7892");
+    let third = store
+        .prepare_update(&edited, &first.meta.id, &mut profiles)
+        .expect("source update")
+        .commit();
+    assert_eq!(third.meta.display_name.as_deref(), Some("Custom name"));
+    assert_eq!(third.meta.description.as_deref(), Some("Card description"));
+    let item = &profiles.items.as_ref().expect("items")[0];
+    assert_eq!(item.name.as_deref(), Some("Custom name"));
+    assert_eq!(item.desc.as_deref(), Some("Card description"));
+}
+
+#[test]
+fn a_managed_display_patch_updates_meta_and_the_card_without_touching_the_source() {
+    let scratch = Scratch::new("display-patch");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let import = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Local,
+            &document("Home", Some(TOKEN), true),
+            None,
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    let source_before = scratch.read(&store.source_path(&import.meta.id));
+
+    let mut meta = store.load_meta(&import.meta.id).expect("meta");
+    let patch = DisplayPatch::from_fields(Some("Custom name"), Some("Card description"));
+    assert!(meta.apply_display_patch(&patch));
+    store.save_meta(&meta).expect("save meta");
+    let option = PrfOption {
+        update_interval: Some(30),
+        ..PrfOption::default()
+    };
+    patch_profile_item(&mut profiles, &meta, &patch, Some(option)).expect("patch the card");
+
+    let stored = store.load_meta(&import.meta.id).expect("reload meta");
+    assert_eq!(stored.name, "Home", "the source-derived name stays separate");
+    assert_eq!(stored.display_name.as_deref(), Some("Custom name"));
+    assert_eq!(stored.description.as_deref(), Some("Card description"));
+    let item = &profiles.items.as_ref().expect("items")[0];
+    assert_eq!(item.name.as_deref(), Some("Custom name"));
+    assert_eq!(item.desc.as_deref(), Some("Card description"));
+    assert_eq!(item.option.as_ref().and_then(|option| option.update_interval), Some(30));
+    assert_eq!(
+        scratch.read(&store.source_path(&import.meta.id)),
+        source_before,
+        "a display patch never rewrites source.yaml"
+    );
+
+    let clear = DisplayPatch::from_fields(Some("  "), Some(""));
+    assert!(meta.apply_display_patch(&clear));
+    store.save_meta(&meta).expect("save cleared meta");
+    patch_profile_item(&mut profiles, &meta, &clear, None).expect("clear the card");
+    let stored = store.load_meta(&import.meta.id).expect("reload cleared meta");
+    assert_eq!(stored.display_name, None);
+    assert_eq!(stored.description, None);
+    assert_eq!(stored.card_name(), "Home");
+    let item = &profiles.items.as_ref().expect("items")[0];
+    assert_eq!(item.name.as_deref(), Some("Home"));
+    assert!(item.desc.is_none());
+    assert_eq!(
+        item.option.as_ref().and_then(|option| option.update_interval),
+        Some(30),
+        "a patch without an option keeps the existing settings"
+    );
+}
+
+#[test]
+fn an_orphan_subscription_uid_has_no_live_store() {
+    let scratch = Scratch::new("orphan");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let import = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Url,
+            &document("Home", Some(TOKEN), true),
+            Some("https://example.com/profiles/openp2p.yaml"),
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    std::fs::remove_dir_all(store.dir(&import.meta.id)).expect("remove the store");
+
+    assert!(is_subscription_profile_uid(&import.profile_uid));
+    assert!(
+        store
+            .find_by_profile_uid(&import.profile_uid)
+            .expect("lookup")
+            .is_none()
+    );
+    assert!(store.runtime_for_uid(&import.profile_uid).expect("runtime").is_none());
 }
 
 #[test]
@@ -464,9 +621,14 @@ fn removing_a_subscription_removes_its_directory_and_scoped_credentials() {
     std::fs::write(account_dir.join("config.json"), "{}").expect("config.json");
     let token_path = store.token_path(&import.meta.id, "home").expect("token");
     let key_path = store.secrets(&import.meta.id).key_path(&key_digest(KEY)).expect("key");
+    let mut meta = store.load_meta(&import.meta.id).expect("meta");
+    meta.display_name = Some("Custom name".to_owned());
+    meta.description = Some("Card description".to_owned());
+    store.save_meta(&meta).expect("save display fields");
 
     store.remove(&import.meta.id).expect("remove");
     assert!(!store.dir(&import.meta.id).exists());
+    assert!(!store.meta_path(&import.meta.id).exists());
     assert!(!token_path.exists());
     assert!(!key_path.exists());
     assert!(!account_dir.exists());

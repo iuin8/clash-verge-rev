@@ -3,14 +3,24 @@ import { isOpenP2pSubscriptionUid } from './openp2p-subscription'
 export const isManagedOpenP2pProfile = (uid?: string | null) =>
   isOpenP2pSubscriptionUid(uid)
 
+interface ManagedOpenP2pEdit {
+  name?: string | null
+  desc?: string | null
+  option?: IProfileOption
+}
+
 /**
- * The subscription source owns the identity fields. The shared profile form may
- * still persist every generic fetch/update option the backend honors for an
- * OpenP2P source download.
+ * The shared edit-info form writes the display identity and every generic
+ * fetch/update option the backend honors for an OpenP2P source download.
+ * Empty identity fields clear the stored override.
  */
-export const managedOpenP2pPatch = (
-  option?: IProfileOption,
-): { option: IProfileOption } => ({
+export const managedOpenP2pPatch = ({
+  name,
+  desc,
+  option,
+}: ManagedOpenP2pEdit) => ({
+  name: name ?? '',
+  desc: desc ?? '',
   option: {
     user_agent: option?.user_agent,
     with_proxy: option?.with_proxy,

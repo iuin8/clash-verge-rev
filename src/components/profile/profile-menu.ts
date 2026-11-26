@@ -21,8 +21,8 @@ interface ProfileMenuSource {
 
 /**
  * OpenP2P subscriptions are local profiles backed by a subscription store: the
- * raw source is editable and refreshable, but the identity fields and enhancer
- * overlays other profile kinds expose do not apply.
+ * raw source is editable and refreshable, but enhancer overlays and the
+ * subscription-specific home/QR/update routes do not apply.
  */
 export const profileMenuActions = (
   item: ProfileMenuSource,
