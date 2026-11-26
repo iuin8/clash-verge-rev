@@ -19,7 +19,7 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
-## v2.5.10-fa.6
+## v2.5.10-fa.7
 
 > [!IMPORTANT]
 > 这是基于上游 v2.5.10 的个人 fork 版本。

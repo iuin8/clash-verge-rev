@@ -3,7 +3,7 @@
 // directory can therefore contain an old helper. The release workflow runs
 // prebuild explicitly, but local builds need the same invariant.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -23,14 +23,27 @@ const serviceName =
   process.platform === 'win32'
     ? 'clash-verge-service.exe'
     : 'clash-verge-service'
-const servicePath = join(root, 'src-tauri', 'resources', serviceName)
+// Linux bundles the service helpers as externalBin sidecars with a target
+// suffix; macOS and Windows keep the plain resources path.
+const serviceDir =
+  process.platform === 'linux'
+    ? join(root, 'src-tauri', 'sidecar')
+    : join(root, 'src-tauri', 'resources')
+const servicePath =
+  process.platform === 'linux'
+    ? readdirSync(serviceDir)
+        .filter((name) => name.startsWith('clash-verge-service-'))
+        .map((name) => join(serviceDir, name))
+        .sort()[0]
+    : join(serviceDir, serviceName)
 
 let bytes
 try {
+  if (!servicePath) throw new Error('not found')
   bytes = readFileSync(servicePath)
 } catch {
   throw new Error(
-    `missing generated service helper ${servicePath}; run "pnpm run prebuild" before building`,
+    `missing generated service helper under ${serviceDir}; run "pnpm run prebuild" before building`,
   )
 }
 const marker = Buffer.from(expected, 'latin1')
