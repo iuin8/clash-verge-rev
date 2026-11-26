@@ -19,6 +19,22 @@
        scripts-workflow/group_platforms.sh regroups, --check verifies
      HTML comments are stripped by the update dialog's sanitizer and hidden on
      GitHub, so they never reach users. -->
+## v2.5.10-fa.6
+
+> [!IMPORTANT]
+> 这是基于上游 v2.5.10 的个人 fork 版本。
+> OpenP2P 配置已改为顶层 `x-openp2p`；旧配置不兼容，需重新导入。
+
+### ✨ 新增功能
+
+- macOS OpenP2P 改为单文件订阅：导入 YAML 生成订阅卡，可查看/编辑源文件、激活并加入 Profile Bundle
+- macOS OpenP2P 复用 Profile 通用能力：可编辑名称/描述、更新间隔并参与自动更新
+
+### 🚀 优化改进
+
+- macOS OpenP2P 配置收敛为顶层 `x-openp2p`：mihomo 代理/规则/DNS 与账号配置分离
+- macOS OpenP2P 凭据在导入时转存 0600 文件，运行 profile/备份不含 token 或 SSH 私钥
+
 ## v2.5.10-fa.5
 
 > [!IMPORTANT]
