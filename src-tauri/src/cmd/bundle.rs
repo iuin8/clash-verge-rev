@@ -162,15 +162,27 @@ pub async fn set_bundle_members(uids: Vec<std::string::String>) -> CmdResult {
     Ok(())
 }
 
-/// Remote subscriptions that belong to the bundle, in bundle order.
-fn remote_bundle_members(meta: &bundle::BundleMeta, items: &[PrfItem]) -> Vec<String> {
+/// Subscriptions that belong to the bundle and have an external source, in
+/// bundle order. An OpenP2P card is local but its URL-backed subscription owns
+/// the update; a local OpenP2P source is only reloaded by an explicit update.
+fn remote_bundle_members(
+    meta: &bundle::BundleMeta,
+    items: &[PrfItem],
+    is_url_subscription: impl Fn(&str) -> bool,
+) -> Vec<String> {
     meta.members
         .iter()
         .filter(|uid| {
             items
                 .iter()
                 .find(|item| item.uid.as_deref() == Some(uid.as_str()))
-                .is_some_and(|item| item.itype.as_deref() == Some("remote"))
+                .is_some_and(|item| {
+                    if crate::core::openp2p::subscriptions::is_subscription_profile_uid(uid) {
+                        is_url_subscription(uid)
+                    } else {
+                        item.itype.as_deref() == Some("remote")
+                    }
+                })
         })
         .cloned()
         .collect()
@@ -198,6 +210,7 @@ fn build_bundle_refresh_report(
 #[tauri::command]
 #[specta::specta]
 pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
+    let subscription_store = crate::core::openp2p::subscriptions::SubscriptionStore::app_default().ok();
     let remote_members = {
         let profiles = Config::profiles().await;
         let snapshot = profiles.latest_arc();
@@ -213,10 +226,15 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
                 "bundle metadata member/order fingerprint mismatch; recreate the bundle",
             ));
         }
-        remote_bundle_members(&meta, snapshot.items.as_deref().unwrap_or_default())
+        remote_bundle_members(&meta, snapshot.items.as_deref().unwrap_or_default(), |uid| {
+            subscription_store
+                .as_ref()
+                .and_then(|store| store.find_by_profile_uid(uid).ok().flatten())
+                .is_some_and(|meta| meta.source == crate::core::openp2p::portable::OpenP2PImportSourceKind::Url)
+        })
     };
 
-    refresh_bundle_flow(
+    let report = refresh_bundle_flow(
         remote_members,
         |uid| async move {
             crate::feat::bundle_update::fetch_and_persist_profile(&uid, None, true)
@@ -225,7 +243,17 @@ pub async fn refresh_bundle() -> CmdResult<BundleRefreshReport> {
         },
         finalize_manual_bundle_refresh,
     )
-    .await
+    .await?;
+    if report
+        .updated
+        .iter()
+        .any(|uid| crate::core::openp2p::subscriptions::is_subscription_profile_uid(uid))
+    {
+        // The batch persists sources; the sidecar converges once, after the
+        // single bundle finalizer ran.
+        crate::cmd::openp2p::reconcile_active_sidecar().await;
+    }
+    Ok(report)
 }
 
 /// Orchestration seam: fetch/persist every remote member sequentially, then call
@@ -462,12 +490,26 @@ mod tests {
             item("remote-a", "remote"),
             item("local-b", "local"),
             item("remote-c", "remote"),
+            item("op2p-sub-0123456789abcdef", "local"),
+            item("op2p-sub-fedcba9876543210", "local"),
             item("outside", "remote"),
         ];
-        let meta = meta(&["local-b", "remote-c", "missing", "remote-a"]);
+        let meta = meta(&[
+            "local-b",
+            "remote-c",
+            "missing",
+            "remote-a",
+            "op2p-sub-0123456789abcdef",
+            "op2p-sub-fedcba9876543210",
+        ]);
         assert_eq!(
-            remote_bundle_members(&meta, &items),
-            vec![String::from("remote-c"), String::from("remote-a")]
+            remote_bundle_members(&meta, &items, |uid| uid == "op2p-sub-0123456789abcdef"),
+            vec![
+                String::from("remote-c"),
+                String::from("remote-a"),
+                String::from("op2p-sub-0123456789abcdef")
+            ],
+            "only a URL-backed OpenP2P member is updatable, even though its card is local"
         );
     }
 

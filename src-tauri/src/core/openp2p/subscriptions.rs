@@ -33,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{IProfiles, PrfItem};
+use crate::config::{IProfiles, PrfItem, PrfOption};
 use crate::core::openp2p::account;
 use crate::core::openp2p::import_transaction::{ImportUndo, PreparedSubscriptionImport, SecretTransaction};
 use crate::core::openp2p::portable::{self, OpenP2PImportSourceKind, ParsedImport};
@@ -371,6 +371,11 @@ impl SubscriptionStore {
         let id = preview.meta.id.clone();
         let profile_uid = preview.profile_uid.clone();
         let profile_path = self.profile_path(&profile_uid);
+        let updated_at = if preview.created {
+            preview.meta.imported_at as usize
+        } else {
+            now_secs() as usize
+        };
         let undo = ImportUndo::snapshot(self, &id, preview.created, &profile_path)?;
         let transaction = SecretTransaction::begin(&self.secrets(&id), &preview.parsed, &preview.previous_manifest)?;
         let written = (|| -> Result<bool> {
@@ -382,7 +387,7 @@ impl SubscriptionStore {
             )?;
             ProfileStore::with_config(self.root.clone(), self.config_path(&id)).save_config(&preview.parsed.config)?;
             account::atomic_write(&profile_path, preview.profile_yaml.as_bytes(), 0o600)?;
-            upsert_profile_item(profiles, &preview.meta)
+            upsert_profile_item(profiles, &preview.meta, updated_at)
         })();
         let items_changed = match written {
             Ok(changed) => changed,
@@ -492,11 +497,27 @@ impl SubscriptionStore {
     }
 }
 
-pub(crate) fn upsert_profile_item(profiles: &mut IProfiles, meta: &SubscriptionMeta) -> Result<bool> {
+/// The update settings an imported OpenP2P card starts with. The interval stays
+/// unset so auto-update is off until the user edits the profile.
+fn generated_profile_option() -> PrfOption {
+    PrfOption {
+        allow_auto_update: Some(true),
+        ..PrfOption::default()
+    }
+}
+
+/// `updated_at` is the profile card's last-write time: the initial import time
+/// on creation, and the write time for a re-import or raw-source save so the
+/// timer and the card's "last updated" text agree with what just happened.
+pub(crate) fn upsert_profile_item(
+    profiles: &mut IProfiles,
+    meta: &SubscriptionMeta,
+    updated_at: usize,
+) -> Result<bool> {
     let uid = meta.profile_uid();
     let file = format!("{uid}.yaml");
     let desc = format!("{PROFILE_DESC_PREFIX}{}", meta.id);
-    let updated = Some(meta.imported_at as usize);
+    let updated = Some(updated_at);
     let items = profiles.items.get_or_insert_with(Vec::new);
     let Some(item) = items.iter_mut().find(|item| item.uid.as_deref() == Some(uid.as_str())) else {
         items.push(PrfItem {
@@ -506,6 +527,7 @@ pub(crate) fn upsert_profile_item(profiles: &mut IProfiles, meta: &SubscriptionM
             file: Some(file.into()),
             desc: Some(desc.into()),
             updated,
+            option: Some(generated_profile_option()),
             ..PrfItem::default()
         });
         return Ok(true);
@@ -525,10 +547,19 @@ pub(crate) fn upsert_profile_item(profiles: &mut IProfiles, meta: &SubscriptionM
     if updated_changed {
         item.updated = updated;
     }
-    let option_changed = item.option.is_some();
-    if option_changed {
-        item.option = None;
-    }
+    // Re-import preserves the user's update settings; only a missing option (or
+    // missing auto-update flag) is repaired to the generated default.
+    let option_changed = match item.option.as_mut() {
+        Some(option) if option.allow_auto_update.is_none() => {
+            option.allow_auto_update = Some(true);
+            true
+        }
+        Some(_) => false,
+        None => {
+            item.option = Some(generated_profile_option());
+            true
+        }
+    };
     Ok(name_changed || desc_changed || updated_changed || option_changed)
 }
 

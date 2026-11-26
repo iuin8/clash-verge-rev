@@ -23,6 +23,15 @@ pub async fn save_profile_file(
     file_data: Option<std::string::String>,
 ) -> CmdResult<ValidationOutcome> {
     let index: String = index.into();
+    if crate::cmd::openp2p::find_managed_subscription(&index)?.is_some() {
+        // An OpenP2P card edits the imported document. The generated profile is
+        // rejected by the import validation, so the UI cannot overwrite it here.
+        let Some(file_data) = file_data else {
+            return Ok(ValidationOutcome::Valid);
+        };
+        crate::cmd::openp2p::save_subscription_source(&index, &file_data).await?;
+        return Ok(ValidationOutcome::Valid);
+    }
     crate::cmd::bundle_save::ensure_writable(&index)?;
     let file_data = file_data.map(String::from);
     let file_data = match file_data {

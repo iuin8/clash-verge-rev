@@ -84,8 +84,7 @@
       "extendScript": "拡張スクリプト",
       "openFile": "ファイルを開く",
       "update": "更新",
-      "updateViaProxy": "Update via proxy",
-      "viewSource": "ソースを表示"
+      "updateViaProxy": "Update via proxy"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
-    },
-    "openp2pSource": {
-      "title": "OpenP2P サブスクリプションソース"
     }
   }
 }

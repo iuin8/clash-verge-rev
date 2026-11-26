@@ -1,5 +1,5 @@
-use super::{commit_current_profile, run_profile_config_update_transition};
-use crate::config::{IProfiles, PrfItem};
+use super::{commit_current_profile, run_profile_config_update_transition, timer_settings_changed};
+use crate::config::{IProfiles, PrfItem, PrfOption};
 use crate::core::validate::ValidationOutcome;
 use clash_verge_draft::Draft;
 use std::{
@@ -57,6 +57,38 @@ async fn committing_profile_switch_preserves_profiles_added_after_draft_creation
     assert_eq!(committed.current.as_deref(), Some("b"));
     assert!(committed.get_item("new").is_ok());
     Ok(())
+}
+
+#[test]
+fn patching_a_subscription_refreshes_the_timer_only_for_schedule_settings() {
+    let old = PrfOption {
+        update_interval: Some(60),
+        allow_auto_update: Some(true),
+        user_agent: Some("agent".into()),
+        ..PrfOption::default()
+    };
+
+    assert!(
+        !timer_settings_changed(Some(&old), Some(&old.clone())),
+        "an unrelated edit must not rebuild the timer"
+    );
+
+    let interval = PrfOption {
+        update_interval: Some(120),
+        ..old.clone()
+    };
+    assert!(timer_settings_changed(Some(&old), Some(&interval)));
+
+    let auto_update = PrfOption {
+        allow_auto_update: Some(false),
+        ..old.clone()
+    };
+    assert!(timer_settings_changed(Some(&old), Some(&auto_update)));
+
+    assert!(
+        !timer_settings_changed(Some(&old), None),
+        "a patch without an option keeps the current schedule"
+    );
 }
 
 #[tokio::test(start_paused = true)]

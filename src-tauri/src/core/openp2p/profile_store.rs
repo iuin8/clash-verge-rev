@@ -64,8 +64,11 @@ impl ProfileStore {
         account::atomic_write(&self.config_path(), yaml.as_bytes(), 0o600)
     }
 
-    /// Profile items generated from a subscription stay read-only in the editor.
+    /// Profile items generated from a live subscription stay read-only in the
+    /// editor. A restored orphan card keeps the uid prefix but has no store, so it
+    /// is treated as a plain local profile.
     pub fn is_managed_uid(&self, uid: &str) -> bool {
-        crate::core::openp2p::subscriptions::is_subscription_profile_uid(uid)
+        crate::core::openp2p::subscriptions::id_from_profile_uid(uid)
+            .is_some_and(|id| self.openp2p_dir().join("subscriptions").join(id).is_dir())
     }
 }

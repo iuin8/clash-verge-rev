@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{CmdResult, CommandFailure, coded_error};
-use crate::config::Config;
+use crate::config::{Config, PrfOption};
 use crate::core::notify::{Refresh, announce};
 use crate::core::openp2p::account;
 use crate::core::openp2p::import_transaction::PreparedSubscriptionImport;
@@ -74,9 +74,12 @@ impl std::fmt::Debug for ResolvedImport {
 }
 
 /// Reads exactly one source. A URL must be HTTPS; the body is capped at 1 MiB.
+///
+/// `option` carries the generic profile fetch settings; only URL reads use them.
 pub async fn read_import(
     yaml: Option<std::string::String>,
     url: Option<std::string::String>,
+    option: Option<&PrfOption>,
 ) -> std::result::Result<ResolvedImport, ImportReadError> {
     let yaml = yaml.filter(|text| !text.trim().is_empty());
     let url = url.filter(|text| !text.trim().is_empty());
@@ -107,11 +110,14 @@ pub async fn read_import(
         }
         (None, Some(raw_url)) => {
             let url = parse_https_url(&raw_url)?;
+            let (proxy_type, timeout_secs, user_agent, accept_invalid_certs) = fetch_settings(option);
             let fetched = NetworkManager::new()
                 .get_bytes(
                     url.as_str(),
-                    ProxyType::None,
-                    Some(FETCH_TIMEOUT_SECS),
+                    proxy_type,
+                    timeout_secs,
+                    user_agent,
+                    accept_invalid_certs,
                     MAX_IMPORT_BYTES,
                 )
                 .await
@@ -169,6 +175,68 @@ fn parse_https_url(raw: &str) -> std::result::Result<reqwest::Url, ImportReadErr
         ));
     }
     Ok(url)
+}
+
+/// The generic profile fetch settings an OpenP2P URL download honors. Proxy
+/// flags use the same precedence as remote profile downloads.
+fn fetch_settings(option: Option<&PrfOption>) -> (ProxyType, Option<u64>, Option<smartstring::alias::String>, bool) {
+    let proxy_type = if option.and_then(|option| option.self_proxy).unwrap_or(false) {
+        ProxyType::Localhost
+    } else if option.and_then(|option| option.with_proxy).unwrap_or(false) {
+        ProxyType::System
+    } else {
+        ProxyType::None
+    };
+    let timeout_secs = option
+        .and_then(|option| option.timeout_seconds)
+        .or(Some(FETCH_TIMEOUT_SECS));
+    let user_agent = option.and_then(|option| option.user_agent.clone());
+    let accept_invalid_certs = option
+        .and_then(|option| option.danger_accept_invalid_certs)
+        .unwrap_or(false);
+    (proxy_type, timeout_secs, user_agent, accept_invalid_certs)
+}
+
+/// The timer may only update a subscription whose option permits it; a manual
+/// update always runs.
+pub(crate) fn should_update_openp2p(option: Option<&PrfOption>, is_mannual_trigger: bool) -> bool {
+    is_mannual_trigger || option.and_then(|option| option.allow_auto_update).unwrap_or(true)
+}
+
+/// Update settings are the only fields an OpenP2P profile patch may change; the
+/// merge/script/rules/proxies/groups references belong to ordinary profiles.
+pub(crate) fn sanitize_option_patch(option: PrfOption) -> PrfOption {
+    PrfOption {
+        user_agent: option.user_agent,
+        with_proxy: option.with_proxy,
+        self_proxy: option.self_proxy,
+        update_interval: option.update_interval,
+        timeout_seconds: option.timeout_seconds,
+        danger_accept_invalid_certs: option.danger_accept_invalid_certs,
+        allow_auto_update: option.allow_auto_update,
+        ..PrfOption::default()
+    }
+}
+
+/// A partial edit-info patch keeps the settings it does not mention instead of
+/// clearing them; generated overlay references never survive.
+pub(crate) fn merge_option_patch(existing: Option<&PrfOption>, patch: PrfOption) -> PrfOption {
+    let patch = sanitize_option_patch(patch);
+    let Some(existing) = existing else {
+        return patch;
+    };
+    PrfOption {
+        user_agent: patch.user_agent.or_else(|| existing.user_agent.clone()),
+        with_proxy: patch.with_proxy.or(existing.with_proxy),
+        self_proxy: patch.self_proxy.or(existing.self_proxy),
+        update_interval: patch.update_interval.or(existing.update_interval),
+        timeout_seconds: patch.timeout_seconds.or(existing.timeout_seconds),
+        danger_accept_invalid_certs: patch
+            .danger_accept_invalid_certs
+            .or(existing.danger_accept_invalid_certs),
+        allow_auto_update: patch.allow_auto_update.or(existing.allow_auto_update),
+        ..PrfOption::default()
+    }
 }
 
 fn require_platform() -> CmdResult<()> {
@@ -481,6 +549,173 @@ fn ensure_subscription_profile(store: &SubscriptionStore, runtime: &Subscription
     account::atomic_write(&path, rendered.yaml.as_bytes(), 0o600).map_err(subscription_failure)
 }
 
+/// Resolves an OpenP2P profile uid to its live subscription. `Ok(None)` means the
+/// uid is not a live subscription (a plain profile or a restored orphan card).
+pub(crate) fn find_managed_subscription(profile_uid: &str) -> CmdResult<Option<(SubscriptionStore, SubscriptionMeta)>> {
+    let Ok(store) = SubscriptionStore::app_default() else {
+        return Ok(None);
+    };
+    match store.find_by_profile_uid(profile_uid) {
+        Ok(Some(meta)) => Ok(Some((store, meta))),
+        Ok(None) => Ok(None),
+        Err(error) => Err(subscription_failure(error)),
+    }
+}
+
+/// Which caller is updating a subscription. Only a URL-backed source can be
+/// refreshed automatically or by a bundle batch; a local source is re-read only
+/// by an explicit manual update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubscriptionUpdateTrigger {
+    Manual,
+    Automatic,
+    Batch,
+}
+
+impl SubscriptionUpdateTrigger {
+    const fn allows_local(self) -> bool {
+        matches!(self, Self::Manual)
+    }
+
+    const fn honors_auto_update(self) -> bool {
+        matches!(self, Self::Automatic)
+    }
+}
+
+fn find_subscription_for_update(store: &SubscriptionStore, profile_uid: &str) -> CmdResult<SubscriptionMeta> {
+    match find_subscription(store, profile_uid) {
+        Ok(meta) => Ok(meta),
+        Err(failure) if failure.code.as_deref() == Some("OPENP2P_SUBSCRIPTION_NOT_FOUND") => Err(coded_error(
+            "OPENP2P_SUBSCRIPTION_MISSING",
+            "the OpenP2P subscription data is missing; re-import the subscription",
+        )),
+        Err(failure) => Err(failure),
+    }
+}
+
+/// Reconciles the sidecar only when the current profile resolves to an OpenP2P
+/// source. Callers own the bundle/runtime policy.
+pub(crate) async fn reconcile_active_sidecar() {
+    let current = Config::profiles().await.latest_arc().current.clone();
+    let relevant = current.as_deref() == Some(crate::config::bundle::BUNDLE_UID)
+        || current
+            .as_deref()
+            .is_some_and(subscriptions::is_subscription_profile_uid);
+    if !relevant {
+        return;
+    }
+    if let Err(error) = OpenP2PManager::global().reconcile_current().await {
+        OpenP2PManager::global().mark_degraded(format!("{error:#}"));
+    }
+}
+
+/// A saved raw source must immediately converge an active bundle and runtime;
+/// unlike timer/batch updates it has no coalescing caller behind it.
+async fn refresh_saved_subscription(import: &SubscriptionImport) -> CmdResult<()> {
+    let current = Config::profiles().await.latest_arc().current.clone();
+    let direct_current = current.as_deref() == Some(import.profile_uid.as_str());
+    let bundle_member_active = current.as_deref() == Some(crate::config::bundle::BUNDLE_UID)
+        && bundle_subscription_uid().await.as_deref() == Some(import.profile_uid.as_str());
+    if bundle_member_active {
+        refresh_active_bundle().await?;
+    }
+    if direct_current || bundle_member_active {
+        reconcile_active_sidecar().await;
+        refresh_runtime().await?;
+        if bundle_member_active && let Err(error) = crate::config::bundle::mark_validated_if_current().await {
+            logging!(
+                warn,
+                Type::Config,
+                "failed to mark the refreshed bundle validated: {error:#}"
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn read_subscription_source(
+    store: &SubscriptionStore,
+    meta: &SubscriptionMeta,
+    option: Option<&PrfOption>,
+) -> CmdResult<std::string::String> {
+    match meta.source {
+        OpenP2PImportSourceKind::Url => {
+            let url = meta.source_url.clone().ok_or_else(|| {
+                coded_error(
+                    "OPENP2P_SUBSCRIPTION_FAILED",
+                    "the URL subscription has no saved source URL",
+                )
+            })?;
+            read_import(None, Some(url), option)
+                .await
+                .map(|resolved| resolved.text)
+                .map_err(source_failure)
+        }
+        OpenP2PImportSourceKind::Local => store.read_source(&meta.id).map_err(subscription_failure),
+    }
+}
+
+/// The profile card's updated timestamp moved; re-arm the delay so the next
+/// run counts from this write instead of the previous import.
+async fn reschedule_timer_after_managed_write() {
+    if let Err(error) = crate::core::Timer::global().reschedule().await {
+        logging!(
+            warn,
+            Type::Timer,
+            "failed to reschedule the update timer after an openp2p write: {error:#}"
+        );
+    }
+}
+
+async fn persist_subscription_text(
+    store: &SubscriptionStore,
+    meta: &SubscriptionMeta,
+    text: &str,
+) -> CmdResult<SubscriptionImport> {
+    let import = run_subscription_write(store, SubscriptionWrite::Update { text, id: &meta.id }).await?;
+    log_import_warnings(&import);
+    reschedule_timer_after_managed_write().await;
+    Ok(import)
+}
+
+/// One shared source-read/reimport implementation for the generic manual, timer
+/// and bundle-batch paths.
+pub(crate) async fn update_subscription(
+    profile_uid: &str,
+    option: Option<&PrfOption>,
+    trigger: SubscriptionUpdateTrigger,
+) -> CmdResult<Option<SubscriptionImport>> {
+    let store = subscription_store()?;
+    let meta = find_subscription_for_update(&store, profile_uid)?;
+    if !trigger.allows_local() && meta.source == OpenP2PImportSourceKind::Local {
+        logging!(info, Type::Config, "[订阅更新] OpenP2P 本地订阅没有远端来源，跳过更新");
+        return Ok(None);
+    }
+    let item_option = Config::profiles()
+        .await
+        .latest_arc()
+        .get_item(profile_uid)
+        .ok()
+        .and_then(|item| item.option.clone());
+    if trigger.honors_auto_update() && !should_update_openp2p(item_option.as_ref(), false) {
+        logging!(info, Type::Config, "[订阅更新] OpenP2P 自动更新已关闭，跳过更新");
+        return Ok(None);
+    }
+    let effective = PrfOption::merge(item_option.as_ref(), option);
+    let text = read_subscription_source(&store, &meta, effective.as_ref()).await?;
+    persist_subscription_text(&store, &meta, &text).await.map(Some)
+}
+
+/// The profile editor's raw-source save for an OpenP2P subscription. The source
+/// id, kind and URL stay fixed; only the document content is replaced.
+pub(crate) async fn save_subscription_source(profile_uid: &str, text: &str) -> CmdResult<SubscriptionImport> {
+    let store = subscription_store()?;
+    let meta = find_subscription_for_update(&store, profile_uid)?;
+    let import = persist_subscription_text(&store, &meta, text).await?;
+    refresh_saved_subscription(&import).await?;
+    Ok(import)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_openp2p_state() -> CmdResult<OpenP2PView> {
@@ -497,7 +732,7 @@ pub async fn import_openp2p_subscription(
     yaml: Option<std::string::String>,
     url: Option<std::string::String>,
 ) -> CmdResult<OpenP2PSubscription> {
-    let resolved = read_import(yaml, url).await.map_err(source_failure)?;
+    let resolved = read_import(yaml, url, None).await.map_err(source_failure)?;
     let store = subscription_store()?;
     let import = run_subscription_write(
         &store,
@@ -509,63 +744,7 @@ pub async fn import_openp2p_subscription(
     )
     .await?;
     log_import_warnings(&import);
-    subscription_view(&import.meta).await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn get_openp2p_subscription_content(profile_uid: std::string::String) -> CmdResult<std::string::String> {
-    let store = subscription_store()?;
-    let meta = find_subscription(&store, &profile_uid)?;
-    store.read_source(&meta.id).map_err(subscription_failure)
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn update_openp2p_subscription(profile_uid: std::string::String) -> CmdResult<OpenP2PSubscription> {
-    let store = subscription_store()?;
-    let meta = find_subscription(&store, &profile_uid)?;
-    let text = match meta.source {
-        OpenP2PImportSourceKind::Url => {
-            let url = meta.source_url.clone().ok_or_else(|| {
-                coded_error(
-                    "OPENP2P_SUBSCRIPTION_FAILED",
-                    "the URL subscription has no saved source URL",
-                )
-            })?;
-            read_import(None, Some(url)).await.map_err(source_failure)?.text
-        }
-        OpenP2PImportSourceKind::Local => store.read_source(&meta.id).map_err(subscription_failure)?,
-    };
-    let import = run_subscription_write(
-        &store,
-        SubscriptionWrite::Update {
-            text: &text,
-            id: &meta.id,
-        },
-    )
-    .await?;
-    log_import_warnings(&import);
-    let current = Config::profiles().await.latest_arc().current.clone();
-    let direct_current = current.as_deref() == Some(import.profile_uid.as_str());
-    let bundle_member_active = current.as_deref() == Some(crate::config::bundle::BUNDLE_UID)
-        && bundle_subscription_uid().await.as_deref() == Some(import.profile_uid.as_str());
-    if bundle_member_active {
-        refresh_active_bundle().await?;
-    }
-    if direct_current || bundle_member_active {
-        if let Err(error) = OpenP2PManager::global().reconcile_current().await {
-            OpenP2PManager::global().mark_degraded(format!("{error:#}"));
-        }
-        refresh_runtime().await?;
-        if bundle_member_active && let Err(error) = crate::config::bundle::mark_validated_if_current().await {
-            logging!(
-                warn,
-                Type::Config,
-                "failed to mark the refreshed bundle validated: {error:#}"
-            );
-        }
-    }
+    reschedule_timer_after_managed_write().await;
     subscription_view(&import.meta).await
 }
 
@@ -579,8 +758,8 @@ pub async fn activate_openp2p_subscription(profile_uid: std::string::String) -> 
         .map_err(subscription_failure)?
         .ok_or_else(|| {
             coded_error(
-                "OPENP2P_SUBSCRIPTION_NOT_FOUND",
-                "no openp2p subscription belongs to this profile",
+                "OPENP2P_SUBSCRIPTION_MISSING",
+                "the OpenP2P subscription data is missing; re-import the subscription",
             )
         })?;
     if Config::profiles().await.latest_arc().get_item(&profile_uid).is_err() {
@@ -612,7 +791,7 @@ pub async fn detect_openp2p_source(
     yaml: Option<std::string::String>,
     url: Option<std::string::String>,
 ) -> CmdResult<bool> {
-    Ok(read_import(yaml, url)
+    Ok(read_import(yaml, url, None)
         .await
         .map(|resolved| portable::is_openp2p_document(&resolved.text))
         .unwrap_or(false))
@@ -653,3 +832,7 @@ pub async fn open_openp2p_log_dir(account_id: std::string::String) -> CmdResult<
         .map_err(|error| coded_error("OPENP2P_LOG_DIR_FAILED", format!("{error:#}")))?;
     open::that(&paths.log_dir).map_err(|error| coded_error("OPENP2P_LOG_DIR_FAILED", format!("{error:#}")))
 }
+
+#[cfg(test)]
+#[path = "openp2p_tests.rs"]
+mod tests;

@@ -84,8 +84,7 @@
       "extendScript": "Betik Genişletme",
       "openFile": "Dosyayı Aç",
       "update": "Güncelle",
-      "updateViaProxy": "Vekil üzerinden güncelle",
-      "viewSource": "Kaynağı Görüntüle"
+      "updateViaProxy": "Vekil üzerinden güncelle"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "Abonelik QR Kodu"
-    },
-    "openp2pSource": {
-      "title": "OpenP2P Abonelik Kaynağı"
     }
   }
 }

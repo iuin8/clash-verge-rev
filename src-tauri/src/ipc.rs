@@ -73,8 +73,6 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             cmd::detect_openp2p_source,
             cmd::get_openp2p_version,
             cmd::import_openp2p_subscription,
-            cmd::get_openp2p_subscription_content,
-            cmd::update_openp2p_subscription,
             cmd::activate_openp2p_subscription,
             cmd::open_openp2p_log_dir,
             cmd::get_profiles,

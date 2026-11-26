@@ -26,6 +26,7 @@ import { showNotice } from '@/services/notice-service'
 import { version } from '@root/package.json'
 
 import { FileInput } from './file-input'
+import { isManagedOpenP2pProfile, managedOpenP2pPatch } from './profile-form'
 
 interface Props {
   onChange: (isActivating?: boolean) => void
@@ -77,9 +78,7 @@ export function ProfileViewer({
     },
     edit: (item: IProfileItem) => {
       if (item) {
-        Object.entries(item).forEach(([key, value]) => {
-          setValue(key as any, value)
-        })
+        reset(item)
       }
       setOpenType('edit')
       setOpen(true)
@@ -101,11 +100,18 @@ export function ProfileViewer({
     handleSubmit(async (form) => {
       setLoading(true)
       try {
-        if (!form.type) {
-          throw new Error(t('profiles.modals.profileForm.errors.typeRequired'))
-        }
-        if (form.type === 'remote' && !form.url) {
-          throw new Error(t('profiles.modals.profileForm.errors.urlRequired'))
+        const uid = form.uid
+        const managedOpenP2p =
+          openType === 'edit' && isManagedOpenP2pProfile(uid)
+        if (!managedOpenP2p) {
+          if (!form.type) {
+            throw new Error(
+              t('profiles.modals.profileForm.errors.typeRequired'),
+            )
+          }
+          if (form.type === 'remote' && !form.url) {
+            throw new Error(t('profiles.modals.profileForm.errors.urlRequired'))
+          }
         }
 
         const option = form.option ? { ...form.option } : undefined
@@ -121,6 +127,20 @@ export function ProfileViewer({
         }
         if (option?.user_agent === '') {
           option.user_agent = undefined
+        }
+
+        if (managedOpenP2p) {
+          if (!uid) {
+            throw new Error(t('profiles.modals.profileForm.errors.uidMissing'))
+          }
+          await mutate(() => patchProfile(uid, managedOpenP2pPatch(option)), {
+            id: 'patch-profile',
+            errorNotice: false,
+          })
+          setOpen(false)
+          setTimeout(() => reset(), 500)
+          setTimeout(() => onChange(false), 0)
+          return
         }
 
         const name = form.name || `${form.type} file`
@@ -279,6 +299,63 @@ export function ProfileViewer({
   const formType = watch('type')
   const isRemote = formType === 'remote'
   const isLocal = formType === 'local'
+  const managedOpenP2p =
+    openType === 'edit' && isManagedOpenP2pProfile(watch('uid'))
+
+  const updateIntervalField = (
+    <Controller
+      name="option.update_interval"
+      control={control}
+      render={({ field }) => {
+        const interval = Number(field.value)
+        const tooFrequent =
+          Number.isFinite(interval) &&
+          interval > 0 &&
+          interval < MIN_UPDATE_INTERVAL
+
+        return (
+          <TextField
+            {...text}
+            {...field}
+            type="number"
+            label={t('profiles.modals.profileForm.fields.updateInterval')}
+            helperText={
+              tooFrequent
+                ? t('profiles.modals.profileForm.warnings.frequentUpdate', {
+                    minutes: MIN_UPDATE_INTERVAL,
+                  })
+                : undefined
+            }
+            slotProps={{
+              formHelperText: { sx: { color: 'warning.main' } },
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {t('shared.units.minutes')}
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        )
+      }}
+    />
+  )
+
+  const allowAutoUpdateField = (
+    <Controller
+      name="option.allow_auto_update"
+      control={control}
+      render={({ field }) => (
+        <StyledBox>
+          <InputLabel>
+            {t('profiles.modals.profileForm.fields.allowAutoUpdate')}
+          </InputLabel>
+          <Switch checked={field.value ?? true} {...field} color="primary" />
+        </StyledBox>
+      )}
+    />
+  )
 
   return (
     <BaseDialog
@@ -296,49 +373,53 @@ export function ProfileViewer({
       onOk={handleOk}
       loading={loading}
     >
-      <Controller
-        name="type"
-        control={control}
-        render={({ field }) => (
-          <FormControl size="small" fullWidth sx={{ mt: 1, mb: 1 }}>
-            <InputLabel>
-              {t('profiles.modals.profileForm.fields.type')}
-            </InputLabel>
-            <Select
-              {...field}
-              autoFocus
-              label={t('profiles.modals.profileForm.fields.type')}
-            >
-              <MenuItem value="remote">
-                {t('profiles.modals.profileForm.types.remote')}
-              </MenuItem>
-              <MenuItem value="local">
-                {t('profiles.modals.profileForm.types.local')}
-              </MenuItem>
-            </Select>
-          </FormControl>
-        )}
-      />
-
-      <Controller
-        name="name"
-        control={control}
-        render={({ field }) => (
-          <TextField {...text} {...field} label={t('shared.labels.name')} />
-        )}
-      />
-
-      <Controller
-        name="desc"
-        control={control}
-        render={({ field }) => (
-          <TextField
-            {...text}
-            {...field}
-            label={t('profiles.modals.profileForm.fields.description')}
+      {!managedOpenP2p && (
+        <>
+          <Controller
+            name="type"
+            control={control}
+            render={({ field }) => (
+              <FormControl size="small" fullWidth sx={{ mt: 1, mb: 1 }}>
+                <InputLabel>
+                  {t('profiles.modals.profileForm.fields.type')}
+                </InputLabel>
+                <Select
+                  {...field}
+                  autoFocus
+                  label={t('profiles.modals.profileForm.fields.type')}
+                >
+                  <MenuItem value="remote">
+                    {t('profiles.modals.profileForm.types.remote')}
+                  </MenuItem>
+                  <MenuItem value="local">
+                    {t('profiles.modals.profileForm.types.local')}
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            )}
           />
-        )}
-      />
+
+          <Controller
+            name="name"
+            control={control}
+            render={({ field }) => (
+              <TextField {...text} {...field} label={t('shared.labels.name')} />
+            )}
+          />
+
+          <Controller
+            name="desc"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...text}
+                {...field}
+                label={t('profiles.modals.profileForm.fields.description')}
+              />
+            )}
+          />
+        </>
+      )}
 
       {isLocal && openType === 'new' && (
         <FileInput
@@ -349,20 +430,24 @@ export function ProfileViewer({
         />
       )}
 
-      {isRemote && (
+      {(isRemote || managedOpenP2p) && (
         <>
-          <Controller
-            name="url"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...text}
-                {...field}
-                multiline
-                label={t('profiles.modals.profileForm.fields.subscriptionUrl')}
-              />
-            )}
-          />
+          {isRemote && (
+            <Controller
+              name="url"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  {...text}
+                  {...field}
+                  multiline
+                  label={t(
+                    'profiles.modals.profileForm.fields.subscriptionUrl',
+                  )}
+                />
+              )}
+            />
+          )}
 
           <Controller
             name="option.user_agent"
@@ -399,44 +484,7 @@ export function ProfileViewer({
               />
             )}
           />
-          <Controller
-            name="option.update_interval"
-            control={control}
-            render={({ field }) => {
-              const interval = Number(field.value)
-              const tooFrequent =
-                Number.isFinite(interval) &&
-                interval > 0 &&
-                interval < MIN_UPDATE_INTERVAL
-
-              return (
-                <TextField
-                  {...text}
-                  {...field}
-                  type="number"
-                  label={t('profiles.modals.profileForm.fields.updateInterval')}
-                  helperText={
-                    tooFrequent
-                      ? t(
-                          'profiles.modals.profileForm.warnings.frequentUpdate',
-                          { minutes: MIN_UPDATE_INTERVAL },
-                        )
-                      : undefined
-                  }
-                  slotProps={{
-                    formHelperText: { sx: { color: 'warning.main' } },
-                    input: {
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          {t('shared.units.minutes')}
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                />
-              )
-            }}
-          />
+          {updateIntervalField}
           <Controller
             name="option.with_proxy"
             control={control}
@@ -476,22 +524,7 @@ export function ProfileViewer({
             )}
           />
 
-          <Controller
-            name="option.allow_auto_update"
-            control={control}
-            render={({ field }) => (
-              <StyledBox>
-                <InputLabel>
-                  {t('profiles.modals.profileForm.fields.allowAutoUpdate')}
-                </InputLabel>
-                <Switch
-                  checked={field.value ?? true}
-                  {...field}
-                  color="primary"
-                />
-              </StyledBox>
-            )}
-          />
+          {allowAutoUpdateField}
         </>
       )}
     </BaseDialog>

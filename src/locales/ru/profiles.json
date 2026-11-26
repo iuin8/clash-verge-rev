@@ -84,8 +84,7 @@
       "extendScript": "Изменить Script",
       "openFile": "Открыть файл",
       "update": "Обновить",
-      "updateViaProxy": "Обновить через прокси",
-      "viewSource": "Просмотреть источник"
+      "updateViaProxy": "Обновить через прокси"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "QR-код подписки"
-    },
-    "openp2pSource": {
-      "title": "Источник подписки OpenP2P"
     }
   }
 }

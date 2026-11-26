@@ -621,7 +621,7 @@ async fn ensure_current_projection(store: &SubscriptionStore, runtime: &Subscrip
     let meta = runtime.meta.clone();
     profiles
         .with_data_modify(|mut candidate| async move {
-            if subscriptions::upsert_profile_item(&mut candidate, &meta)? {
+            if subscriptions::upsert_profile_item(&mut candidate, &meta, meta.imported_at as usize)? {
                 candidate.save_file().await?;
             }
             Ok((candidate, ()))

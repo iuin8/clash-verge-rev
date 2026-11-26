@@ -84,8 +84,7 @@
       "extendScript": "스크립트 확장",
       "openFile": "파일 열기",
       "update": "업데이트",
-      "updateViaProxy": "프록시를 통해 업데이트",
-      "viewSource": "소스 보기"
+      "updateViaProxy": "프록시를 통해 업데이트"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
-    },
-    "openp2pSource": {
-      "title": "OpenP2P 구독 소스"
     }
   }
 }

@@ -148,13 +148,6 @@ export const commands = {
       'import_openp2p_subscription',
       { yaml, url },
     ),
-  getOpenp2pSubscriptionContent: (profileUid: string) =>
-    __TAURI_INVOKE<string>('get_openp2p_subscription_content', { profileUid }),
-  updateOpenp2pSubscription: (profileUid: string) =>
-    __TAURI_INVOKE<OpenP2PSubscription_Serialize>(
-      'update_openp2p_subscription',
-      { profileUid },
-    ),
   activateOpenp2pSubscription: (profileUid: string) =>
     __TAURI_INVOKE<OpenP2PView_Serialize>('activate_openp2p_subscription', {
       profileUid,

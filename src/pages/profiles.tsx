@@ -700,12 +700,17 @@ const ProfilePage = () => {
         setLoadingProfiles(uids, false)
         void mutateProfiles()
         void refreshBundleQueries()
+        if (uids.some((uid) => isOpenP2pSubscriptionUid(uid))) {
+          void revalidateQuery(['getOpenP2pState']).catch(() => {})
+        }
       }
     },
     [mutateProfiles, setLoadingProfiles],
   )
   const onUpdateAll = useLockFn(async () => {
-    const items = profileItems.filter((e) => e.type === 'remote')
+    const items = profileItems.filter(
+      (e) => e.type === 'remote' || isOpenP2pSubscriptionUid(e.uid),
+    )
     const target = items
       .map((item) => item.uid!)
       .filter((uid) => !loadingCache.has(uid))
@@ -1106,7 +1111,11 @@ const ProfilePage = () => {
                   onEdit={() => viewerRef.current?.edit(item)}
                   onSave={async (prev, curr) => {
                     void refreshBundleQueries()
-                    if (prev !== curr && profiles.current === item.uid) {
+                    if (
+                      prev !== curr &&
+                      profiles.current === item.uid &&
+                      !isOpenP2pSubscriptionUid(item.uid)
+                    ) {
                       await onEnhance(false)
                     }
                   }}

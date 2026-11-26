@@ -297,27 +297,30 @@ fn a_key_body_that_is_not_pem_is_rejected() {
 
 #[tokio::test]
 async fn urls_must_be_unambiguous_https_and_reachable() {
-    assert_eq!(read_import(None, None).await.unwrap_err().code, "source_missing");
+    assert_eq!(read_import(None, None, None).await.unwrap_err().code, "source_missing");
     assert_eq!(
-        read_import(Some("a: 1".into()), Some("https://example.com/x".into()))
+        read_import(Some("a: 1".into()), Some("https://example.com/x".into()), None)
             .await
             .unwrap_err()
             .code,
         "source_ambiguous"
     );
     assert_eq!(
-        read_import(None, Some("http://example.com/x".into()))
+        read_import(None, Some("http://example.com/x".into()), None)
             .await
             .unwrap_err()
             .code,
         "url_insecure"
     );
     assert_eq!(
-        read_import(None, Some("not a url".into())).await.unwrap_err().code,
+        read_import(None, Some("not a url".into()), None)
+            .await
+            .unwrap_err()
+            .code,
         "url_invalid"
     );
     assert_eq!(
-        read_import(None, Some("https://127.0.0.1:1/import.yaml".into()))
+        read_import(None, Some("https://127.0.0.1:1/import.yaml".into()), None)
             .await
             .unwrap_err()
             .code,

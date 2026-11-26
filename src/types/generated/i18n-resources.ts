@@ -532,7 +532,6 @@ export interface TranslationResources {
           shareQrCode: string
           update: string
           updateViaProxy: string
-          viewSource: string
         }
         more: {
           chips: {
@@ -616,9 +615,6 @@ export interface TranslationResources {
           }
         }
         logViewer: {
-          title: string
-        }
-        openp2pSource: {
           title: string
         }
         profileForm: {

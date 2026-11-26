@@ -84,8 +84,7 @@
       "extendScript": "Perluas Skrip",
       "openFile": "Buka Berkas",
       "update": "Perbarui",
-      "updateViaProxy": "Update via proxy",
-      "viewSource": "Lihat Sumber"
+      "updateViaProxy": "Update via proxy"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
-    },
-    "openp2pSource": {
-      "title": "Sumber Langganan OpenP2P"
     }
   }
 }

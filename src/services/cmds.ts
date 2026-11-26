@@ -606,25 +606,12 @@ export async function importOpenP2pSubscription(
   return commands.importOpenp2pSubscription(yaml, url)
 }
 
-export async function getOpenP2pSubscriptionContent(
-  profileUid: string,
-): Promise<string> {
-  return commands.getOpenp2pSubscriptionContent(profileUid)
-}
-
 export async function activateOpenP2pSubscription(
   profileUid: string,
 ): Promise<OpenP2pActivationOutcome> {
   return normalizeActivationOutcome(
     await commands.activateOpenp2pSubscription(profileUid),
   )
-}
-
-export async function updateOpenP2pSubscription(
-  profileUid: string,
-): Promise<OpenP2pActivationOutcome> {
-  await commands.updateOpenp2pSubscription(profileUid)
-  return { status: 'valid' }
 }
 
 export async function openOpenP2pLogDir(accountId: string) {

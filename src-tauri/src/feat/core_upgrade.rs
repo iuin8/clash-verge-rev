@@ -302,7 +302,7 @@ async fn download_package(proxy: ProxyType, alpha: bool, version: &str) -> Resul
     logging!(info, Type::Core, "core upgrade: downloading {url}");
 
     NetworkManager::new()
-        .get_bytes(&url, proxy, Some(PACKAGE_TIMEOUT_SECS), MAX_PACKAGE_BYTES)
+        .get_bytes(&url, proxy, Some(PACKAGE_TIMEOUT_SECS), None, false, MAX_PACKAGE_BYTES)
         .await
         .with_context(|| format!("failed to download {url}"))
 }

@@ -7,7 +7,6 @@ import {
 } from '@mui/icons-material'
 import {
   Box,
-  Chip,
   CircularProgress,
   IconButton,
   keyframes,
@@ -29,20 +28,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BaseDialog } from '@/components/base'
-import { EditorViewer } from '@/components/profile/editor-viewer'
-import { GroupsEditorViewer } from '@/components/profile/groups-editor-viewer'
-import { RulesEditorViewer } from '@/components/profile/rules-editor-viewer'
-import { useEditorDocument } from '@/hooks/use-editor-document'
-import {
-  getNextUpdateTime,
-  getOpenP2pSubscriptionContent,
-  readProfileFile,
-  saveProfileFile,
-  updateOpenP2pSubscription,
-  updateProfile,
-  viewProfile,
-} from '@/services/cmds'
+import { getNextUpdateTime, updateProfile, viewProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { revalidateQuery } from '@/services/query-client'
@@ -56,11 +42,13 @@ import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
-import { EnhanceHint } from './enhance-hint'
 import { isOpenP2pSubscriptionUid } from './openp2p-subscription'
 import { ProfileBox } from './profile-box'
-import { ProxiesEditorViewer } from './proxies-editor-viewer'
-import { QrViewer } from './qr-viewer'
+import {
+  ProfileItemDialogs,
+  type ProfileItemDialogState,
+} from './profile-item-dialogs'
+import { type ProfileMenuAction, profileMenuActions } from './profile-menu'
 const round = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -275,7 +263,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const hasUrl = !!itemData.url
   const hasExtra = !!extra // only subscription url has extra info
-  const hasHome = !!itemData.home // only subscription url has home page
+  const canUpdateProfile = hasUrl || openP2pSubscription
 
   const { upload = 0, download = 0, total = 0 } = extra ?? {}
   const from = parseUrl(itemData.url!)
@@ -327,34 +315,16 @@ const ProfileItemBase = (props: ProfileItemProps) => {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
 
-  const loadProfileDocument = useCallback(
-    () =>
-      openP2pSubscription
-        ? getOpenP2pSubscriptionContent(uid!)
-        : readProfileFile(uid!),
-    [openP2pSubscription, uid],
-  )
-  const loadMergeDocument = useCallback(
-    () => readProfileFile(option?.merge ?? ''),
-    [option?.merge],
-  )
-  const loadScriptDocument = useCallback(
-    () => readProfileFile(option?.script ?? ''),
-    [option?.script],
-  )
-
-  const profileDocument = useEditorDocument({
-    open: fileOpen,
-    load: loadProfileDocument,
-  })
-  const mergeDocument = useEditorDocument({
-    open: mergeOpen,
-    load: loadMergeDocument,
-  })
-  const scriptDocument = useEditorDocument({
-    open: scriptOpen,
-    load: loadScriptDocument,
-  })
+  const dialogs: ProfileItemDialogState = {
+    file: { open: fileOpen, onClose: () => setFileOpen(false) },
+    rules: { open: rulesOpen, onClose: () => setRulesOpen(false) },
+    proxies: { open: proxiesOpen, onClose: () => setProxiesOpen(false) },
+    groups: { open: groupsOpen, onClose: () => setGroupsOpen(false) },
+    merge: { open: mergeOpen, onClose: () => setMergeOpen(false) },
+    script: { open: scriptOpen, onClose: () => setScriptOpen(false) },
+    confirm: { open: confirmOpen, onClose: () => setConfirmOpen(false) },
+    qr: { open: qrOpen, onClose: () => setQrOpen(false) },
+  }
 
   const onOpenHome = () => {
     setAnchorEl(null)
@@ -426,32 +396,11 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     setAnchorEl(null)
     setLoading(true)
 
-    if (openP2pSubscription) {
-      try {
-        const result = await mutate(
-          () => updateOpenP2pSubscription(itemData.uid!),
-          {
-            id: `update-openp2p-subscription:${itemData.uid}`,
-            errorNotice: false,
-          },
-        )
-        if (!result.ok || result.value.status !== 'valid') return
-        showNotice.success('shared.feedback.notifications.saved')
-        void revalidateQuery(['getOpenP2pState']).catch(() => {})
-        void mutateProfiles()
-      } catch (error) {
-        showNotice.error(error)
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
-
     const option: Partial<IProfileOption> = {}
-    if (type === 0) {
+    if (!openP2pSubscription && type === 0) {
       option.with_proxy = false
       option.self_proxy = false
-    } else if (type === 2) {
+    } else if (!openP2pSubscription && type === 2) {
       if (itemData.option?.self_proxy) {
         option.with_proxy = false
         option.self_proxy = true
@@ -463,25 +412,28 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
     try {
       const payload = Object.keys(option).length > 0 ? option : undefined
-      await mutate(() => updateProfile(itemData.uid!, payload), {
+      const result = await mutate(() => updateProfile(itemData.uid!, payload), {
         id: `update-profile:${itemData.uid}`,
         errorNotice: false,
       })
 
+      if (openP2pSubscription && result.ok) {
+        void revalidateQuery(['getOpenP2pState']).catch(() => {})
+      }
       void mutateProfiles()
-    } catch {
+    } catch (error) {
+      if (openP2pSubscription) showNotice.error(error)
     } finally {
       setLoading(false)
     }
   })
 
-  const menuLabels: Record<string, TranslationKey> = {
+  const menuLabels: Record<ProfileMenuAction, TranslationKey> = {
     home: 'profiles.components.menu.home',
     select: 'profiles.components.menu.select',
     shareQrCode: 'profiles.components.menu.shareQrCode',
     editInfo: 'profiles.components.menu.editInfo',
     editFile: 'profiles.components.menu.editFile',
-    viewSource: 'profiles.components.menu.viewSource',
     editRules: 'profiles.components.menu.editRules',
     editProxies: 'profiles.components.menu.editProxies',
     editGroups: 'profiles.components.menu.editGroups',
@@ -491,241 +443,58 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     update: 'profiles.components.menu.update',
     updateViaProxy: 'profiles.components.menu.updateViaProxy',
     delete: 'shared.actions.delete',
-  } as const
+  }
 
-  const urlModeMenu: ContextMenuItem[] = [
-    ...(hasHome
-      ? [
-          {
-            label: menuLabels.home,
-            handler: onOpenHome,
-            disabled: false,
-          } satisfies ContextMenuItem,
-        ]
-      : []),
-    {
-      label: menuLabels.select,
-      handler: onForceSelect,
-      disabled: false,
-    },
-    {
-      label: menuLabels.shareQrCode,
-      handler: onShareQrCode,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editInfo,
-      handler: onEditInfo,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editFile,
-      handler: onEditFile,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editRules,
-      handler: onEditRules,
-      disabled: !option?.rules,
-    },
-    {
-      label: menuLabels.editProxies,
-      handler: onEditProxies,
-      disabled: !option?.proxies,
-    },
-    {
-      label: menuLabels.editGroups,
-      handler: onEditGroups,
-      disabled: !option?.groups,
-    },
-    {
-      label: menuLabels.extendConfig,
-      handler: onEditMerge,
-      disabled: !option?.merge,
-    },
-    {
-      label: menuLabels.extendScript,
-      handler: onEditScript,
-      disabled: !option?.script,
-    },
-    {
-      label: menuLabels.openFile,
-      handler: onOpenFile,
-      disabled: false,
-    },
-    {
-      label: menuLabels.update,
-      handler: () => onUpdate(0),
-      disabled: false,
-    },
-    {
-      label: menuLabels.updateViaProxy,
-      handler: () => onUpdate(2),
-      disabled: false,
-    },
-    {
-      label: menuLabels.delete,
-      handler: () => {
-        setAnchorEl(null)
-        if (batchMode) {
-          if (onSelectionChange) {
-            onSelectionChange()
-          }
-        } else {
-          setConfirmOpen(true)
+  const menuHandlers: Record<ProfileMenuAction, () => void> = {
+    home: onOpenHome,
+    select: onForceSelect,
+    shareQrCode: onShareQrCode,
+    editInfo: onEditInfo,
+    editFile: onEditFile,
+    editRules: onEditRules,
+    editProxies: onEditProxies,
+    editGroups: onEditGroups,
+    extendConfig: onEditMerge,
+    extendScript: onEditScript,
+    openFile: onOpenFile,
+    // OpenP2P updates use the stored fetch settings; the card offers no one-off override.
+    update: () => onUpdate(openP2pSubscription ? 1 : 0),
+    updateViaProxy: () => onUpdate(2),
+    delete: () => {
+      setAnchorEl(null)
+      if (batchMode) {
+        if (onSelectionChange) {
+          onSelectionChange()
         }
-      },
-      disabled: false,
-      danger: true,
+      } else {
+        setConfirmOpen(true)
+      }
     },
-  ]
-  const fileModeMenu: ContextMenuItem[] = [
-    {
-      label: menuLabels.select,
-      handler: onForceSelect,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editInfo,
-      handler: onEditInfo,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editFile,
-      handler: onEditFile,
-      disabled: false,
-    },
-    {
-      label: menuLabels.editRules,
-      handler: onEditRules,
-      disabled: !option?.rules,
-    },
-    {
-      label: menuLabels.editProxies,
-      handler: onEditProxies,
-      disabled: !option?.proxies,
-    },
-    {
-      label: menuLabels.editGroups,
-      handler: onEditGroups,
-      disabled: !option?.groups,
-    },
-    {
-      label: menuLabels.extendConfig,
-      handler: onEditMerge,
-      disabled: !option?.merge,
-    },
-    {
-      label: menuLabels.extendScript,
-      handler: onEditScript,
-      disabled: !option?.script,
-    },
-    {
-      label: menuLabels.openFile,
-      handler: onOpenFile,
-      disabled: false,
-    },
-    {
-      label: menuLabels.delete,
-      handler: () => {
-        setAnchorEl(null)
-        if (batchMode) {
-          if (onSelectionChange) {
-            onSelectionChange()
-          }
-        } else {
-          setConfirmOpen(true)
-        }
-      },
-      disabled: false,
-      danger: true,
-    },
-  ]
-  const openP2pMenu: ContextMenuItem[] = [
-    {
-      label: menuLabels.select,
-      handler: onForceSelect,
-      disabled: false,
-    },
-    {
-      label: menuLabels.viewSource,
-      handler: () => setFileOpen(true),
-      disabled: false,
-    },
-    {
-      label: menuLabels.update,
-      handler: () => onUpdate(1),
-      disabled: false,
-    },
-    {
-      label: menuLabels.delete,
-      handler: () => {
-        setAnchorEl(null)
-        if (batchMode) {
-          if (onSelectionChange) {
-            onSelectionChange()
-          }
-        } else {
-          setConfirmOpen(true)
-        }
-      },
-      disabled: false,
-      danger: true,
-    },
-  ]
+  }
+
+  const menuDisabled: Partial<Record<ProfileMenuAction, boolean>> = {
+    editRules: !option?.rules,
+    editProxies: !option?.proxies,
+    editGroups: !option?.groups,
+    extendConfig: !option?.merge,
+    extendScript: !option?.script,
+  }
+
+  const contextMenu: ContextMenuItem[] = profileMenuActions(
+    itemData,
+    openP2pSubscription,
+  ).map((action) => ({
+    label: menuLabels[action],
+    handler: menuHandlers[action],
+    disabled: menuDisabled[action] ?? false,
+    ...(action === 'delete' ? { danger: true } : {}),
+  }))
   const boxStyle = {
     height: 26,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
   }
-
-  const handleSaveProfileDocument = useLockFn(async () => {
-    const currentValue = profileDocument.value
-    const result = await mutate(() => saveProfileFile(uid!, currentValue), {
-      id: `save-profile-file:${uid}`,
-      errorNotice: false,
-    })
-    if (!(result.ok && result.value === true)) {
-      await profileDocument.reload()
-      return
-    }
-    onSave?.(profileDocument.savedValue, currentValue)
-    profileDocument.markSaved(currentValue)
-  })
-
-  const handleSaveMergeDocument = useLockFn(async () => {
-    const mergeUid = option?.merge ?? ''
-    const currentValue = mergeDocument.value
-    const result = await mutate(() => saveProfileFile(mergeUid, currentValue), {
-      id: `save-profile-file:${mergeUid}`,
-      errorNotice: false,
-    })
-    if (!(result.ok && result.value === true)) {
-      await mergeDocument.reload()
-      return
-    }
-    onSave?.(mergeDocument.savedValue, currentValue)
-    mergeDocument.markSaved(currentValue)
-  })
-
-  const handleSaveScriptDocument = useLockFn(async () => {
-    const scriptUid = option?.script ?? ''
-    const currentValue = scriptDocument.value
-    const result = await mutate(
-      () => saveProfileFile(scriptUid, currentValue),
-      {
-        id: `save-profile-file:${scriptUid}`,
-        errorNotice: false,
-      },
-    )
-    if (!(result.ok && result.value === true)) {
-      await scriptDocument.reload()
-      return
-    }
-    onSave?.(scriptDocument.savedValue, currentValue)
-    scriptDocument.markSaved(currentValue)
-  })
 
   return (
     <Box ref={setElement} sx={{ position: 'relative', borderRadius: '8px' }}>
@@ -826,7 +595,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             {titleAdornment}
           </Box>
 
-          {(hasUrl || openP2pSubscription) && (
+          {canUpdateProfile && (
             <IconButton
               title={t('shared.actions.refresh')}
               sx={{
@@ -872,7 +641,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                   </Typography>
                 )
               )}
-              {hasUrl && (
+              {canUpdateProfile && (
                 <Box
                   sx={{
                     display: 'flex',
@@ -949,14 +718,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           e.preventDefault()
         }}
       >
-        {(
-          menu ??
-          (openP2pSubscription
-            ? openP2pMenu
-            : hasUrl
-              ? urlModeMenu
-              : fileModeMenu)
-        ).map((item) => (
+        {(menu ?? contextMenu).map((item) => (
           <MenuItem
             key={item.label}
             aria-label={t(item.label)}
@@ -981,120 +743,17 @@ const ProfileItemBase = (props: ProfileItemProps) => {
           </MenuItem>
         ))}
       </Menu>
-      {fileOpen && (
-        <EditorViewer
-          open={true}
-          title={
-            openP2pSubscription ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                {t('profiles.modals.openp2pSource.title')}
-                <Chip label={t('shared.labels.readOnly')} size="small" />
-              </Box>
-            ) : undefined
-          }
-          value={profileDocument.value}
-          language="yaml"
-          path={
-            openP2pSubscription
-              ? `openp2p-source:${uid}.yaml`
-              : `profile:${uid}.yaml`
-          }
-          readOnly={openP2pSubscription}
-          loading={profileDocument.loading}
-          dirty={openP2pSubscription ? false : profileDocument.dirty}
-          onChange={openP2pSubscription ? undefined : profileDocument.setValue}
-          onSave={openP2pSubscription ? undefined : handleSaveProfileDocument}
-          onClose={() => setFileOpen(false)}
-        />
-      )}
-      {rulesOpen && (
-        <RulesEditorViewer
-          groupsUid={option?.groups ?? ''}
-          mergeUid={option?.merge ?? ''}
-          profileUid={uid!}
-          property={option?.rules ?? ''}
-          open={true}
-          onSave={onSave}
-          onClose={() => setRulesOpen(false)}
-        />
-      )}
-      {proxiesOpen && (
-        <ProxiesEditorViewer
-          profileUid={uid!}
-          property={option?.proxies ?? ''}
-          open={true}
-          onSave={onSave}
-          onClose={() => setProxiesOpen(false)}
-        />
-      )}
-      {groupsOpen && (
-        <GroupsEditorViewer
-          mergeUid={option?.merge ?? ''}
-          proxiesUid={option?.proxies ?? ''}
-          profileUid={uid!}
-          property={option?.groups ?? ''}
-          open={true}
-          onSave={onSave}
-          onClose={() => {
-            setGroupsOpen(false)
-          }}
-        />
-      )}
-      {mergeOpen && (
-        <EditorViewer
-          open={true}
-          title={t('profiles.components.menu.extendConfig')}
-          description={<EnhanceHint stage="profileMerge" />}
-          value={mergeDocument.value}
-          language="yaml"
-          path={`merge:${option?.merge ?? ''}.yaml`}
-          loading={mergeDocument.loading}
-          dirty={mergeDocument.dirty}
-          onChange={mergeDocument.setValue}
-          onSave={handleSaveMergeDocument}
-          onClose={() => setMergeOpen(false)}
-        />
-      )}
-      {scriptOpen && (
-        <EditorViewer
-          open={true}
-          title={t('profiles.components.menu.extendScript')}
-          description={<EnhanceHint stage="profileScript" />}
-          value={scriptDocument.value}
-          language="javascript"
-          path={`script:${option?.script ?? ''}.js`}
-          loading={scriptDocument.loading}
-          dirty={scriptDocument.dirty}
-          onChange={scriptDocument.setValue}
-          onSave={handleSaveScriptDocument}
-          onClose={() => setScriptOpen(false)}
-        />
-      )}
-
-      <BaseDialog
-        title={t('profiles.modals.confirmDelete.title')}
-        open={confirmOpen}
-        okBtn={t('shared.actions.confirm')}
-        cancelBtn={t('shared.actions.cancel')}
-        contentSx={{ width: { xs: 320, sm: 420 }, userSelect: 'text' }}
-        onCancel={() => setConfirmOpen(false)}
-        onClose={() => setConfirmOpen(false)}
-        onOk={() => {
-          onDelete()
-          setConfirmOpen(false)
-        }}
-      >
-        <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-          {t('profiles.modals.confirmDelete.message')}
-        </Typography>
-      </BaseDialog>
-      {qrOpen && itemData.url && (
-        <QrViewer
-          open={true}
-          value={`${itemData.url}${itemData.url.includes('?') ? '&' : '?'}name=${encodeURIComponent(name!)}`}
-          onClose={() => setQrOpen(false)}
-        />
-      )}
+      <ProfileItemDialogs
+        uid={uid!}
+        name={name!}
+        itemData={itemData}
+        option={option}
+        openP2pSubscription={openP2pSubscription}
+        onSave={onSave}
+        onDelete={onDelete}
+        mutateProfiles={mutateProfiles}
+        dialogs={dialogs}
+      />
     </Box>
   )
 }

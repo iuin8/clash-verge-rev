@@ -518,12 +518,50 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
     patch_profiles_config(profiles).await
 }
 
+/// The timer only needs a refresh when an option that changes its schedule did.
+fn timer_settings_changed(old: Option<&crate::config::PrfOption>, new: Option<&crate::config::PrfOption>) -> bool {
+    let Some(new_option) = new else {
+        return false;
+    };
+    let old_interval = old.and_then(|option| option.update_interval);
+    let new_interval = new_option.update_interval;
+    let old_allow_auto_update = old.and_then(|option| option.allow_auto_update);
+    let new_allow_auto_update = new_option.allow_auto_update;
+    (old_interval != new_interval) || (old_allow_auto_update != new_allow_auto_update)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) -> CmdResult {
     let index: String = index.into();
-    super::bundle_save::ensure_not_managed(&index)?;
+    let managed = super::openp2p::find_managed_subscription(&index)?.is_some();
     let mut profile: PrfItem = profile.into();
+    if managed {
+        // An OpenP2P card is generated from its source document: only update
+        // settings are writable, and the edit-info form's display fields are
+        // ignored rather than rejected.
+        let existing_option = {
+            let profiles = Config::profiles().await;
+            profiles
+                .latest_arc()
+                .get_item(&index)
+                .ok()
+                .and_then(|item| item.option.clone())
+        };
+        profile.itype = None;
+        profile.name = None;
+        profile.desc = None;
+        profile.file = None;
+        profile.url = None;
+        profile.selected = None;
+        profile.extra = None;
+        profile.updated = None;
+        profile.option = profile
+            .option
+            .map(|option| super::openp2p::merge_option_patch(existing_option.as_ref(), option));
+    } else {
+        super::bundle_save::ensure_not_managed(&index)?;
+    }
     if crate::config::bundle::is_bundle_uid(&index) {
         // The generated bundle is owned by its members; only display fields may change.
         profile.itype = None;
@@ -534,14 +572,8 @@ pub async fn patch_profile(index: std::string::String, profile: ProfilePatch) ->
         profile.option = None;
     }
     let profiles = Config::profiles().await;
-    let should_refresh_timer = if let Ok(old_profile) = profiles.latest_arc().get_item(&index)
-        && let Some(new_option) = profile.option.as_ref()
-    {
-        let old_interval = old_profile.option.as_ref().and_then(|o| o.update_interval);
-        let new_interval = new_option.update_interval;
-        let old_allow_auto_update = old_profile.option.as_ref().and_then(|o| o.allow_auto_update);
-        let new_allow_auto_update = new_option.allow_auto_update;
-        (old_interval != new_interval) || (old_allow_auto_update != new_allow_auto_update)
+    let should_refresh_timer = if let Ok(old_profile) = profiles.latest_arc().get_item(&index) {
+        timer_settings_changed(old_profile.option.as_ref(), profile.option.as_ref())
     } else {
         false
     };
@@ -599,6 +631,11 @@ pub async fn view_profile(index: std::string::String) -> CmdResult {
 #[tauri::command]
 #[specta::specta]
 pub async fn read_profile_file(index: std::string::String) -> CmdResult<std::string::String> {
+    if let Some((store, meta)) = super::openp2p::find_managed_subscription(&index)? {
+        // The editable artifact is the imported document, not the generated profile.
+        return store.read_source(&meta.id).with_error_code("PROFILE_READ_FAILED");
+    }
+
     let item = {
         let profiles = Config::profiles().await;
         let profiles_ref = profiles.latest_arc();

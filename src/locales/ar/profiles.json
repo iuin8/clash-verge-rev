@@ -84,8 +84,7 @@
       "extendScript": "توسيع السكربت",
       "openFile": "فتح الملف",
       "update": "تحديث",
-      "updateViaProxy": "Update via proxy",
-      "viewSource": "عرض المصدر"
+      "updateViaProxy": "Update via proxy"
     },
     "more": {
       "global": {
@@ -220,9 +219,6 @@
     },
     "qrViewer": {
       "title": "Subscription QR Code"
-    },
-    "openp2pSource": {
-      "title": "مصدر اشتراك OpenP2P"
     }
   }
 }

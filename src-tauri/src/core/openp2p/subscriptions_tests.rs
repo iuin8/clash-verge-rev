@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::config::IProfiles;
+use crate::config::{IProfiles, PrfOption};
 use crate::core::openp2p::portable::OpenP2PImportSourceKind;
 use crate::core::openp2p::schema::fixtures::sample_host_key;
 use crate::core::openp2p::secrets::key_digest;
@@ -194,7 +194,9 @@ fn an_import_writes_private_source_meta_config_and_profile_without_activating() 
         items[0].desc.as_deref(),
         Some(format!("{PROFILE_DESC_PREFIX}{}", import.meta.id).as_str())
     );
-    assert!(items[0].option.is_none());
+    let option = items[0].option.as_ref().expect("generated option");
+    assert_eq!(option.allow_auto_update, Some(true));
+    assert_eq!(option.update_interval, None);
     assert_eq!(id_from_profile_uid(&import.profile_uid), Some(import.meta.id.as_str()));
     assert!(is_subscription_profile_uid(&import.profile_uid));
 }
@@ -217,7 +219,6 @@ fn reimporting_keeps_the_subscription_identity_and_generated_device_fields() {
         .prepare_import(OpenP2PImportSourceKind::Local, &text, None, &mut profiles)
         .expect("second");
     assert!(!again.outcome().created);
-    assert!(!again.outcome().items_changed);
     assert!(!again.outcome().profile_changed);
     let second = again.commit();
     assert_eq!(second.meta.id, first.meta.id);
@@ -577,6 +578,172 @@ fn a_rolled_back_new_import_removes_the_subscription_and_credentials() {
     assert!(!store.meta_path(&id).exists());
     assert!(!token_path.exists());
     assert!(store.list().expect("list").is_empty());
+}
+
+#[test]
+fn a_raw_source_save_keeps_the_subscription_identity_and_omitted_token() {
+    let scratch = Scratch::new("save-source");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let first = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Local,
+            &document("Home", Some(TOKEN), true),
+            None,
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    let token_path = store.token_path(&first.meta.id, "home").expect("token path");
+    let edited = document("Home", None, false).replace("mixed-port: 7890", "mixed-port: 7895");
+
+    let saved = store
+        .prepare_update(&edited, &first.meta.id, &mut profiles)
+        .expect("save source")
+        .commit();
+
+    assert_eq!(saved.meta.id, first.meta.id, "the card keeps its subscription id");
+    assert_eq!(saved.meta.source, OpenP2PImportSourceKind::Local);
+    assert_eq!(saved.meta.source_url, None, "a local source never gains a URL");
+    assert_eq!(saved.meta.imported_at, first.meta.imported_at);
+    assert_eq!(saved.profile_uid, first.profile_uid);
+    assert_eq!(scratch.read(&store.source_path(&first.meta.id)), edited);
+    assert_eq!(
+        scratch.read(&token_path),
+        format!("{TOKEN}\n"),
+        "an omitted token keeps the staged credential"
+    );
+
+    let profile = scratch.read(&store.profile_path(&saved.profile_uid));
+    assert!(profile.contains("mixed-port: 7895"));
+    assert!(!profile.contains(TOKEN));
+    assert!(!profile.contains("PRIVATE KEY"));
+    assert!(!profile.contains("x-openp2p"));
+}
+
+#[test]
+fn a_url_source_save_keeps_the_source_kind_and_url() {
+    let scratch = Scratch::new("save-source-url");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let url = "https://example.com/profiles/openp2p.yaml";
+    let first = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Url,
+            &document("Home", Some(TOKEN), true),
+            Some(url),
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    let edited = document("Home", None, true).replace("mixed-port: 7890", "mixed-port: 7897");
+
+    let saved = store
+        .prepare_update(&edited, &first.meta.id, &mut profiles)
+        .expect("save source")
+        .commit();
+
+    assert_eq!(saved.meta.id, first.meta.id);
+    assert_eq!(saved.meta.source, OpenP2PImportSourceKind::Url);
+    assert_eq!(saved.meta.source_url.as_deref(), Some(url));
+    assert_eq!(saved.meta.imported_at, first.meta.imported_at);
+    assert_eq!(scratch.read(&store.source_path(&first.meta.id)), edited);
+}
+
+#[test]
+fn a_raw_source_save_rolls_back_files_credentials_and_projection() {
+    let scratch = Scratch::new("save-source-rollback");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let first = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Local,
+            &document("Home", Some(TOKEN), true),
+            None,
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    let source_before = scratch.read(&store.source_path(&first.meta.id));
+    let config_before = scratch.read(&store.config_path(&first.meta.id));
+    let profile_before = scratch.read(&store.profile_path(&first.profile_uid));
+    let token_path = store.token_path(&first.meta.id, "home").expect("token path");
+    let token_before = scratch.read(&token_path);
+
+    let prepared = store
+        .prepare_update(
+            &document("Home", Some(TOKEN_TWO), false).replace("mixed-port: 7890", "mixed-port: 7896"),
+            &first.meta.id,
+            &mut profiles,
+        )
+        .expect("prepare save");
+    prepared.rollback().expect("rollback");
+
+    assert_eq!(scratch.read(&store.source_path(&first.meta.id)), source_before);
+    assert_eq!(scratch.read(&store.config_path(&first.meta.id)), config_before);
+    assert_eq!(scratch.read(&store.profile_path(&first.profile_uid)), profile_before);
+    assert_eq!(scratch.read(&token_path), token_before);
+}
+
+#[test]
+fn the_generated_profile_cannot_be_saved_as_the_source() {
+    let scratch = Scratch::new("save-generated");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let import = store
+        .prepare_import(
+            OpenP2PImportSourceKind::Local,
+            &document("Home", Some(TOKEN), true),
+            None,
+            &mut profiles,
+        )
+        .expect("import")
+        .commit();
+    let generated = scratch.read(&store.profile_path(&import.profile_uid));
+
+    let error = store
+        .prepare_update(&generated, &import.meta.id, &mut profiles)
+        .err()
+        .expect("the generated profile is not an importable source");
+    assert!(format!("{error:#}").contains("x_openp2p_missing"), "{error:#}");
+    assert_eq!(
+        scratch.read(&store.source_path(&import.meta.id)),
+        document("Home", Some(TOKEN), true),
+        "a rejected save leaves the source untouched"
+    );
+}
+
+#[test]
+fn reimporting_keeps_the_users_update_settings() {
+    let scratch = Scratch::new("save-option");
+    let store = scratch.store();
+    let mut profiles = IProfiles::default();
+    let text = document("Home", Some(TOKEN), true);
+    store
+        .prepare_import(OpenP2PImportSourceKind::Local, &text, None, &mut profiles)
+        .expect("import")
+        .commit();
+    let item = &mut profiles.items.as_mut().expect("items")[0];
+    item.option = Some(PrfOption {
+        allow_auto_update: Some(true),
+        update_interval: Some(60),
+        user_agent: Some("agent".into()),
+        ..PrfOption::default()
+    });
+    item.updated = Some(1);
+
+    store
+        .prepare_import(OpenP2PImportSourceKind::Local, &text, None, &mut profiles)
+        .expect("reimport");
+    let item = &profiles.items.as_ref().expect("items")[0];
+    let option = item.option.as_ref().expect("option");
+    assert_eq!(option.update_interval, Some(60));
+    assert_eq!(option.user_agent.as_deref(), Some("agent"));
+    assert_eq!(option.allow_auto_update, Some(true));
+    assert!(
+        item.updated.is_some_and(|updated| updated > 1),
+        "a successful reimport advances the card's last-update time"
+    );
 }
 
 #[test]

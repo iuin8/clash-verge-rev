@@ -26,6 +26,7 @@ use tokio_util::time::{DelayQueue, delay_queue::Key};
 
 enum TimerCommand {
     Apply(HashMap<String, TaskSchedule>),
+    Reschedule(HashMap<String, TaskSchedule>),
     RunNow(String),
     TaskFinished(String),
 }
@@ -203,6 +204,22 @@ impl Timer {
         Ok(())
     }
 
+    /// Force every task delay to recount from its current `updated` timestamp.
+    /// The regular refresh intentionally ignores same-interval changes so an
+    /// unrelated edit cannot reset the next run; a successful managed write has
+    /// to move it.
+    pub async fn reschedule(&self) -> Result<()> {
+        let _refresh_guard = self.refresh_lock.lock().await;
+        let new_schedule = self.gen_map().await;
+        let new_map: HashMap<String, u64> = new_schedule
+            .iter()
+            .map(|(uid, schedule)| (uid.clone(), schedule.interval_minutes))
+            .collect();
+        *self.timer_map.write() = new_map;
+        let _ = self.command_tx.send(TimerCommand::Reschedule(new_schedule));
+        Ok(())
+    }
+
     async fn gen_map(&self) -> HashMap<String, TaskSchedule> {
         if let Some(items) = Config::profiles().await.data_arc().items.as_ref() {
             return Self::gen_map_from_items(items);
@@ -247,6 +264,9 @@ impl Timer {
                         Some(TimerCommand::Apply(new_map)) => {
                             Self::apply_timer_map(&mut queue, &mut tasks, new_map);
                         }
+                        Some(TimerCommand::Reschedule(new_map)) => {
+                            Self::apply_timer_map_with_reset(&mut queue, &mut tasks, new_map, true);
+                        }
                         Some(TimerCommand::RunNow(uid)) => {
                             Self::run_task_now(&mut queue, &mut tasks, uid, command_tx.clone());
                         }
@@ -264,6 +284,15 @@ impl Timer {
         queue: &mut DelayQueue<String>,
         tasks: &mut HashMap<String, TaskState>,
         new_map: HashMap<String, TaskSchedule>,
+    ) {
+        Self::apply_timer_map_with_reset(queue, tasks, new_map, false);
+    }
+
+    fn apply_timer_map_with_reset(
+        queue: &mut DelayQueue<String>,
+        tasks: &mut HashMap<String, TaskState>,
+        new_map: HashMap<String, TaskSchedule>,
+        reset_existing: bool,
     ) {
         tasks.retain(|uid, state| {
             if new_map.contains_key(uid) {
@@ -298,7 +327,7 @@ impl Timer {
             // Re-enabled before retirement took effect; finish_task re-arms it.
             state.retired = false;
 
-            if state.interval_minutes == schedule.interval_minutes {
+            if state.interval_minutes == schedule.interval_minutes && !reset_existing {
                 continue;
             }
 
@@ -543,6 +572,37 @@ mod tests {
     }
 
     #[test]
+    fn openp2p_subscriptions_follow_the_normal_timer_rules() {
+        const UID: &str = "op2p-sub-0123456789abcdef";
+
+        let item = |allow_auto_update, update_interval| PrfItem {
+            uid: Some(UID.into()),
+            itype: Some("local".into()),
+            option: Some(PrfOption {
+                allow_auto_update,
+                update_interval,
+                ..PrfOption::default()
+            }),
+            ..PrfItem::default()
+        };
+
+        assert!(
+            !Timer::gen_map_from_items(&[item(Some(true), None)]).contains_key(UID),
+            "the generated default leaves the interval unset, so nothing is scheduled"
+        );
+        assert_eq!(
+            Timer::gen_map_from_items(&[item(Some(true), Some(30))])
+                .get(UID)
+                .map(|schedule| schedule.interval_minutes),
+            Some(30)
+        );
+        assert!(
+            !Timer::gen_map_from_items(&[item(Some(false), Some(30))]).contains_key(UID),
+            "auto-update off removes the scheduled task"
+        );
+    }
+
+    #[test]
     fn timer_map_only_contains_enabled_profiles_with_positive_intervals() {
         let items = vec![
             remote_profile("enabled", Some(true), Some(30)),
@@ -630,6 +690,32 @@ mod tests {
             futures::poll!(Box::pin(queue.next())),
             Poll::Pending | Poll::Ready(None)
         )
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_forced_reschedule_recounts_the_delay_from_the_new_update_time() {
+        const NOW: i64 = 1_700_000_000;
+
+        let mut queue = DelayQueue::new();
+        let mut tasks = HashMap::new();
+        let mut map = HashMap::new();
+        map.insert(String::from("uid"), TaskSchedule::new(60, Some(NOW as usize), NOW));
+        Timer::apply_timer_map(&mut queue, &mut tasks, map);
+
+        // Ten minutes later a managed write refreshes the update timestamp to
+        // NOW, so the next run must be a full interval from that write.
+        tokio::time::advance(Duration::from_secs(600)).await;
+        let mut reschedule = HashMap::new();
+        reschedule.insert(String::from("uid"), TaskSchedule::new(60, Some(NOW as usize), NOW));
+        Timer::apply_timer_map_with_reset(&mut queue, &mut tasks, reschedule, true);
+
+        tokio::time::advance(Duration::from_secs(50 * 60)).await;
+        assert!(
+            nothing_due(&mut queue).await,
+            "the old deadline must not survive a forced re-arm"
+        );
+        tokio::time::advance(Duration::from_secs(11 * 60)).await;
+        assert_eq!(take_expired(&mut queue).await.as_deref(), Some("uid"));
     }
 
     #[tokio::test(start_paused = true)]
