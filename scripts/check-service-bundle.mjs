@@ -32,7 +32,12 @@ const serviceDir =
 const servicePath =
   process.platform === 'linux'
     ? readdirSync(serviceDir)
-        .filter((name) => name.startsWith('clash-verge-service-'))
+        .filter(
+          (name) =>
+            name.startsWith('clash-verge-service-') &&
+            !name.startsWith('clash-verge-service-install') &&
+            !name.startsWith('clash-verge-service-uninstall'),
+        )
         .map((name) => join(serviceDir, name))
         .sort()[0]
     : join(serviceDir, serviceName)
