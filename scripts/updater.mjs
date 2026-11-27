@@ -79,7 +79,7 @@ async function processRelease(github, options, tag, isAlpha) {
     const releaseUrl = `https://github.com/${options.owner}/${options.repo}/releases/tag/${tag.name}`
 
     const updateData = {
-      name: tag.name,
+      version: tag.name.replace(/^v/, ''),
       notes: `${notes}\n\n**[See More](${releaseUrl})**`,
       pub_date: new Date().toISOString(),
       platforms: {

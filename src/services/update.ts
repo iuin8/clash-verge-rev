@@ -76,6 +76,14 @@ export const checkUpdateSafe = async (
   if (!result) return null
 
   const remoteVersion = resolveRemoteVersion(result)
+  if (!remoteVersion) {
+    try {
+      await result.close()
+    } catch (err) {
+      console.warn('[updater] failed to close malformed update resource', err)
+    }
+    return null
+  }
   const comparison = compareVersions(remoteVersion, localVersionNormalized)
 
   const isBuildToStable =
